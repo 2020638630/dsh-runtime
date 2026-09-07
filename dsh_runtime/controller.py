@@ -5,47 +5,79 @@ import time
 from .observability.logger import record
 from .planner import SimplePlanner
 from .runtime.executor import Executor
-from .runtime.plugin import ExecutionContext, PLUGIN_TIMEOUT_ERROR
+from .runtime.plugin import ExecutionContext, StopReason
 from .runtime.registry import PluginRegistry
 from .state import TaskState, TaskStatus
+from .workspace.manager import WorkspaceManager, WorkspaceResolutionError
 
 
 class DSHController:
-    def __init__(self, registry: PluginRegistry, planner: SimplePlanner | None = None) -> None:
+    def __init__(
+        self,
+        registry: PluginRegistry,
+        planner: SimplePlanner | None = None,
+        workspace_manager: WorkspaceManager | None = None,
+    ) -> None:
         self.executor = Executor(registry)
         self.planner = planner or SimplePlanner()
+        self.workspace_manager = workspace_manager or WorkspaceManager()
 
     async def run(self, task: TaskState) -> TaskState:
         started = time.perf_counter()
         task.status = TaskStatus.RUNNING
         record("task_started", task_id=task.task_id, workspace_id=task.workspace_id)
 
-        # DSH owns the loop. This milestone intentionally completes after one
-        # bounded action; future continuation must be decided by DSH Controller
-        # / Planner, not by a Plugin or by adding control fields to PluginResult.
-        while task.iteration < task.max_iterations:
-            decision = self.planner.next_action(task)
+        # Invocation budget is checked before the initial Planner evaluation.
+        if task.iteration >= task.max_iterations:
+            return self._max_iterations(task, started)
+
+        decision = self.planner.next_action(task)
+        if decision.is_terminal:
+            task.error = "planner returned terminal decision before invocation"
+            task.status = TaskStatus.FAILED
+            record(
+                "task_failed",
+                task_id=task.task_id,
+                workspace_id=task.workspace_id,
+                error=task.error,
+                stop_reason=StopReason.FAILED.value,
+            )
+            return task
+
+        while True:
+            try:
+                cwd = self.workspace_manager.resolve_cwd(task.workspace_id)
+            except WorkspaceResolutionError as exc:
+                task.error = str(exc)
+                task.status = TaskStatus.FAILED
+                record(
+                    "task_failed",
+                    task_id=task.task_id,
+                    workspace_id=task.workspace_id,
+                    error=task.error,
+                    stop_reason=StopReason.FAILED.value,
+                )
+                return task
             result = await self.executor.execute(
                 decision.plugin,
-                ExecutionContext(task.task_id, task.workspace_id, task.goal),
+                ExecutionContext(
+                    task.task_id,
+                    task.workspace_id,
+                    task.goal,
+                    cwd=str(cwd),
+                    allow_workspace_write=task.allow_workspace_write,
+                ),
                 decision.params,
                 task.timeout_seconds,
             )
             task.iteration += 1
             record("plugin_executed", task_id=task.task_id, plugin=decision.plugin,
                    iteration=task.iteration, success=result.success)
-            if result.success:
-                task.apply_success(result.output)
-                record(
-                    "task_completed",
-                    task_id=task.task_id,
-                    workspace_id=task.workspace_id,
-                    iteration=task.iteration,
-                    duration_ms=int((time.perf_counter() - started) * 1000),
-                )
+            if result.stop_reason is StopReason.COMPLETED and result.success:
+                task.last_invocation_result = result.output
             else:
                 error = result.error or "plugin execution failed"
-                if error == PLUGIN_TIMEOUT_ERROR:
+                if result.stop_reason is StopReason.TIMED_OUT:
                     task.status = TaskStatus.TIMED_OUT
                     task.error = error
                     record(
@@ -55,6 +87,8 @@ class DSHController:
                         iteration=task.iteration,
                         duration_ms=int((time.perf_counter() - started) * 1000),
                         error=error,
+                        cleanup_error=result.cleanup_error,
+                        stop_reason=result.stop_reason.value,
                     )
                 else:
                     task.apply_failure(error)
@@ -65,9 +99,35 @@ class DSHController:
                         iteration=task.iteration,
                         duration_ms=int((time.perf_counter() - started) * 1000),
                         error=error,
+                        cleanup_error=result.cleanup_error,
+                        stop_reason=(
+                            result.stop_reason.value
+                            if result.stop_reason is not None
+                            else StopReason.FAILED.value
+                        ),
                     )
-            return task
 
+                return task
+
+            next_decision = self.planner.next_action(task)
+            if next_decision.is_terminal:
+                task.apply_success(task.last_invocation_result)
+                record(
+                    "task_completed",
+                    task_id=task.task_id,
+                    workspace_id=task.workspace_id,
+                    iteration=task.iteration,
+                    duration_ms=int((time.perf_counter() - started) * 1000),
+                )
+                return task
+
+            if task.iteration >= task.max_iterations:
+                return self._max_iterations(task, started)
+
+            decision = next_decision
+
+    @staticmethod
+    def _max_iterations(task: TaskState, started: float) -> TaskState:
         task.status = TaskStatus.MAX_ITERATIONS
         task.error = "maximum iterations reached"
         record(
