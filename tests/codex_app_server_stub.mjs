@@ -7,6 +7,9 @@ if (mode === 'startup-fail') process.exit(7)
 const threadId = 'stub-thread'
 const turnId = 'stub-turn'
 const capture = process.env.DSH_CODEX_STUB_CAPTURE
+const stubStderr = process.env.DSH_CODEX_STUB_STDERR
+
+if (stubStderr) process.stderr.write(stubStderr)
 
 function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`)
@@ -28,6 +31,10 @@ input.on('line', (line) => {
     send({ jsonrpc: '2.0', id, result: { thread: { id: threadId, ephemeral: true } } })
   } else if (method === 'turn/start') {
     send({ jsonrpc: '2.0', id, result: { turn: { id: turnId } } })
+    if (mode === 'eof') {
+      setTimeout(() => process.exit(Number(process.env.DSH_CODEX_STUB_EXIT_CODE ?? '17')), 0)
+      return
+    }
     send({ jsonrpc: '2.0', method: 'turn/started', params: { threadId, turn: { id: turnId } } })
     if (mode === 'hold') return
     if (mode === 'protocol-fail') {

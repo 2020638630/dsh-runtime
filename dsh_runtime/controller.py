@@ -58,6 +58,13 @@ class DSHController:
                     stop_reason=StopReason.FAILED.value,
                 )
                 return task
+            if decision.allow_workspace_write is None:
+                allow_workspace_write = task.allow_workspace_write
+            else:
+                allow_workspace_write = (
+                    task.allow_workspace_write
+                    and decision.allow_workspace_write
+                )
             result = await self.executor.execute(
                 decision.plugin,
                 ExecutionContext(
@@ -65,7 +72,7 @@ class DSHController:
                     task.workspace_id,
                     task.goal,
                     cwd=str(cwd),
-                    allow_workspace_write=task.allow_workspace_write,
+                    allow_workspace_write=allow_workspace_write,
                 ),
                 decision.params,
                 task.timeout_seconds,
@@ -111,14 +118,29 @@ class DSHController:
 
             next_decision = self.planner.next_action(task)
             if next_decision.is_terminal:
-                task.apply_success(task.last_invocation_result)
-                record(
-                    "task_completed",
-                    task_id=task.task_id,
-                    workspace_id=task.workspace_id,
-                    iteration=task.iteration,
-                    duration_ms=int((time.perf_counter() - started) * 1000),
-                )
+                if next_decision.terminal_success:
+                    task.apply_success(task.last_invocation_result)
+                    record(
+                        "task_completed",
+                        task_id=task.task_id,
+                        workspace_id=task.workspace_id,
+                        iteration=task.iteration,
+                        duration_ms=int((time.perf_counter() - started) * 1000),
+                    )
+                else:
+                    task.apply_failure(
+                        next_decision.terminal_error
+                        or "planner returned terminal failure"
+                    )
+                    record(
+                        "task_failed",
+                        task_id=task.task_id,
+                        workspace_id=task.workspace_id,
+                        iteration=task.iteration,
+                        duration_ms=int((time.perf_counter() - started) * 1000),
+                        error=task.error,
+                        stop_reason=StopReason.FAILED.value,
+                    )
                 return task
 
             if task.iteration >= task.max_iterations:

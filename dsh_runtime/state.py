@@ -19,6 +19,8 @@ class TaskStatus(str, Enum):
 class TaskKind(str, Enum):
     DEFAULT = "default"
     REPOSITORY_ANALYSIS = "repository_analysis"
+    REPOSITORY_INSPECTION = "repository_inspection"
+    REPOSITORY_CHANGE = "repository_change"
 
 
 @dataclass
@@ -46,6 +48,22 @@ class TaskState:
             and self.allow_workspace_write
         ):
             raise ValueError("Repository Analysis tasks must be read-only")
+        if self.task_kind is TaskKind.REPOSITORY_INSPECTION:
+            if self.allow_workspace_write:
+                raise ValueError("Repository Inspection tasks must be read-only")
+            if self.max_iterations != 1:
+                raise ValueError(
+                    "Repository Inspection tasks require exactly 1 iteration"
+                )
+        if self.task_kind is TaskKind.REPOSITORY_CHANGE:
+            if not self.allow_workspace_write:
+                raise ValueError(
+                    "Repository Change tasks require workspace write authority"
+                )
+            if self.max_iterations < 2:
+                raise ValueError(
+                    "Repository Change tasks require at least 2 iterations"
+                )
 
     def apply_success(self, result: Any) -> None:
         self.result = result

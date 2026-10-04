@@ -43,6 +43,67 @@ def test_repository_analysis_defaults_to_read_only() -> None:
     assert task.allow_workspace_write is False
 
 
+def test_repository_inspection_defaults_to_one_read_only_iteration() -> None:
+    task = TaskState(
+        goal="inspect repository",
+        task_kind=TaskKind.REPOSITORY_INSPECTION,
+    )
+
+    assert task.allow_workspace_write is False
+    assert task.max_iterations == 1
+
+
+def test_write_enabled_repository_inspection_is_rejected() -> None:
+    with pytest.raises(ValueError, match="must be read-only"):
+        TaskState(
+            goal="inspect repository",
+            task_kind=TaskKind.REPOSITORY_INSPECTION,
+            allow_workspace_write=True,
+        )
+
+
+@pytest.mark.parametrize("max_iterations", [0, 2])
+def test_repository_inspection_requires_exactly_one_iteration(
+    max_iterations: int,
+) -> None:
+    with pytest.raises(ValueError, match="exactly 1 iteration"):
+        TaskState(
+            goal="inspect repository",
+            task_kind=TaskKind.REPOSITORY_INSPECTION,
+            max_iterations=max_iterations,
+        )
+
+
+def test_repository_change_requires_write_authority_and_two_iterations() -> None:
+    task = TaskState(
+        goal="change repository",
+        task_kind=TaskKind.REPOSITORY_CHANGE,
+        allow_workspace_write=True,
+        max_iterations=2,
+    )
+
+    assert task.task_kind is TaskKind.REPOSITORY_CHANGE
+
+
+def test_repository_change_without_write_authority_is_rejected() -> None:
+    with pytest.raises(ValueError, match="require workspace write authority"):
+        TaskState(
+            goal="change repository",
+            task_kind=TaskKind.REPOSITORY_CHANGE,
+            max_iterations=2,
+        )
+
+
+def test_repository_change_with_one_iteration_is_rejected() -> None:
+    with pytest.raises(ValueError, match="require at least 2 iterations"):
+        TaskState(
+            goal="change repository",
+            task_kind=TaskKind.REPOSITORY_CHANGE,
+            allow_workspace_write=True,
+            max_iterations=1,
+        )
+
+
 def test_simple_planner_routes_repository_analysis_then_terminates() -> None:
     planner = SimplePlanner()
     task = TaskState(goal="inspect repository", task_kind=TaskKind.REPOSITORY_ANALYSIS)
@@ -53,6 +114,155 @@ def test_simple_planner_routes_repository_analysis_then_terminates() -> None:
     task.iteration = 1
     task.last_invocation_result = "bounded answer"
     assert planner.next_action(task).is_terminal
+
+
+def test_simple_planner_routes_repository_change_to_codebuddy_then_codex() -> None:
+    planner = SimplePlanner()
+    task = TaskState(
+        goal="replace the old implementation",
+        task_kind=TaskKind.REPOSITORY_CHANGE,
+        allow_workspace_write=True,
+        max_iterations=2,
+    )
+
+    initial = planner.next_action(task)
+    assert initial == Decision(
+        plugin="codebuddy",
+        params={"prompt": task.goal},
+        allow_workspace_write=True,
+    )
+
+    task.iteration = 1
+    task.last_invocation_result = "builder settled"
+    verification = planner.next_action(task)
+    assert verification.plugin == "codex"
+    assert task.goal in verification.params["prompt"]
+    assert "current workspace" in verification.params["prompt"]
+    assert "Do not modify" in verification.params["prompt"]
+    assert "independently verify" in verification.params["prompt"]
+
+    task.iteration = 2
+    task.last_invocation_result = "review\nDSH_VERIFICATION: PASS"
+    terminal = planner.next_action(task)
+    assert terminal.is_terminal
+    assert terminal.terminal_success is True
+
+
+def test_invocation_authority_can_narrow_but_cannot_escalate() -> None:
+    class AuthorityPlugin:
+        name = "authority"
+
+        def __init__(self):
+            self.authorities = []
+
+        async def execute(self, ctx, params):
+            self.authorities.append(ctx.allow_workspace_write)
+            return PluginResult(success=True, output="done")
+
+    def run_with(task, requested_authority):
+        plugin = AuthorityPlugin()
+        planner = ScriptedPlanner(
+            [
+                Decision(
+                    plugin="authority",
+                    allow_workspace_write=requested_authority,
+                ),
+                Decision(plugin=None),
+            ]
+        )
+        registry = PluginRegistry()
+        registry.register(plugin)
+        result = asyncio.run(DSHController(registry, planner=planner).run(task))
+        return result, plugin
+
+    narrowed, narrowed_plugin = run_with(
+        TaskState(
+            goal="read after write",
+            task_kind=TaskKind.REPOSITORY_CHANGE,
+            allow_workspace_write=True,
+            max_iterations=2,
+        ),
+        False,
+    )
+    inherited, inherited_plugin = run_with(
+        TaskState(
+            goal="inherit write authority",
+            task_kind=TaskKind.REPOSITORY_CHANGE,
+            allow_workspace_write=True,
+            max_iterations=2,
+        ),
+        None,
+    )
+    ceiling, ceiling_plugin = run_with(TaskState(goal="read-only"), True)
+
+    assert narrowed.status is TaskStatus.COMPLETED
+    assert narrowed_plugin.authorities == [False]
+    assert inherited.status is TaskStatus.COMPLETED
+    assert inherited_plugin.authorities == [True]
+    assert ceiling.status is TaskStatus.COMPLETED
+    assert ceiling_plugin.authorities == [False]
+
+
+@pytest.mark.parametrize(
+    "verifier_output",
+    [
+        "DSH_VERIFICATION: PASS\nVerification actually failed.",
+        "The report quotes DSH_VERIFICATION: PASS\nNo valid verdict supplied.",
+        "Report\nDSH_VERIFICATION: PASS\nextra text after the verdict",
+        "",
+        None,
+    ],
+)
+def test_verifier_requires_exact_final_non_empty_verdict_line(verifier_output) -> None:
+    planner = SimplePlanner()
+    task = TaskState(
+        goal="change repository",
+        task_kind=TaskKind.REPOSITORY_CHANGE,
+        allow_workspace_write=True,
+        max_iterations=2,
+        iteration=2,
+        last_invocation_result=verifier_output,
+    )
+
+    decision = planner.next_action(task)
+
+    assert decision.is_terminal
+    assert decision.terminal_success is False
+    assert decision.terminal_error == "invalid verifier result"
+
+
+def test_verifier_fail_marker_is_terminal_failure() -> None:
+    planner = SimplePlanner()
+    task = TaskState(
+        goal="change repository",
+        task_kind=TaskKind.REPOSITORY_CHANGE,
+        allow_workspace_write=True,
+        max_iterations=2,
+        iteration=2,
+        last_invocation_result="Issue found.\nDSH_VERIFICATION: FAIL",
+    )
+
+    decision = planner.next_action(task)
+
+    assert decision.is_terminal
+    assert decision.terminal_success is False
+    assert decision.terminal_error == "Codex verification reported FAIL"
+
+
+def test_verifier_pass_requires_only_final_non_empty_line_exact_match() -> None:
+    planner = SimplePlanner()
+    task = TaskState(
+        goal="change repository",
+        task_kind=TaskKind.REPOSITORY_CHANGE,
+        allow_workspace_write=True,
+        max_iterations=2,
+        iteration=2,
+        last_invocation_result="Report\n  DSH_VERIFICATION: PASS  \n",
+    )
+
+    decision = planner.next_action(task)
+
+    assert decision == Decision(plugin=None)
 
 
 def test_plugin_error_stays_inside_runtime() -> None:
@@ -140,6 +350,59 @@ class RecordingPlugin:
         if self.error is not None:
             return PluginResult(success=False, error=self.error)
         return PluginResult(success=True, output=self.output)
+
+
+def test_repository_change_completes_only_after_codex_verification_pass() -> None:
+    codebuddy = RecordingPlugin("codebuddy", output="builder settled")
+    codex = RecordingPlugin(
+        "codex", output="workspace verified\nDSH_VERIFICATION: PASS"
+    )
+    registry = PluginRegistry()
+    registry.register(codebuddy)
+    registry.register(codex)
+
+    task = asyncio.run(
+        DSHController(registry).run(
+            TaskState(
+                goal="change repository",
+                task_kind=TaskKind.REPOSITORY_CHANGE,
+                allow_workspace_write=True,
+                max_iterations=2,
+            )
+        )
+    )
+
+    assert codebuddy.calls == 1
+    assert codex.calls == 1
+    assert task.iteration == 2
+    assert task.status is TaskStatus.COMPLETED
+    assert task.result == "workspace verified\nDSH_VERIFICATION: PASS"
+
+
+def test_repository_change_verifier_fail_becomes_terminal_task_failure() -> None:
+    codebuddy = RecordingPlugin("codebuddy", output="builder settled")
+    codex = RecordingPlugin("codex", output="issue\nDSH_VERIFICATION: FAIL")
+    registry = PluginRegistry()
+    registry.register(codebuddy)
+    registry.register(codex)
+
+    task = asyncio.run(
+        DSHController(registry).run(
+            TaskState(
+                goal="change repository",
+                task_kind=TaskKind.REPOSITORY_CHANGE,
+                allow_workspace_write=True,
+                max_iterations=2,
+            )
+        )
+    )
+
+    assert codebuddy.calls == 1
+    assert codex.calls == 1
+    assert task.iteration == 2
+    assert task.status is TaskStatus.FAILED
+    assert task.result is None
+    assert task.error == "Codex verification reported FAIL"
 
 
 def test_two_step_continuation_observes_latest_result() -> None:

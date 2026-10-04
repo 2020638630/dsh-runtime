@@ -27,16 +27,22 @@ def stub_command() -> tuple[str, str]:
     return (shutil.which("node") or "node", str(STUB))
 
 
-def plugin() -> CodexPlugin:
+def plugin(*, trace_dir: Path | None = None) -> CodexPlugin:
     overlay = {
         key: os.environ[key]
-        for key in ("DSH_CODEX_STUB_CAPTURE", "DSH_CODEX_STUB_MODE")
+        for key in (
+            "DSH_CODEX_STUB_CAPTURE",
+            "DSH_CODEX_STUB_MODE",
+            "DSH_CODEX_STUB_STDERR",
+            "DSH_CODEX_STUB_EXIT_CODE",
+        )
         if key in os.environ
     }
     return CodexPlugin(
         command=stub_command(),
         environment=overlay,
         cleanup_grace_seconds=1.0,
+        qualification_trace_dir=trace_dir,
     )
 
 
@@ -75,7 +81,119 @@ def test_codex_success_uses_one_bounded_protocol_path(tmp_path: Path, monkeypatc
     assert params["cwd"] == str(tmp_path.resolve())
     assert params["ephemeral"] is True
     assert params["approvalPolicy"] == "never"
-    assert "sandbox" not in params
+    assert params["sandbox"] == "read-only"
+
+
+def test_qualification_trace_is_opt_in(tmp_path: Path) -> None:
+    async def scenario():
+        return await executor_with(plugin()).execute(
+            "codex", context(tmp_path), {"prompt": "no trace"}, 1.0
+        )
+
+    result = asyncio.run(scenario())
+
+    assert result.success is True
+    assert not (tmp_path / "trace").exists()
+
+
+def test_qualification_trace_captures_identity_protocol_stderr_and_authority(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("DSH_CODEX_STUB_STDERR", "stub qualification stderr\n")
+    trace_dir = tmp_path / "trace"
+
+    async def scenario():
+        return await executor_with(plugin(trace_dir=trace_dir)).execute(
+            "codex",
+            context(tmp_path),
+            {"prompt": "traced", "model": "trace-model", "reasoning": "xhigh"},
+            1.0,
+        )
+
+    result = asyncio.run(scenario())
+    trace = json.loads(next(trace_dir.glob("codex-worker-*.json")).read_text())
+
+    assert result.success is True
+    assert isinstance(trace["pid"], int)
+    assert trace["executable"] == (shutil.which("node") or "node")
+    assert trace["argv"][-1] == str(STUB)
+    assert trace["cwd"] == str(tmp_path.resolve())
+    assert trace["model"] == "trace-model"
+    assert trace["reasoning"] == "xhigh"
+    assert trace["allow_workspace_write"] is False
+    assert trace["stderr"] == "stub qualification stderr\n"
+    assert trace["turn_completed_observed"] is True
+
+    frames = trace["protocol_frames"]
+    methods = [
+        frame["message"].get("method")
+        for frame in frames
+        if frame["message"] is not None and frame["message"].get("method") is not None
+    ]
+    assert methods[:4] == ["initialize", "initialized", "thread/start", "turn/start"]
+    assert "turn/completed" in methods
+    assert all(frame["parse_error"] is None for frame in frames if frame["direction"] == "inbound")
+    assert trace["events"][0]["event"] == "process_spawned"
+
+
+def test_qualification_trace_records_eof_and_child_return_code(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("DSH_CODEX_STUB_MODE", "eof")
+    trace_dir = tmp_path / "trace"
+
+    async def scenario():
+        return await executor_with(plugin(trace_dir=trace_dir)).execute(
+            "codex", context(tmp_path), {"prompt": "eof"}, 1.0
+        )
+
+    result = asyncio.run(scenario())
+    trace = json.loads(next(trace_dir.glob("codex-worker-*.json")).read_text())
+
+    assert result.success is False
+    assert result.error == "Codex bounded invocation failed: app-server stream ended"
+    assert any(event["event"] == "stdout_eof" for event in trace["events"])
+    assert trace["terminal"]["returncode"] == 17
+    assert trace["turn_completed_observed"] is False
+    assert "id" in trace["last_valid_inbound_frame"]["message"]
+    assert "method" not in trace["last_valid_inbound_frame"]["message"]
+
+
+def test_qualification_trace_sink_failure_is_explicit(tmp_path: Path) -> None:
+    trace_sink = tmp_path / "trace-file"
+    trace_sink.write_text("not a directory", encoding="utf-8")
+
+    async def scenario():
+        return await executor_with(plugin(trace_dir=trace_sink)).execute(
+            "codex", context(tmp_path), {"prompt": "must not start"}, 1.0
+        )
+
+    result = asyncio.run(scenario())
+
+    assert result.success is False
+    assert result.error is not None
+    assert result.error.startswith("QUALIFICATION OBSERVABILITY FAILURE:")
+
+
+def test_qualification_trace_preserves_timeout_and_records_cancellation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("DSH_CODEX_STUB_MODE", "hold")
+    trace_dir = tmp_path / "trace"
+
+    async def scenario():
+        return await executor_with(plugin(trace_dir=trace_dir)).execute(
+            "codex", context(tmp_path), {"prompt": "hold"}, 0.05
+        )
+
+    result = asyncio.run(scenario())
+    trace = json.loads(next(trace_dir.glob("codex-worker-*.json")).read_text())
+
+    assert result.success is False
+    assert result.stop_reason is StopReason.TIMED_OUT
+    assert result.error == "plugin execution timed out"
+    assert any(event["event"] == "plugin_cancelled" for event in trace["events"])
+    assert trace["terminal"]["cancelled"] is True
 
 
 def test_workspace_write_authority_is_dsh_owned_and_mapped_natively(
@@ -99,6 +217,29 @@ def test_workspace_write_authority_is_dsh_owned_and_mapped_natively(
     assert params["approvalPolicy"] == "on-request"
     assert params["approvalsReviewer"] == "auto_review"
     assert params["sandbox"] == "workspace-write"
+
+
+def test_read_only_authority_maps_to_explicit_read_only_sandbox(
+    tmp_path: Path, monkeypatch
+) -> None:
+    capture = tmp_path / "thread-start-read-only.json"
+    monkeypatch.setenv("DSH_CODEX_STUB_CAPTURE", str(capture))
+
+    async def scenario():
+        return await executor_with(plugin()).execute(
+            "codex",
+            context(tmp_path, allow_workspace_write=False),
+            {"prompt": "inspect"},
+            1.0,
+        )
+
+    result = asyncio.run(scenario())
+    params = json.loads(capture.read_text(encoding="utf-8"))
+
+    assert result.success is True
+    assert params["approvalPolicy"] == "never"
+    assert params["sandbox"] == "read-only"
+    assert "approvalsReviewer" not in params
 
 
 def test_controller_resolves_logical_workspace_before_plugin_start(tmp_path: Path) -> None:
@@ -148,7 +289,7 @@ def test_repository_analysis_uses_production_planner_and_completes_normally(
     assert params["cwd"] == str(tmp_path.resolve())
     assert params["ephemeral"] is True
     assert params["approvalPolicy"] == "never"
-    assert "sandbox" not in params
+    assert params["sandbox"] == "read-only"
     assert next_action.call_count == 2
     assert task.iteration == 1
     assert task.last_invocation_result == task.result

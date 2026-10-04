@@ -1,13 +1,13 @@
 # DSH Runtime Project State
 
 Current Version:
-v0.1.0-m4
+v0.1.0-m7
 
 Current Milestone:
-Milestone 4 — Read-only Repository Analysis Workflow
+Milestone 7 — DeepSeekHarness Cross-Language Qualification and Closeout
 
 Status:
-CLOSED / VERIFICATION PASS
+COMPLETE / CLOSED
 
 Completed milestones:
 
@@ -15,55 +15,113 @@ Completed milestones:
 - Milestone 2 — External Capability Integration: IMPLEMENTATION COMPLETE; real-service verification DEFERRED / ENVIRONMENT_BLOCKED
 - Milestone 3 — Bounded Planner-Driven Task Continuation: CLOSED / VERIFICATION PASS
 - Milestone 4 — Read-only Repository Analysis Workflow: CLOSED / VERIFICATION PASS
+- Milestone 5 — Repository Change Workflow: CLOSED / REVIEW PASS / VERIFICATION PASS
+- Milestone 6 — Real-Host Qualification and Closeout: COMPLETE / CLOSED
+- Milestone 7 — DeepSeekHarness Cross-Language Qualification and Closeout: COMPLETE / CLOSED
 
 Formal regression baseline:
 
-    .venv\Scripts\python.exe -m pytest -q
-    46 passed
+    M7 deterministic                  3 passed
+    related DSH-Runtime               9 passed
+    full regression                 117 passed
+
+    M7 adapter compile/import         PASS
+    DSH-Runtime git diff --check      PASS
+    DeepSeekHarness git diff --check  PASS
+
+Milestone 5 closure:
+
+- M5-A minimal implementation design: complete.
+- M5-B1 — business-intent terminal Decision semantics: REVIEW PASS / FROZEN.
+- M5-B2 — bounded CodeBuddy primary executor: REVIEW PASS / FROZEN.
+- M5-B3 — minimal production assembly and caller: REVIEW PASS / FROZEN.
+- M5-B4-F1 — per-invocation authority handoff: REVIEW PASS / CLOSED.
+- M5-B4 — deterministic end-to-end verification: REVIEW PASS / CLOSED.
+- The proven workflow is REPOSITORY_CHANGE → CodeBuddy primary executor → same-workspace mutation → Planner continuation → Codex read-only verifier → DSH_VERIFICATION: PASS / FAIL → Planner terminal Decision → DSHController-owned TaskState completion or failure.
+- REPOSITORY_ANALYSIS remains strictly read-only and owned by Codex. REPOSITORY_CHANGE is an independent write-capable business intent.
+- M5 callers use allow_workspace_write=True and max_iterations=2. CodeBuddy receives write authority=True; the Codex verifier receives write authority=False.
+- TaskState.allow_workspace_write is the caller authority ceiling. Decision.allow_workspace_write is the per-invocation authority request or narrowing. The Controller computes effective authority only; Planner may narrow authority but may not elevate beyond the TaskState ceiling.
+- CodeBuddy Bash permission remains strictly Bash(python:*), CodeBuddyPlugin concrete/private ownership remains unchanged, and the existing read-only Codex verifier is reused.
+- Workspace remains a logical operating boundary; M5 makes no hard-filesystem-confinement claim. CodeBuddy process-tree cleanup and cancellation settlement are closed contracts.
+- M5 has no repair/retry loop, third action, WorkflowEngine, Coordinator, Provider Router, or equivalent new architecture.
+
+M5 environment debt:
+
+- At M5 closeout, real-host CodeBuddy/Codex verification was deferred environment debt and was not an M5 deterministic acceptance blocker.
+- That deferred real-host qualification was subsequently resolved by Milestone 6, without reopening M5 frozen contracts.
+
+M5 reopen gate:
+
+- No further M5 implementation is authorized by default.
+- Reopening an M5 owner requires new executable evidence that directly contradicts a frozen M5 assumption or contract. Do not reopen a reviewed/frozen owner based only on hypothetical expansion or an environment-debt item.
+
+Milestone 6 closeout:
+
+- M6-A — design: REVIEW PASS / FROZEN.
+- M6-B1 — real-host qualification boundary: REVIEW PASS / FROZEN.
+- M6-B2 — deterministic qualification: 25 cases passed / REVIEW PASS / FROZEN.
+- M6-B3 — real-host qualification: PASS / REVIEW PASS / FROZEN.
+- M6-B4 — final deterministic verification: PASS / FROZEN.
+- Final deterministic evidence: focused/related 64 passed; qualification 25 passed; combined focused set 89 passed; full regression 117 passed; compile/import PASS; git diff --check PASS.
+- Final production configuration: CodeBuddy default max_turns=12; REPOSITORY_CHANGE allow_workspace_write=True, max_iterations=2, timeout_seconds=900.0; global TaskState default timeout=30.0 seconds.
+- Authority, permissions, and workflow contracts remain unchanged: caller authority ceiling and per-invocation narrowing; generic Controller effective-authority calculation; Planner ownership; CodeBuddy Bash(python:*); Codex read-only authority; plugin ownership; two-action REPOSITORY_CHANGE workflow; logical workspace boundary; no retry, repair, or third action.
+- Reviewed final real-host evidence: CodeBuddy=1 invocation; Codex=1 invocation; TaskState=completed; iteration=2; DSH retries=0; repair=0; third action=0; total elapsed=224.269 seconds.
+- MILESTONE 6 = COMPLETE / CLOSED.
+
+Milestone 7 closeout:
+
+- M7-A / M7-A-F1 — design boundary: DSH-Runtime workflow / semantic gap NONE; DeepSeekHarness → Python invocation gap MINIMAL GAP. The resolved boundary is DeepSeekHarness / Node → existing subprocess seam → one-shot Python adapter → existing DSH-Runtime production bootstrap. DeepSeekHarness remains the external qualification / invocation owner; DSH-Runtime remains the production workflow owner.
+- M7-B1 — deterministic cross-language success: DeepSeekHarness / Node / Vitest → LocalSubprocessRuntime → one Python process → production bootstrap → deterministic CodeBuddy → deterministic Codex → completed TaskState → Node observation. CodeBuddy=1 with authority=True; Codex=1 with authority=False; workspace mutation +m7_full_flow.txt with exact content DSH_M7_DETERMINISTIC_FULL_FLOW; Codex mutation none; sequence CodeBuddy → Codex; external actions=2; retry=0; repair=0; third action=0; TaskState completed at iteration=2 with error=None.
+- M7-B2 — real-host cross-language success: DeepSeekHarness → Node subprocess seam → Python DSH-Runtime → real CodeBuddy → real Codex → terminal TaskState → DeepSeekHarness observation. Real CodeBuddy=1 invocation, elapsed=45.502 seconds, effective authority=True; real Codex=1 invocation, elapsed=149.080 seconds, effective authority=False; workspace mutation +m7_real_host_full_flow.txt with exact content DSH_M7_REAL_HOST_FULL_FLOW; unexpected mutation none; Codex mutation none; sequence CodeBuddy → Codex; TaskState completed at iteration=2 with error=None; retry=0; repair=0; third action=0.
+- M6 real-host evidence did not substitute for M7-B2; M7-B2 specifically qualified the new DeepSeekHarness → Python boundary.
+- M7-B3 — deterministic Harness-visible failure semantics: CodeBuddy → Codex → task_failed, with Codex final verifier line DSH_VERIFICATION: FAIL. TaskState failed at iteration=2 with error=Codex verification reported FAIL. Settled business failure is exit 0 + one terminal failed TaskState JSON + empty stderr; adapter / transport failure is non-zero exit + stderr diagnostic + empty stdout. Retry=0, repair=0, and third action=0 are derived from the actual trace.
+- M7-B4 — final deterministic verification: M7-B1=1 passed; M7-B3=2 passed; combined deterministic M7=3 passed; related DSH-Runtime=9 passed; full regression=117 passed; all M7 Python adapters compile/import PASS; DSH-Runtime and DeepSeekHarness git diff --check PASS. M7-B2 was not rerun during B4; frozen PASS evidence was preserved; real CodeBuddy/Codex calls during B4=0.
+- Milestone 7 preserves the existing authority model, two-action REPOSITORY_CHANGE workflow, one-shot JSON test/harness bridge, and no retry, repair, third action, Coordinator, Router, or WorkflowEngine architecture. MILESTONE 7 = COMPLETE / CLOSED.
+
+D2-C9 governance closeout:
+
+- D2-C9-O-F1 — Governed Route Applicability Foundation: IMPLEMENTED / QUALIFIED.
+- D2-C9-O1 — governed one-shot pre-start enforcement wiring: IMPLEMENTED / QUALIFIED.
+- D2-C9-O2 — real governance to production start composition: IMPLEMENTED / QUALIFIED.
+- D2-C9-O2-F1 — qualification harness portability and deterministic transport-failure coverage: IMPLEMENTED / PASS.
+- D2-C9-O — governed pre-start enforcement and real composition qualification: COMPLETE / CLOSED.
+- The qualified production boundary is trusted Host composition → explicit governed-route binding → Runtime governed/non-governed distinction → fixed-v1 governance evaluation and enforcement → provider.start() only for EXECUTION_ELIGIBLE.
+- BLOCKED, governance FAILURE, unavailable evaluator, taskKind mismatch, transport failure, and audit persistence failure fail closed before provider execution; ordinary routes bypass governance while the service is mounted.
+- Selection Policy v2, model-facing task_kind, repository_inspection production authority, continuable governance, retry/fallback/restart, and multiwriter audit remain closed and were not introduced by D2-C9-O.
+
+D2-C10 Selection Policy v2 qualification:
+
+- D2-C10-A — Selection Policy v2 / multi-workload governed routing design: DESIGN READY / REVIEW PASS.
+- D2-C10-B1 — pair-keyed governed applicability foundation: IMPLEMENTED; pair bindings remain separate from the C9-O production route resolver.
+- D2-C10-B2 — Selection Policy v2 artifact / authorization / session-pin isolation: IMPLEMENTED / QUALIFIED.
+- The v2 artifact uses policy_id=selection-v2, policy_version=2, artifact_schema_version=1, and authorizes repository_change plus repository_inspection through the existing policy AND deployment enabled_workloads intersection.
+- Gate → Audit → Enforcement qualification permits an authorized inspection candidate only as a governance-layer fact; no production inspection binding, selector, provider dispatch, or pair-binding resolver was introduced.
+- v2 session create/resume requires the exact identity; v1 pins cannot auto-upgrade, wrong hashes fail closed, and one v2 pin remains workload-independent.
+
+D2-C10-B3-F1 DSH-scoped workload selector exposure correction:
+
+- Generic one-shot tool-subagent instances no longer expose `task_kind` by default.
+- The explicit trusted Host config `workloadProposal: dsh-runtime` enables the closed selector only on one-shot DSH composition; the standard preset `dsh_runtime` row carries it and remains disabled until a copied preset explicitly enables the row.
+- Forced `task_kind` on a disabled or continuable instance fails before provider start; opt-in omission/change/inspection transport is unchanged, and the provider owns the omitted `repository_change` default.
+- The B1 pair registry, Selection Policy v2, C9-O legacy route, inspection production authority, continuable governance, DSH Runtime workflow, GovernanceBridge/Python worker, and retry/fallback/restart remain unchanged.
+- Focused F1 selector/tool regressions: 98 passed; related shared service, DSH provider, and bridge regressions: 95 passed.
+- D2-C10-B3-F1 = IMPLEMENTED / PASS.
 
 Milestone 4 closure:
 
-- The first concrete DSH workflow is read-only Repository Analysis.
+- The first concrete DSH workflow was read-only Repository Analysis.
 - The caller expresses TaskKind.REPOSITORY_ANALYSIS, not a plugin, provider, or concrete capability.
 - TaskState owns caller/task input and rejects REPOSITORY_ANALYSIS plus allow_workspace_write=True during construction.
 - SimplePlanner maps Repository Analysis to CodexPlugin; default tasks retain Echo compatibility.
-- Existing Controller, Executor, Plugin, Registry, WorkspaceManager, and CodexPlugin ownership is sufficient.
+- Existing Controller, Executor, Plugin, Registry, WorkspaceManager, and CodexPlugin ownership was sufficient.
 - Successful invocation remains distinct from successful task completion: last_invocation_result is evaluated by the post-result Planner before the terminal Decision commits TaskState.result and COMPLETED.
 - The executable local-stub workflow proves two Planner calls, one settled invocation, and TaskState.iteration == 1.
 
-Milestone 4 production scope:
-
-    dsh_runtime/state.py
-    dsh_runtime/planner.py
-
-The following existing owners remain unchanged for Milestone 4:
-
-    dsh_runtime/controller.py
-    dsh_runtime/runtime/executor.py
-    dsh_runtime/runtime/plugin.py
-    dsh_runtime/runtime/registry.py
-    dsh_runtime/workspace/manager.py
-    dsh_runtime/plugins/codex.py
-    dsh_runtime/plugins/echo.py
-
 Non-claims and deferred work:
 
-- Milestone 4 does not claim real Codex service completion, real final-answer delivery, write-side-effect behavior, interrupt acknowledgement, descendant process-tree behavior, or completion/deadline race verification.
-- Real Codex service verification remains Milestone 2 debt and is independently deferred / environment-blocked.
-- CodeBuddy integration, two-action workflows, provider/router frameworks, workspace-write workflows, task cancellation, and other future features require separate concrete requirements and executable evidence.
+- Milestone 5 did not claim real CodeBuddy/Codex service verification; that was deferred at M5 closeout and was subsequently qualified under M6.
+- M5 does not authorize broader workspace confinement, retry/repair behavior, a third action, or new workflow/coordinator/router architecture.
 
-Reopen gate:
+Next project gate:
 
-Milestone 4 remains closed unless executable evidence falsifies a frozen Milestone 4 invariant, including the read-only input invariant, production Planner routing, the Milestone 3 post-result completion path, Echo compatibility, or an M4-specific regression.
-
-Current principle:
-
-- DSH owns the loop.
-- Planners translate business intent into bounded actions.
-- Plugins are bounded execution units.
-- If an existing Runtime owner can carry the responsibility, do not create a second owner.
-- Plugins grow from real requirements.
-
-Next:
-
-Wait for a new concrete, evidence-driven requirement. Do not automatically begin another Milestone 4 feature or Next Concrete Goal Selection.
+Milestone 7, D2-C9-O, D2-C10-B3, and D2-C10-B3-F1 are complete and closed. D2-C10-B4 is not started or authorized; do not reopen frozen owners or closed future features without separate authorization.

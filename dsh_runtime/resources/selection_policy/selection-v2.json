@@ -1,0 +1,11 @@
+{
+  "policy_id": "selection-v2",
+  "policy_version": "2",
+  "artifact_schema_version": "1",
+  "policy_content": {
+    "authorized_workloads": [
+      "repository_change",
+      "repository_inspection"
+    ]
+  }
+}
