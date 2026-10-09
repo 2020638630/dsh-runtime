@@ -1,0 +1,7 @@
+[mcp_servers.dsh_runtime]
+command = "D:/PythonProject/dsh-runtime/.venv/Scripts/python.exe"
+args = ["-m", "dsh_runtime.mcp_server"]
+cwd = "D:/PythonProject/dsh-runtime"
+startup_timeout_sec = 10
+tool_timeout_sec = 1200
+default_tools_approval_mode = "prompt"
