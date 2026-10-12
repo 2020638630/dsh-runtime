@@ -17,7 +17,8 @@ codex mcp list
 
 The server is configured to ask for approval on every tool call and allows up
 to 20 minutes for the existing Runtime workflow to settle. Reopen the Codex
-task after changing MCP configuration so the task discovers the tool.
+task after changing MCP configuration or editing `dsh_runtime/mcp_server.py` or
+`dsh_runtime/json_stdio.py`, so the stdio server starts with the current code.
 
 ## Call contract
 

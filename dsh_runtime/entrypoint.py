@@ -27,6 +27,7 @@ from dsh_runtime.bootstrap import (
     build_repository_change_task,
     build_repository_inspection_task,
 )
+from dsh_runtime.json_stdio import read_json_document, write_json_line
 from dsh_runtime.state import TaskState
 from dsh_runtime.workspace.manager import Workspace, WorkspaceManager
 
@@ -99,7 +100,8 @@ def _serialize_task(task: TaskState) -> dict[str, Any]:
 
 
 def _transport_failure(message: str) -> int:
-    sys.stderr.write(f"dsh runtime entrypoint transport failure: {message}\n")
+    safe_message = message.encode("ascii", errors="backslashreplace").decode("ascii")
+    sys.stderr.write(f"dsh runtime entrypoint transport failure: {safe_message}\n")
     return 2
 
 
@@ -107,7 +109,7 @@ def main() -> int:
     """Process one JSON request and return a process exit code."""
 
     try:
-        request = json.load(sys.stdin)
+        request = read_json_document(sys.stdin)
         if not isinstance(request, dict):
             raise ValueError("request must be a JSON object")
         missing = [field for field in _REQUIRED_FIELDS if field not in request]
@@ -120,11 +122,7 @@ def main() -> int:
         if captured_stdout.getvalue():
             raise RuntimeError("unexpected wrapper or workflow output reached stdout")
 
-        sys.stdout.write(
-            json.dumps(_serialize_task(task), ensure_ascii=False, separators=(",", ":"))
-        )
-        sys.stdout.write("\n")
-        sys.stdout.flush()
+        write_json_line(sys.stdout, _serialize_task(task))
         return 0
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         return _transport_failure(str(exc))

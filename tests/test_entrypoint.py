@@ -3,6 +3,7 @@ import io
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -84,6 +85,46 @@ def test_valid_request_binds_explicit_workspace_and_serializes_completed_task(
     }
 
 
+def test_binary_stdio_uses_utf8_and_escapes_surrogate_task_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = _request(tmp_path, goal="review 中文")
+    stdin_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    stdout_bytes = io.BytesIO()
+    observed_goal: list[str] = []
+
+    def fake_build_controller(*, workspace_manager):
+        def settle(task):
+            observed_goal.append(task.goal)
+            task.apply_success("结果" + chr(0xDC94))
+            return task
+
+        return _FakeController(settle)
+
+    monkeypatch.setattr(entrypoint, "build_controller", fake_build_controller)
+    monkeypatch.setattr(
+        entrypoint.sys,
+        "stdin",
+        SimpleNamespace(buffer=io.BytesIO(stdin_bytes)),
+    )
+    monkeypatch.setattr(
+        entrypoint.sys,
+        "stdout",
+        SimpleNamespace(buffer=stdout_bytes),
+    )
+    stderr = io.StringIO()
+    monkeypatch.setattr(entrypoint.sys, "stderr", stderr)
+
+    assert entrypoint.main() == 0
+
+    raw_output = stdout_bytes.getvalue()
+    task = json.loads(raw_output.decode("utf-8"))
+    assert observed_goal == [payload["goal"]]
+    assert task["result"] == "结果" + chr(0xDC94)
+    assert b"\\udc94" in raw_output
+    assert stderr.getvalue() == ""
+
+
 def test_failed_task_is_settled_successfully_at_process_boundary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -142,6 +183,18 @@ def test_malformed_json_is_a_transport_failure(monkeypatch: pytest.MonkeyPatch) 
     assert code != 0
     assert stdout == ""
     assert "transport failure" in stderr
+
+
+def test_transport_failure_backslash_escapes_surrogates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stderr = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", stderr)
+
+    assert entrypoint._transport_failure("invalid " + chr(0xDC94)) == 2
+    assert stderr.getvalue() == (
+        r"dsh runtime entrypoint transport failure: invalid \udc94" + "\n"
+    )
 
 
 def test_missing_required_request_field_is_a_transport_failure(

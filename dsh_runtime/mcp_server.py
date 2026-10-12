@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from dsh_runtime.json_stdio import iter_input_lines, write_json_line
+
 
 _RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 _PROTOCOL_VERSION = "2025-06-18"
@@ -121,8 +123,10 @@ def dsh_runtime(arguments: object) -> dict[str, Any]:
     completed = subprocess.run(
         [sys.executable, "-m", "dsh_runtime.entrypoint"],
         cwd=_RUNTIME_ROOT,
-        input=json.dumps(request, ensure_ascii=False, separators=(",", ":")),
+        input=json.dumps(request, ensure_ascii=True, separators=(",", ":")),
         text=True,
+        encoding="utf-8",
+        errors="strict",
         capture_output=True,
         check=False,
     )
@@ -229,19 +233,18 @@ class MCPServer:
 
 def main() -> int:
     server = MCPServer()
-    for line in sys.stdin:
-        if not line.strip():
-            continue
+    for raw_line in iter_input_lines(sys.stdin):
         try:
+            line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+            if not line.strip():
+                continue
             message = json.loads(line)
-        except json.JSONDecodeError:
+        except (UnicodeDecodeError, json.JSONDecodeError):
             response = MCPServer._error(None, -32700, "Parse error")
         else:
             response = server.handle(message)
         if response is not None:
-            sys.stdout.write(json.dumps(response, ensure_ascii=False, separators=(",", ":")))
-            sys.stdout.write("\n")
-            sys.stdout.flush()
+            write_json_line(sys.stdout, response)
     return 0
 
 
