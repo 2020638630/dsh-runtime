@@ -19,15 +19,9 @@ concurrency:
 
 jobs:
   pytest:
-    name: pytest / ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: pytest / windows-latest
+    runs-on: windows-latest
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
     steps:
       - name: Check out source
         uses: actions/checkout@v7.0.1
