@@ -1,5 +1,6 @@
 import pytest
 
+from dsh_runtime.plugins import codebuddy as codebuddy_module
 from dsh_runtime.bootstrap import (
     CODEX_QUALIFICATION_TRACE_DIR_ENV,
     build_controller,
@@ -15,6 +16,17 @@ from dsh_runtime.plugins.codex import CodexPlugin
 from dsh_runtime.plugins.echo import EchoPlugin
 from dsh_runtime.runtime.registry import PluginRegistry
 from dsh_runtime.state import TaskKind, TaskState
+
+
+@pytest.fixture(autouse=True)
+def do_not_discover_a_host_codebuddy_cli(monkeypatch) -> None:
+    """Keep composition-only tests independent of installed worker CLIs."""
+
+    monkeypatch.setattr(
+        codebuddy_module,
+        "_default_command",
+        lambda: ("test-only-codebuddy",),
+    )
 
 
 def test_production_composition_registers_builtin_capabilities() -> None:

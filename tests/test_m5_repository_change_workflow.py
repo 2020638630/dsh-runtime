@@ -25,10 +25,14 @@ def _controller_for(workspace: Path):
     )
     runtime_home = _DeterministicReadyRuntimeHome(workspace / ".dsh-state")
     runtime_home.prepare()
-    return build_controller(
-        workspace_manager=manager,
-        codex_runtime_home=runtime_home,
-    )
+    with patch(
+        "dsh_runtime.plugins.codebuddy._default_command",
+        return_value=("test-only-codebuddy",),
+    ):
+        return build_controller(
+            workspace_manager=manager,
+            codex_runtime_home=runtime_home,
+        )
 
 
 def test_golden_repository_change_runs_codebuddy_then_codex_in_same_workspace(
