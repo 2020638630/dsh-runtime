@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from io import StringIO
+from io import BytesIO, StringIO
 import json
 from pathlib import Path
 
@@ -18,7 +18,7 @@ from dsh_runtime.governance_protocol import (
     parse_initialize,
     parse_operational,
 )
-from dsh_runtime.governance_worker import GovernanceWorker, serve
+from dsh_runtime.governance_worker import GovernanceWorker, _write, serve
 from dsh_runtime.gate_contract import GateRequestStructure
 from dsh_runtime.policy_artifact import compute_policy_hash
 from dsh_runtime.policy_artifact_loader import load_policy_artifact
@@ -216,3 +216,14 @@ def test_real_jsonl_sink_persists_one_physical_line(tmp_path: Path) -> None:
     response = _evaluate(worker, worker.loaded_artifact.identity)
     assert response["kind"] == "EXECUTION_ELIGIBLE"
     assert len((tmp_path / "audit.jsonl").read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_protocol_output_uses_utf8_and_escapes_lone_surrogates() -> None:
+    output = BytesIO()
+    value = {"message": "结果" + chr(0xDC94)}
+
+    _write(output, value)
+
+    raw = output.getvalue()
+    assert b"\\udc94" in raw
+    assert json.loads(raw.decode("utf-8")) == value

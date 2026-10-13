@@ -15,4 +15,6 @@ def record(event: str, **fields: Any) -> None:
         "event": event,
         **fields,
     }
-    logger.info(json.dumps(payload, ensure_ascii=False, default=str))
+    # Keep the log record ASCII-safe for Windows consoles and handlers whose
+    # locale encoding cannot represent every Unicode scalar value.
+    logger.info(json.dumps(payload, ensure_ascii=True, default=str))

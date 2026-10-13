@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import sys
 from collections.abc import Callable, Iterable
-from typing import Any, TextIO
+from typing import Any, BinaryIO, TextIO
 
 from .audit_jsonl_sink import AppendOnlyJsonlAuditSink
 from .audit_persistence import AuditSink, persist_pre_start_audit
 from .gate_authorization import evaluate_authorized_gate
 from .gate_contract import GateTrustedContext, SelectionProposal
+from .json_stdio import iter_input_lines, write_json_line
 from .governance_protocol import (
     BindSessionRequest,
     EvaluatePreStartRequest,
@@ -158,15 +159,11 @@ def _failure(request_id: str | None, reason_code: str, diagnostic: str) -> JsonO
     }
 
 
-def _write(output: TextIO, response: JsonObject) -> None:
-    output.write(
-        json.dumps(response, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-        + "\n"
-    )
-    output.flush()
+def _write(output: TextIO | BinaryIO, response: JsonObject) -> None:
+    write_json_line(output, response, sort_keys=True)
 
 
-def serve(input_lines: Iterable[str], output: TextIO) -> int:
+def serve(input_lines: Iterable[str | bytes], output: TextIO | BinaryIO) -> int:
     """Serve one worker lifecycle; initialization failure never enters service."""
 
     iterator = iter(input_lines)
@@ -211,7 +208,7 @@ def serve(input_lines: Iterable[str], output: TextIO) -> int:
 def main() -> int:
     """Run the separate governance worker entrypoint."""
 
-    return serve(sys.stdin, sys.stdout)
+    return serve(iter_input_lines(sys.stdin), sys.stdout)
 
 
 if __name__ == "__main__":

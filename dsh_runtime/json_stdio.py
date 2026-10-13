@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 from typing import Any, BinaryIO, Iterator, TextIO
 
@@ -26,15 +27,26 @@ def iter_input_lines(stream: TextIO | BinaryIO) -> Iterator[str | bytes]:
     yield from _byte_stream(stream)
 
 
-def write_json_line(stream: TextIO | BinaryIO, value: Any) -> None:
+def write_json_line(
+    stream: TextIO | BinaryIO, value: Any, *, sort_keys: bool = False
+) -> None:
     """Write compact JSON as UTF-8, escaping only unencodable surrogates."""
 
-    payload = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=sort_keys,
+    )
     encoded = payload.encode("utf-8", errors="backslashreplace") + b"\n"
     buffer = getattr(stream, "buffer", None)
     if buffer is not None:
         buffer.write(encoded)
         buffer.flush()
+        return
+    if isinstance(stream, (io.BufferedIOBase, io.RawIOBase)):
+        stream.write(encoded)
+        stream.flush()
         return
 
     # StringIO and similar test streams have no byte buffer. The serialized
