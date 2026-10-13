@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from io import BytesIO, StringIO
+from io import BytesIO, StringIO, TextIOWrapper
 import json
 from pathlib import Path
 
@@ -223,6 +223,18 @@ def test_protocol_output_uses_utf8_and_escapes_lone_surrogates() -> None:
     value = {"message": "结果" + chr(0xDC94)}
 
     _write(output, value)
+
+    raw = output.getvalue()
+    assert b"\\udc94" in raw
+    assert json.loads(raw.decode("utf-8")) == value
+
+
+def test_protocol_output_bypasses_gbk_text_wrapper() -> None:
+    output = BytesIO()
+    gbk_stdout = TextIOWrapper(output, encoding="gbk", errors="strict")
+    value = {"message": "结果" + chr(0xDC94)}
+
+    _write(gbk_stdout, value)
 
     raw = output.getvalue()
     assert b"\\udc94" in raw
