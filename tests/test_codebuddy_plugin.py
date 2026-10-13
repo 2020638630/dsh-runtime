@@ -1200,6 +1200,7 @@ def test_safe_trace_opt_in_preserves_worker_environment_and_invocation(
     baseline_capture = json.loads(capture.read_text(encoding="utf-8"))
 
     monkeypatch.setenv(SAFE_EVENT_TRACE_DIR_ENV, str(trace_dir))
+    monkeypatch.setenv(codebuddy_module.MAX_STREAM_CHARS_ENV, "500000")
     cb = plugin(tmp_path, capture=capture)
 
     child_environment = cb._environment()
@@ -1222,6 +1223,7 @@ def test_safe_trace_opt_in_preserves_worker_environment_and_invocation(
     )
     assert cb._command == baseline_plugin._command
     assert SAFE_EVENT_TRACE_DIR_ENV not in child_environment
+    assert codebuddy_module.MAX_STREAM_CHARS_ENV not in child_environment
     assert child_environment.get("DSH_SAFE_TRACE_TEST_ENV") == "stable"
     assert baseline_capture["safe_trace_dir_visible"] is None
     assert enabled_capture["safe_trace_dir_visible"] is None
@@ -2020,6 +2022,28 @@ def test_stream_json_parser_handles_single_multiple_split_and_crlf_lines() -> No
     assert result.output == "split result"
     assert collector.valid_event_count == 3
     assert parser.closed_cleanly is True
+
+
+def test_stream_output_bound_failure_reports_bounded_non_content_counters() -> None:
+    collector = codebuddy_module._StreamJsonResultCollector(
+        max_output_chars=100,
+        max_stream_chars=16,
+    )
+    collector.observe_text("x" * 17)
+    collector.accept(_stream_success_event("private final output"))
+
+    result = collector.normalize(b"", 0)
+
+    assert result.success is False
+    assert result.error is not None
+    assert "CodeBuddy output exceeded the configured bound" in result.error
+    assert "limit_chars=16" in result.error
+    assert "observed_chars=17" in result.error
+    assert "valid_events=1" in result.error
+    assert "result_seen=true" in result.error
+    assert "result_chars=20" in result.error
+    assert "last_event_type_present=true" in result.error
+    assert "private final output" not in result.error
 
 
 def test_stream_json_parser_yields_and_caps_trace_on_high_volume_input(

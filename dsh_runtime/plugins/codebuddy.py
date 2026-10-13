@@ -36,6 +36,8 @@ _SETTINGS = {
 _DEFAULT_MAX_TURNS = 12
 _DEFAULT_MAX_OUTPUT_CHARS = 100_000
 _DEFAULT_MAX_DIAGNOSTIC_CHARS = 1_000
+MAX_STREAM_CHARS_ENV = "DSH_CODEBUDDY_MAX_STREAM_CHARS"
+MAX_STREAM_CHARS_HARD_LIMIT = 1_000_000
 _QUALIFICATION_OBSERVABILITY_FAILURE = "QUALIFICATION OBSERVABILITY FAILURE"
 SAFE_EVENT_TRACE_DIR_ENV = "DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR"
 SAFE_STREAM_JSON_ENV = "DSH_CODEBUDDY_SAFE_STREAM_JSON"
@@ -697,8 +699,15 @@ def _safe_stream_cli_identity(command: Sequence[str]) -> dict[str, str]:
 class _StreamJsonResultCollector:
     """Keep only the bounded business result needed by Runtime normalization."""
 
-    def __init__(self, max_output_chars: int) -> None:
+    def __init__(
+        self,
+        max_output_chars: int,
+        max_stream_chars: int | None = None,
+    ) -> None:
         self.max_output_chars = max_output_chars
+        self.max_stream_chars = (
+            max_output_chars if max_stream_chars is None else max_stream_chars
+        )
         self.total_chars = 0
         self.saw_non_whitespace = False
         self.valid_event_count = 0
@@ -756,10 +765,19 @@ class _StreamJsonResultCollector:
                 error=f"CodeBuddy process exited with code {returncode}{suffix}",
             )
 
-        if self.total_chars > self.max_output_chars:
+        if self.total_chars > self.max_stream_chars:
             return PluginResult(
                 success=False,
-                error="CodeBuddy output exceeded the configured bound",
+                error=(
+                    "CodeBuddy output exceeded the configured bound; "
+                    f"limit_chars={self.max_stream_chars}; "
+                    f"observed_chars={self.total_chars}; "
+                    f"valid_events={self.valid_event_count}; "
+                    f"result_seen={str(self.result_seen).lower()}; "
+                    f"result_chars={self.result_output_chars}; "
+                    "last_event_type_present="
+                    f"{str(self.last_event_type is not None).lower()}"
+                ),
             )
         if not self.saw_non_whitespace:
             diagnostic = _bounded(stderr.decode("utf-8", errors="replace"))
@@ -1661,6 +1679,7 @@ class CodeBuddyPlugin:
         max_turns: int = _DEFAULT_MAX_TURNS,
         cleanup_grace_seconds: float = 2.0,
         max_output_chars: int = _DEFAULT_MAX_OUTPUT_CHARS,
+        max_stream_chars: int | None = None,
         qualification_trace_dir: str | Path | None = None,
         safe_event_trace_dir: str | Path | None = None,
     ) -> None:
@@ -1673,9 +1692,19 @@ class CodeBuddyPlugin:
             raise ValueError("CodeBuddy cleanup grace must be positive")
         if max_output_chars <= 0:
             raise ValueError("CodeBuddy output bound must be positive")
+        if max_stream_chars is not None and max_stream_chars <= 0:
+            raise ValueError("CodeBuddy stream output bound must be positive")
+        if (
+            max_stream_chars is not None
+            and max_stream_chars > MAX_STREAM_CHARS_HARD_LIMIT
+        ):
+            raise ValueError("CodeBuddy stream output bound exceeds the hard limit")
         self.max_turns = max_turns
         self.cleanup_grace_seconds = cleanup_grace_seconds
         self.max_output_chars = max_output_chars
+        self.max_stream_chars = (
+            max_output_chars if max_stream_chars is None else max_stream_chars
+        )
         self.qualification_trace_dir = (
             Path(qualification_trace_dir)
             if qualification_trace_dir is not None
@@ -1701,6 +1730,7 @@ class CodeBuddyPlugin:
         # CodeBuddy's environment.
         environment.pop(SAFE_EVENT_TRACE_DIR_ENV, None)
         environment.pop(SAFE_STREAM_JSON_ENV, None)
+        environment.pop(MAX_STREAM_CHARS_ENV, None)
         return environment
 
     @staticmethod
@@ -1753,7 +1783,9 @@ class CodeBuddyPlugin:
         process: subprocess.Popen[bytes] | None = None
         parser: _StreamJsonLineParser | None = None
         stderr_buffer = _BoundedByteBuffer(_DEFAULT_MAX_DIAGNOSTIC_CHARS + 1)
-        collector = _StreamJsonResultCollector(self.max_output_chars)
+        collector = _StreamJsonResultCollector(
+            self.max_output_chars, self.max_stream_chars
+        )
         result: PluginResult | None = None
         cancelled = False
         cleanup_errors: list[str] = []
@@ -1802,7 +1834,7 @@ class CodeBuddyPlugin:
                 collector,
                 safe_event_observer,
                 safe_event_sink,
-                max_line_chars=max(1, self.max_output_chars),
+                max_line_chars=max(1, self.max_stream_chars),
             )
             stdout_reader = asyncio.create_task(
                 _read_stdout_pipe(process.stdout, parser)

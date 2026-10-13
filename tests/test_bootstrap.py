@@ -2,6 +2,7 @@ import pytest
 
 from dsh_runtime.plugins import codebuddy as codebuddy_module
 from dsh_runtime.bootstrap import (
+    CODEBUDDY_MAX_STREAM_CHARS_ENV,
     CODEX_QUALIFICATION_TRACE_DIR_ENV,
     build_controller,
     build_repository_change_task,
@@ -43,6 +44,7 @@ def test_production_composition_keeps_trace_disabled_without_explicit_environmen
     monkeypatch,
 ) -> None:
     monkeypatch.delenv(CODEBUDDY_QUALIFICATION_TRACE_DIR_ENV, raising=False)
+    monkeypatch.delenv(CODEBUDDY_MAX_STREAM_CHARS_ENV, raising=False)
     monkeypatch.delenv(SAFE_EVENT_TRACE_DIR_ENV, raising=False)
 
     controller = build_controller()
@@ -51,6 +53,8 @@ def test_production_composition_keeps_trace_disabled_without_explicit_environmen
     assert isinstance(codebuddy, CodeBuddyPlugin)
     assert codebuddy.qualification_trace_dir is None
     assert codebuddy.safe_event_trace_dir is None
+    assert codebuddy.max_output_chars == 100_000
+    assert codebuddy.max_stream_chars == 100_000
     assert controller.executor.registry.get("codex").qualification_trace_dir is None
 
 
@@ -66,6 +70,29 @@ def test_explicit_safe_codebuddy_trace_path_reaches_codebuddy_plugin(
     assert isinstance(codebuddy, CodeBuddyPlugin)
     assert codebuddy.safe_event_trace_dir == trace_dir
     assert codebuddy.max_turns == 12
+
+
+def test_explicit_codebuddy_stream_bound_does_not_raise_final_output_bound(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(CODEBUDDY_MAX_STREAM_CHARS_ENV, "750000")
+
+    controller = build_controller()
+
+    codebuddy = controller.executor.registry.get("codebuddy")
+    assert isinstance(codebuddy, CodeBuddyPlugin)
+    assert codebuddy.max_stream_chars == 750_000
+    assert codebuddy.max_output_chars == 100_000
+
+
+@pytest.mark.parametrize("value", ["0", "1000001", "not-a-number", "１２"])
+def test_invalid_codebuddy_stream_bound_is_rejected_before_worker_execution(
+    monkeypatch, value: str
+) -> None:
+    monkeypatch.setenv(CODEBUDDY_MAX_STREAM_CHARS_ENV, value)
+
+    with pytest.raises(ValueError, match=CODEBUDDY_MAX_STREAM_CHARS_ENV):
+        build_controller()
 
 
 def test_explicit_codex_trace_path_reaches_codex_plugin(monkeypatch, tmp_path) -> None:

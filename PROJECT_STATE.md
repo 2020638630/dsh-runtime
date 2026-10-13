@@ -4,10 +4,21 @@ Current Version:
 v0.1.0-m7
 
 Current Milestone:
-Milestone 7 — DeepSeekHarness Cross-Language Qualification and Closeout
+D2-C10-C3 — Cross-repository dispatch acceptance and Runtime output-bound repair
 
 Status:
-COMPLETE / CLOSED
+IN PROGRESS — local repair verified; dynamic D2 acceptance pending
+
+
+## D2-C10-C3 current cross-project status (2026-10-14)
+
+- DeepSeekHarness C3 dispatch-sidecar implementation is locally accepted on branch codex/d2-c10-c3-qualification-20261014 at HEAD 69342f31c31313ad705aec7721a85888382502e3: focused tests 54/54 and Host build passed; the target worktree remains clean.
+- The latest D2 run d2-business-545bd0ccaa0b49ebaf20bed6e263ebf8 used one Runtime call and settled with the CodeBuddy output-bound error. No native terminal TaskState or safe worker trace was delivered. The DSH case also violated its first-action contract by reading the target before calling Runtime. Post-failure read-only reconciliation found no target file changes. This run is not a qualified PASS and its identity is consumed.
+- The DSH patch used the wrong CodeBuddy safe-trace key. The expected key is DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR. The Runtime default stream bound was 100,000 characters; the exact observed count and worker turn count are unavailable.
+- Local Runtime repair now separates total stream chars from final assistant output, supports an opt-in DSH_CODEBUDDY_MAX_STREAM_CHARS ceiling up to 1,000,000, rejects invalid limits, removes this DSH-only setting from the child environment, and reports bounded non-content counters on overflow. Final assistant output remains capped at 100,000 characters.
+- Current Runtime regression: 503 passed; git diff --check passed. Four code/test files are modified locally and uncommitted. The Harness R8 gate does not pin the modified bootstrap and CodeBuddy plugin files, so any next run using these files must be documented as a user-authorized manual continuation, not an automated gate PASS.
+- Detailed runbook evidence: D:\DeepSeekHarness\c3-e4-codebuddy-d2\runbook\d2-c3-runtime-output-bound-repair-and-reconciliation-2026-10-14-r2.md and d2-project-completion-backlog-2026-10-14-r3.md. Continue with a fresh identity/series and one new Runtime call; never reuse the consumed 545 identity.
+- PR #1 and #12 remain drafts and unmerged. The upstream-sync worktree's five pre-existing modifications remain preserved. No commit, push, or remote update was made.
 
 Completed milestones:
 
@@ -122,6 +133,6 @@ Non-claims and deferred work:
 - Milestone 5 did not claim real CodeBuddy/Codex service verification; that was deferred at M5 closeout and was subsequently qualified under M6.
 - M5 does not authorize broader workspace confinement, retry/repair behavior, a third action, or new workflow/coordinator/router architecture.
 
-Next project gate:
+## Current next project gate
 
-Milestone 7, D2-C9-O, D2-C10-B3, and D2-C10-B3-F1 are complete and closed. D2-C10-B4 is not started or authorized; do not reopen frozen owners or closed future features without separate authorization.
+D2-C10-C3 local implementation and deterministic acceptance are complete; the cross-repository live dispatch acceptance remains in progress. The latest attempt failed before delivering a terminal TaskState, and the target was clean after reconciliation. The next action is a fresh user-authorized manual continuation with the repaired Runtime stream handling and corrected trace configuration. Do not claim automated gate PASS until the Runtime source pins cover the modified files. Previously closed M7 and D2-C9 owners remain closed.
