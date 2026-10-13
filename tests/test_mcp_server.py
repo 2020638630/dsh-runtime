@@ -1,14 +1,32 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from dsh_runtime import mcp_server
+from dsh_runtime.call_trace import (
+    CALL_TRACE_PATH_ENV,
+    CallTraceError,
+    append_call_trace,
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_call_trace_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        CALL_TRACE_PATH_ENV,
+        str(tmp_path / "calls.jsonl"),
+    )
 
 
 def _arguments(**overrides: Any) -> dict[str, Any]:
@@ -41,9 +59,11 @@ def test_tool_runs_one_entrypoint_process_with_explicit_change_request(
     observed: list[dict[str, Any]] = []
     terminal = _task_state()
 
-    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
         observed.append({"args": args, **kwargs})
-        return subprocess.CompletedProcess(args, 0, json.dumps(terminal), "")
+        return subprocess.CompletedProcess(
+            args, 0, json.dumps(terminal).encode("utf-8"), b""
+        )
 
     monkeypatch.setattr(mcp_server.subprocess, "run", fake_run)
 
@@ -58,9 +78,11 @@ def test_tool_runs_one_entrypoint_process_with_explicit_change_request(
         "dsh_runtime.entrypoint",
     ]
     assert invocation["cwd"] == mcp_server._RUNTIME_ROOT
-    assert json.loads(invocation["input"]) == _arguments()
-    assert invocation["encoding"] == "utf-8"
-    assert invocation["errors"] == "strict"
+    assert json.loads(invocation["input"].decode("utf-8")) == _arguments()
+    assert isinstance(invocation["input"], bytes)
+    assert "encoding" not in invocation
+    assert "errors" not in invocation
+    assert "text" not in invocation
     assert invocation["capture_output"] is True
     assert invocation["check"] is False
 
@@ -72,16 +94,17 @@ def test_tool_request_escapes_surrogates_before_utf8_subprocess_encoding(
     observed: dict[str, Any] = {}
     terminal = _task_state()
 
-    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
         observed.update(kwargs)
-        return subprocess.CompletedProcess(args, 0, json.dumps(terminal), "")
+        return subprocess.CompletedProcess(
+            args, 0, json.dumps(terminal).encode("utf-8"), b""
+        )
 
     monkeypatch.setattr(mcp_server.subprocess, "run", fake_run)
 
     assert mcp_server.dsh_runtime(arguments) == terminal
-    assert observed["encoding"] == "utf-8"
     assert observed["input"].isascii()
-    assert json.loads(observed["input"]) == arguments
+    assert json.loads(observed["input"].decode("ascii")) == arguments
 
 
 def test_settled_business_failure_is_returned_without_retry(
@@ -90,15 +113,183 @@ def test_settled_business_failure_is_returned_without_retry(
     terminal = _task_state(status="failed")
     calls = 0
 
-    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
         nonlocal calls
         calls += 1
-        return subprocess.CompletedProcess(args, 0, json.dumps(terminal), "")
+        return subprocess.CompletedProcess(
+            args, 0, json.dumps(terminal).encode("utf-8"), b""
+        )
 
     monkeypatch.setattr(mcp_server.subprocess, "run", fake_run)
 
     assert mcp_server.dsh_runtime(_arguments()) == terminal
     assert calls == 1
+
+
+def test_call_trace_persists_only_lifecycle_metadata_and_result_hashes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prompt_marker = "PRIVATE_PROMPT_SENTINEL"
+    result_marker = "PRIVATE_RESPONSE_SENTINEL"
+    terminal = _task_state()
+    terminal["result"] = result_marker
+    stdout = json.dumps(terminal, ensure_ascii=False).encode("utf-8")
+    calls = 0
+
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        nonlocal calls
+        calls += 1
+        return subprocess.CompletedProcess(args, 0, stdout, b"")
+
+    monkeypatch.setattr(mcp_server.subprocess, "run", fake_run)
+
+    result = mcp_server.dsh_runtime(_arguments(goal=prompt_marker))
+
+    assert result == terminal
+    assert calls == 1
+    trace_path = mcp_server.resolve_call_trace_path()
+    trace_text = trace_path.read_text(encoding="utf-8")
+    records = [json.loads(line) for line in trace_text.splitlines()]
+    assert [record["event"] for record in records] == [
+        "call_started",
+        "call_terminal",
+    ]
+    started, terminal_record = records
+    assert started["state"] == "started"
+    assert started["invocation_count"] == 1
+    assert terminal_record["state"] == "returned"
+    assert terminal_record["runtime_exit_code"] == 0
+    assert terminal_record["task_status"] == "completed"
+    assert terminal_record["stdout_bytes"] == len(stdout)
+    assert terminal_record["stdout_sha256"] == hashlib.sha256(stdout).hexdigest()
+    canonical_result = json.dumps(
+        terminal,
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    assert terminal_record["result_sha256"] == hashlib.sha256(
+        canonical_result
+    ).hexdigest()
+    assert prompt_marker not in trace_text
+    assert result_marker not in trace_text
+    assert "workspace.test" not in trace_text
+    assert "workspace_path" not in trace_text
+
+
+def test_unrecognized_non_string_task_status_is_traced_without_crashing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    terminal = _task_state()
+    terminal["status"] = {"unexpected": "shape"}
+
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(
+            args, 0, json.dumps(terminal).encode("utf-8"), b""
+        )
+
+    monkeypatch.setattr(mcp_server.subprocess, "run", fake_run)
+
+    assert mcp_server.dsh_runtime(_arguments()) == terminal
+    terminal_record = json.loads(
+        mcp_server.resolve_call_trace_path().read_text(encoding="utf-8").splitlines()[-1]
+    )
+    assert terminal_record["state"] == "returned"
+    assert terminal_record["task_status"] is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("state", [], "invalid state"),
+        ("task_status", {"unexpected": "shape"}, "invalid task status"),
+        ("error_code", [], "invalid error code"),
+    ],
+)
+def test_call_trace_schema_rejects_unhashable_enum_fields(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    trace_path = tmp_path / "calls.jsonl"
+    record = {
+        "schema_version": "1",
+        "event": "call_terminal",
+        "call_id": "00000000-0000-0000-0000-000000000001",
+        "timestamp": "2026-10-13T00:00:00Z",
+        "state": "returned",
+        "duration_ms": 0,
+        "runtime_exit_code": 0,
+        "stdout_bytes": 0,
+        "stdout_sha256": "0" * 64,
+        "stderr_bytes": 0,
+        "stderr_sha256": "0" * 64,
+        "task_status": None,
+        "result_sha256": None,
+        "error_code": None,
+        "error_type": None,
+    }
+    record[field] = value
+
+    with pytest.raises(CallTraceError, match=message):
+        append_call_trace(trace_path, record)
+
+    assert not trace_path.exists()
+
+
+def test_invalid_utf8_output_leaves_hashed_transport_error_without_raw_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stdout = b"\xffprivate-response"
+    stderr = b"api_key=TRACE_SECRET_SENTINEL"
+    calls = 0
+
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        nonlocal calls
+        calls += 1
+        return subprocess.CompletedProcess(args, 0, stdout, stderr)
+
+    monkeypatch.setattr(mcp_server.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="stdout is not valid UTF-8"):
+        mcp_server.dsh_runtime(_arguments(goal="PROMPT_SECRET_SENTINEL"))
+
+    assert calls == 1
+    trace_text = mcp_server.resolve_call_trace_path().read_text(encoding="utf-8")
+    terminal_record = json.loads(trace_text.splitlines()[-1])
+    assert terminal_record["state"] == "transport_error"
+    assert terminal_record["error_code"] == "stdout_invalid_utf8"
+    assert terminal_record["error_type"] == "UnicodeDecodeError"
+    assert terminal_record["stdout_bytes"] == len(stdout)
+    assert terminal_record["stdout_sha256"] == hashlib.sha256(stdout).hexdigest()
+    assert terminal_record["stderr_bytes"] == len(stderr)
+    assert terminal_record["stderr_sha256"] == hashlib.sha256(stderr).hexdigest()
+    assert "private-response" not in trace_text
+    assert "TRACE_SECRET_SENTINEL" not in trace_text
+    assert "PROMPT_SECRET_SENTINEL" not in trace_text
+
+
+def test_start_trace_failure_prevents_runtime_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def fail_trace(path: Path, record: dict[str, Any]) -> None:
+        raise CallTraceError("injected trace write failure")
+
+    def unexpected_run(*args: Any, **kwargs: Any) -> None:
+        nonlocal calls
+        calls += 1
+        pytest.fail("Runtime must not start without a durable call-start record")
+
+    monkeypatch.setattr(mcp_server, "append_call_trace", fail_trace)
+    monkeypatch.setattr(mcp_server.subprocess, "run", unexpected_run)
+
+    with pytest.raises(RuntimeError, match="Runtime was not invoked"):
+        mcp_server.dsh_runtime(_arguments())
+    assert calls == 0
 
 
 @pytest.mark.parametrize(
@@ -149,22 +340,22 @@ def test_invalid_tool_envelope_fails_closed_before_starting_runtime(
 @pytest.mark.parametrize(
     ("returncode", "stdout", "stderr", "message"),
     [
-        (2, "", "entrypoint transport failure: invalid request", "exit code 2"),
-        (0, "not json\n", "", "malformed terminal JSON"),
-        (0, "{}\n{}\n", "", "one JSON record"),
-        (0, "{}\n", "unexpected warning", "unexpected stderr"),
+        (2, b"", b"entrypoint transport failure: invalid request", "exit code 2"),
+        (0, b"not json\n", b"", "malformed terminal JSON"),
+        (0, b"{}\n{}\n", b"", "one JSON record"),
+        (0, b"{}\n", b"unexpected warning", "unexpected stderr"),
     ],
 )
 def test_process_and_transport_failures_surface_without_retry(
     monkeypatch: pytest.MonkeyPatch,
     returncode: int,
-    stdout: str,
-    stderr: str,
+    stdout: bytes,
+    stderr: bytes,
     message: str,
 ) -> None:
     calls = 0
 
-    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
         nonlocal calls
         calls += 1
         return subprocess.CompletedProcess(args, returncode, stdout, stderr)
@@ -229,8 +420,10 @@ def test_tool_call_returns_structured_terminal_result_without_error(
 ) -> None:
     terminal = _task_state()
 
-    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(args, 0, json.dumps(terminal), "")
+    def fake_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.CompletedProcess(
+            args, 0, json.dumps(terminal).encode("utf-8"), b""
+        )
 
     monkeypatch.setattr(mcp_server.subprocess, "run", fake_run)
     server = mcp_server.MCPServer()
