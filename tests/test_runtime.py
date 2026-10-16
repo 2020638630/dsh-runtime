@@ -140,6 +140,7 @@ def test_simple_planner_routes_repository_change_to_codebuddy_then_codex() -> No
     assert "current workspace" in verification.params["prompt"]
     assert "Do not modify" in verification.params["prompt"]
     assert "independently verify" in verification.params["prompt"]
+    assert "A dirty Git status alone does not" in verification.params["prompt"]
 
     task.iteration = 2
     task.last_invocation_result = "review\nDSH_VERIFICATION: PASS"

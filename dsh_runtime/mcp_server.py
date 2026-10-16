@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -19,6 +20,7 @@ from typing import Any
 from uuid import uuid4
 
 from dsh_runtime.call_trace import (
+    CALL_TRACE_PATH_ENV,
     append_call_trace,
     resolve_call_trace_path,
 )
@@ -247,6 +249,13 @@ def dsh_runtime(arguments: object) -> dict[str, Any]:
             input=request_bytes,
             capture_output=True,
             check=False,
+            # The MCP adapter records this invocation around the child process.
+            # Do not let the product entrypoint append a duplicate lifecycle.
+            env={
+                key: value
+                for key, value in os.environ.items()
+                if key != CALL_TRACE_PATH_ENV
+            },
         )
     except Exception as exc:
         _append_terminal(

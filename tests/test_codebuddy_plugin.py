@@ -2024,6 +2024,30 @@ def test_stream_json_parser_handles_single_multiple_split_and_crlf_lines() -> No
     assert parser.closed_cleanly is True
 
 
+def test_stream_json_parser_keeps_success_when_system_init_arrives_after_result() -> None:
+    collector = codebuddy_module._StreamJsonResultCollector(100_000)
+    parser = codebuddy_module._StreamJsonLineParser(
+        collector, None, None, max_line_chars=100_000
+    )
+    raw = (
+        _stream_json_line(_stream_success_event("late init still succeeds"))
+        + _stream_json_line({"type": "system", "subtype": "init"})
+    ).encode("utf-8")
+
+    async def feed_events() -> None:
+        await parser.feed(raw)
+        await parser.finish()
+
+    asyncio.run(feed_events())
+
+    result = collector.normalize(b"", 0)
+    assert result.success is True
+    assert result.output == "late init still succeeds"
+    assert collector.valid_event_count == 2
+    assert collector.last_event_type == "result"
+    assert parser.closed_cleanly is True
+
+
 def test_stream_output_bound_failure_reports_bounded_non_content_counters() -> None:
     collector = codebuddy_module._StreamJsonResultCollector(
         max_output_chars=100,

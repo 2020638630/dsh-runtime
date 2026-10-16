@@ -40,6 +40,10 @@ MAX_STREAM_CHARS_ENV = "DSH_CODEBUDDY_MAX_STREAM_CHARS"
 MAX_STREAM_CHARS_HARD_LIMIT = 1_000_000
 _QUALIFICATION_OBSERVABILITY_FAILURE = "QUALIFICATION OBSERVABILITY FAILURE"
 SAFE_EVENT_TRACE_DIR_ENV = "DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR"
+RUNTIME_RUN_ID_ENV = "DSH_RUNTIME_RUN_ID"
+_RUNTIME_RUN_ID_PATTERN = re.compile(
+    r"^dsh-runtime-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
 SAFE_STREAM_JSON_ENV = "DSH_CODEBUDDY_SAFE_STREAM_JSON"
 _STREAM_JSON_READ_CHUNK = 16_384
 _STREAM_JSON_MAX_TOOL_CORRELATIONS = 256
@@ -324,6 +328,16 @@ def _safe_native_event_fields(event: Any) -> dict[str, Any]:
     }
 
 
+def _safe_trace_io_path(path: Path) -> Path:
+    """Open long Windows evidence paths without changing their logical identity."""
+    value = str(path)
+    if os.name != "nt" or len(value) < 248 or value.startswith("\\\\?\\"):
+        return path
+    if value.startswith("\\\\"):
+        return Path("\\\\?\\UNC\\" + value[2:])
+    return Path("\\\\?\\" + value)
+
+
 class _SafeCodeBuddyEventSink:
     """Persist only the explicitly allowlisted CodeBuddy worker metadata."""
 
@@ -345,7 +359,11 @@ class _SafeCodeBuddyEventSink:
         if self._max_events < 2:
             raise ValueError("safe CodeBuddy trace event quota is too small")
         self.trace_id = uuid4().hex
+        self._run_id = os.environ.get(RUNTIME_RUN_ID_ENV)
+        if self._run_id is not None and not _RUNTIME_RUN_ID_PATTERN.fullmatch(self._run_id):
+            raise ValueError("DSH_RUNTIME_RUN_ID must use the dsh-runtime UUID namespace")
         self.path = directory / f"codebuddy-safe-worker-{self.trace_id}.jsonl"
+        self._io_path = _safe_trace_io_path(self.path)
         self._stream = None
         self._event_seq = 0
         self._event_count = 0
@@ -355,8 +373,8 @@ class _SafeCodeBuddyEventSink:
         self._cli_identity = dict(cli_identity or {})
         self._trace_complete_scope = trace_complete_scope
         try:
-            directory.mkdir(parents=True, exist_ok=True)
-            self._stream = self.path.open("x", encoding="utf-8", newline="\n")
+            _safe_trace_io_path(directory).mkdir(parents=True, exist_ok=True)
+            self._stream = self._io_path.open("x", encoding="utf-8", newline="\n")
         except Exception:
             self.incomplete = True
             self._stream = None
@@ -511,6 +529,21 @@ class _SafeCodeBuddyEventSink:
             self._stream.close()
         except Exception:
             self.incomplete = True
+        else:
+            if self._run_id is not None:
+                try:
+                    marker = self.path.with_name(self.path.name + ".closed")
+                    payload = {
+                        "schema_version": 1,
+                        "run_id": self._run_id,
+                        "trace_id": self.trace_id,
+                        "final_bytes": self._io_path.stat().st_size,
+                    }
+                    with _safe_trace_io_path(marker).open("x", encoding="utf-8", newline="\n") as stream:
+                        json.dump(payload, stream, separators=(",", ":"))
+                        stream.write("\n")
+                except Exception:
+                    self.incomplete = True
         self._stream = None
 
 
@@ -730,7 +763,16 @@ class _StreamJsonResultCollector:
     def accept(self, event: Mapping[str, Any]) -> None:
         self.valid_event_count += 1
         raw_type = event.get("type")
-        self.last_event_type = raw_type if isinstance(raw_type, str) else None
+        # Some bounded stream-json workers emit a delayed system/init frame
+        # after the successful result. It is setup metadata, not a later turn,
+        # so it must not hide the terminal result from the completion check.
+        late_init = (
+            self.result_seen
+            and raw_type == "system"
+            and event.get("subtype") == "init"
+        )
+        if not late_init:
+            self.last_event_type = raw_type if isinstance(raw_type, str) else None
         if raw_type == "result":
             self.result_seen = True
             self.result_subtype = event.get("subtype")
@@ -1729,6 +1771,7 @@ class CodeBuddyPlugin:
         # the native worker environment so enabling observation does not alter
         # CodeBuddy's environment.
         environment.pop(SAFE_EVENT_TRACE_DIR_ENV, None)
+        environment.pop(RUNTIME_RUN_ID_ENV, None)
         environment.pop(SAFE_STREAM_JSON_ENV, None)
         environment.pop(MAX_STREAM_CHARS_ENV, None)
         return environment

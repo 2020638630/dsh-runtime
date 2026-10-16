@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import io
 import json
 import sys
@@ -83,6 +84,58 @@ def test_valid_request_binds_explicit_workspace_and_serializes_completed_task(
         "error": None,
         "last_invocation_result": "completed result",
     }
+
+
+def test_explicit_call_trace_records_redacted_direct_entrypoint_lifecycle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    trace_path = tmp_path / "runtime-call-trace.jsonl"
+    prompt_marker = "PRIVATE_PROMPT_SENTINEL"
+    result_marker = "PRIVATE_RESULT_SENTINEL"
+    monkeypatch.setenv(entrypoint.CALL_TRACE_PATH_ENV, str(trace_path))
+
+    def fake_build_controller(*, workspace_manager):
+        def settle(task):
+            task.apply_success(result_marker + " 调用" + chr(0xDC94))
+            return task
+
+        return _FakeController(settle)
+
+    monkeypatch.setattr(entrypoint, "build_controller", fake_build_controller)
+    code, stdout, stderr = _invoke(
+        monkeypatch, _request(tmp_path, goal=prompt_marker)
+    )
+
+    assert code == 0
+    assert stderr == ""
+    stdout_bytes = stdout.encode("utf-8")
+    trace_text = trace_path.read_text(encoding="utf-8")
+    records = [json.loads(line) for line in trace_text.splitlines()]
+    assert [record["event"] for record in records] == [
+        "call_started",
+        "call_terminal",
+    ]
+    started, terminal = records
+    assert started["state"] == "started"
+    assert started["invocation_count"] == 1
+    assert terminal["call_id"] == started["call_id"]
+    assert terminal["state"] == "returned"
+    assert terminal["runtime_exit_code"] == 0
+    assert terminal["task_status"] == "completed"
+    assert terminal["stdout_bytes"] == len(stdout_bytes)
+    assert terminal["stdout_sha256"] == hashlib.sha256(stdout_bytes).hexdigest()
+    canonical_result = json.dumps(
+        json.loads(stdout),
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    assert terminal["result_sha256"] == hashlib.sha256(canonical_result).hexdigest()
+    assert prompt_marker not in trace_text
+    assert result_marker not in trace_text
+    assert "workspace.product" not in trace_text
+    assert "workspace_path" not in trace_text
 
 
 def test_binary_stdio_uses_utf8_and_escapes_surrogate_task_output(

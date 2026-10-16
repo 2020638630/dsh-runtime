@@ -1,4 +1,4 @@
-"""Privacy-preserving, append-only lifecycle records for MCP Runtime calls."""
+"""Privacy-preserving, append-only lifecycle records for Runtime calls."""
 
 from __future__ import annotations
 
