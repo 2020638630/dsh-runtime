@@ -2,11 +2,11 @@
 
 状态：已批准的 R9 设计基线之实施清单（2026-10-15）。设计依据：[PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md](PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md)。四项负责人决策均选 A。
 
-**当前交接摘要（2026-10-16，以下历次记录按发生时状态保留）**：VIS-01～05 已实现，VIS-06 的真实只读与写入成功路径、Safe Trace `.closed` 和 Web 三视图已验收。Runtime 候选和 Harness 候选均已按负责人授权推送到各自私有远端的 `codex/vis-manifest-mvp-20261016` 分支；首次远端核对分别为 Runtime `30cec4a53fd9585dde634bb84bf8cffbb3ceb896`、Harness `9df8ddfa1baabbc076c84aa5fc9d6a8df3b61b6a`，与当时本地 HEAD 一致。候选验证：Runtime 170/170；Harness 证据 provider 与抽屉 62/62，记录式 Web 回放 2/2；Host/Client 类型构建、Host/Client 包构建、Web 构建均通过。Git 提交 hook 的 shell 入口在本机启动失败，相关翻译配对、依赖声明、lint 与空白检查已单独通过。5 小时额度最近检查已用 67%（余 33%）。D2 ExecuteGate 保持 `NOT_CLAIMED`。
+**当前交接摘要（2026-10-16，以下历次记录按发生时状态保留）**：VIS-01～05 已实现，VIS-06 的真实只读与写入成功路径、Safe Trace `.closed` 和 Web 三视图已验收。Runtime 与 Harness 候选均已按负责人授权推送到各自私有远端的 `codex/vis-manifest-mvp-20261016` 分支；Harness 最新功能及 Desktop 构建修复提交为 `e30644e7bc`。候选验证：Runtime 170/170；Harness 证据 provider 与抽屉 62/62，记录式 Web 回放 2/2；完整 `pnpm run typecheck`、Web 构建均通过。Git 提交 hook 的 shell 入口在本机启动失败，相关翻译配对、依赖声明、暂存差异检查已单独通过；Git Bash 的 pre-push hook 找不到 `pnpm`，已在候选目录用项目 Node 24/pnpm 手动执行同一完整检查。5 小时额度最近检查已用 78%（余 22%）。D2 ExecuteGate 保持 `NOT_CLAIMED`。
 
-**接续顺序**：① 正式 R9 基线与本清单已纳入 Runtime 隔离候选；两个候选分支已推送并核对远端，原治理工作树未切换；② 如需将候选升级为正式可用版本，应处理或明确接受下面的 Desktop 全量门槛，并决定真实失败/取消页面样本是否为发布条件；③ 需要收拢旧分支时先核对引用、依赖及回退点，再单独实施。P1 实时流与 P2 Memory/RAG 继续排在首期 Manifest 之后。
+**接续顺序**：① 正式 R9 基线与本清单已纳入 Runtime 隔离候选；两个候选分支已推送，原治理工作树未切换；② 决定真实失败/取消页面样本是否为正式发布条件，再做发布版本审查；③ 需要收拢旧分支时先核对引用、依赖及回退点，再单独实施。P1 实时流与 P2 Memory/RAG 继续排在首期 Manifest 之后。
 
-**Harness 推送门槛说明**：首次推送被 pre-push hook 阻断，因为 Git Bash 环境找不到 `pnpm`；用项目指定的 Node 24/pnpm 在候选目录直接运行同一 `pnpm run typecheck` 后，Host 类型编译和 Host 包构建通过，但完整脚本在未改动的 Desktop `welcome.js` 打包阶段报构建工具不支持当前解构转换。候选相对基线未修改 `apps/desktop/` 或 `apps/desktop-host/`；独立 Client 类型检查、Web 构建、证据相关测试与浏览器回放通过。依据负责人对候选分支推送的授权，仅对该次 Harness 推送跳过 pre-push hook，未改动仓库 hook 配置；**不能据此宣称仓库级 `typecheck` 已通过或候选已正式发布**。
+**Harness 推送门槛处理**：首次推送被 pre-push hook 阻断，因为 Git Bash 环境找不到 `pnpm`；用项目指定的 Node 24/pnpm 直接运行同一 `pnpm run typecheck` 时，Host 阶段通过，Desktop `welcome.js` 打包报旧目标下解构转换不支持。候选新增单独提交 `e30644e7bc`，将只在 Electron 内运行的欢迎页 Vite `build.target` 对齐其余 Desktop 包的 `es2024`；Desktop 单独打包和完整 `pnpm run typecheck` 均通过。由于 Git Bash 仍找不到 `pnpm`，仅该次 Harness 推送跳过 pre-push hook，未改动 hook 配置。完整检查通过消除了此前 Desktop 构建阻断，但这不代表所有产品发布门槛或真实失败/取消样本已完成。
 
 ## P0：首期终态证据 MVP
 
