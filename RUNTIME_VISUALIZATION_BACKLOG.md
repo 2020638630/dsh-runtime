@@ -2,9 +2,11 @@
 
 状态：已批准的 R9 设计基线之实施清单（2026-10-15）。设计依据：[PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md](PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md)。四项负责人决策均选 A。
 
-**当前交接摘要（2026-10-16，以下历次记录按发生时状态保留）**：VIS-01～05 已实现，VIS-06 的真实只读与写入成功路径、Safe Trace `.closed` 和 Web 三视图已验收。Runtime 与 Harness 候选均已按负责人授权推送到各自私有远端的 `codex/vis-manifest-mvp-20261016` 分支；Harness 最新功能及 Desktop 构建修复提交为 `e30644e7bc`。候选验证：Runtime 170/170；Harness 证据 provider 与抽屉 62/62，记录式 Web 回放 2/2；完整 `pnpm run typecheck`、Web 构建均通过。Git 提交 hook 的 shell 入口在本机启动失败，相关翻译配对、依赖声明、暂存差异检查已单独通过；Git Bash 的 pre-push hook 找不到 `pnpm`，已在候选目录用项目 Node 24/pnpm 手动执行同一完整检查。5 小时额度最近检查已用 78%（余 22%）。D2 ExecuteGate 保持 `NOT_CLAIMED`。
+**当前交接摘要（2026-10-16，以下历次记录按发生时状态保留）**：VIS-01～05 已实现，VIS-06 的真实只读与写入成功路径、Safe Trace `.closed` 和 Web 三视图已验收。Runtime 与 Harness 候选均已按负责人授权推送到各自私有远端的 `codex/vis-manifest-mvp-20261016` 分支；Harness 最新受控负向 Web 验收提交为 `4e0a2422cb`。候选验证：Runtime 170/170；Harness 证据 provider 与抽屉 62/62，记录式 Web 回放 3/3；完整 `pnpm run typecheck`、Web 构建均通过。Git 提交 hook 的 shell 入口在本机启动失败，相关翻译配对、依赖声明、暂存差异检查已单独通过；Git Bash 的 pre-push hook 找不到 `pnpm`，已在候选目录用项目 Node 24/pnpm 手动执行同一完整检查。5 小时额度最近检查已用 89%（余 11%）；低于 10% 时按负责人要求暂停。D2 ExecuteGate 保持 `NOT_CLAIMED`。
 
-**接续顺序**：① 正式 R9 基线与本清单已纳入 Runtime 隔离候选；两个候选分支已推送，原治理工作树未切换；② 决定真实失败/取消页面样本是否为正式发布条件，再做发布版本审查；③ 需要收拢旧分支时先核对引用、依赖及回退点，再单独实施。P1 实时流与 P2 Memory/RAG 继续排在首期 Manifest 之后。
+**接续顺序**：① 正式 R9 基线与本清单已纳入 Runtime 隔离候选；两个候选分支已推送，原治理工作树未切换；② 负责人已将失败/取消页面样本列为发布条件，受控无模型浏览器链路已通过，额度恢复后优先评估并执行独立临时仓库的真实子进程负向验收，再审查发布版本；③ 需要收拢旧分支时先核对引用、依赖及回退点，再单独实施。P1 实时流与 P2 Memory/RAG 继续排在首期 Manifest 之后。
+
+**受控负向页面验收与限额交接**：Harness `4e0a2422cb` 在浏览器记录式测试中增加取消与进程失败两种终态样本。测试向 scaffold 的临时 Host 证据目录写入绑定父 Session/子运行身份的 `run-state.json`，经实际认证 `/api/dsh-runtime.evidence` 路由读取，再由 Chrome 页面显示“运行已取消/运行失败 · 无终态证据”，并确认没有虚构 Manifest 抽屉；新 golden `snapshots/web/dsh-runtime-evidence/ui.negative.expected.md` 已复放，Web 3/3、完整 `pnpm run typecheck` 通过。既有失败 Manifest 页面样本仍为受控返回。**这些是浏览器与 Host 读取链路的无模型样本，不是实际 Runtime 业务失败/取消的现场调用**。下一轮若要满足更严格的现场发布验收，应先用全新临时 Git 仓库和独立非 D2 配置设计无需模型的真实子进程失败/取消触发方式，确认不会访问模型后再运行；若无法避免模型调用，则先明确新的调用范围与额度。原治理工作树及未跟踪文件继续保留，不复用旧 run ID，不申领 D2 ExecuteGate。
 
 **Harness 推送门槛处理**：首次推送被 pre-push hook 阻断，因为 Git Bash 环境找不到 `pnpm`；用项目指定的 Node 24/pnpm 直接运行同一 `pnpm run typecheck` 时，Host 阶段通过，Desktop `welcome.js` 打包报旧目标下解构转换不支持。候选新增单独提交 `e30644e7bc`，将只在 Electron 内运行的欢迎页 Vite `build.target` 对齐其余 Desktop 包的 `es2024`；Desktop 单独打包和完整 `pnpm run typecheck` 均通过。由于 Git Bash 仍找不到 `pnpm`，仅该次 Harness 推送跳过 pre-push hook，未改动 hook 配置。完整检查通过消除了此前 Desktop 构建阻断，但这不代表所有产品发布门槛或真实失败/取消样本已完成。
 
