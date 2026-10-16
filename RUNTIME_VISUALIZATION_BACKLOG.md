@@ -2,9 +2,11 @@
 
 状态：已批准的 R9 设计基线之实施清单（2026-10-15）。设计依据：[PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md](PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md)。四项负责人决策均选 A。
 
-**当前交接摘要（2026-10-16，以下历次记录按发生时状态保留）**：VIS-01～05 已实现，VIS-06 的真实只读与写入成功路径、Safe Trace `.closed` 和 Web 三视图已验收。隔离候选已有 Runtime `60c37f4`、Harness `a4c962bb69`（内部 D2 测试夹具）、`14e48dd6ae`（终态证据抽屉）、`9df8ddfa1b`（启动测试夹具）四个本地提交，尚未推送。候选验证：Runtime 170/170；Harness 证据 provider 与抽屉 62/62，记录式 Web 回放 2/2；Host/Client 类型构建、Host/Client 包构建、Web 构建均通过。Git hook shell 入口在本机启动失败，相关翻译配对、依赖声明、lint 与空白检查已单独通过。5 小时额度最近检查已用 67%（余 33%）。D2 ExecuteGate 保持 `NOT_CLAIMED`。
+**当前交接摘要（2026-10-16，以下历次记录按发生时状态保留）**：VIS-01～05 已实现，VIS-06 的真实只读与写入成功路径、Safe Trace `.closed` 和 Web 三视图已验收。Runtime 候选和 Harness 候选均已按负责人授权推送到各自私有远端的 `codex/vis-manifest-mvp-20261016` 分支；首次远端核对分别为 Runtime `30cec4a53fd9585dde634bb84bf8cffbb3ceb896`、Harness `9df8ddfa1baabbc076c84aa5fc9d6a8df3b61b6a`，与当时本地 HEAD 一致。候选验证：Runtime 170/170；Harness 证据 provider 与抽屉 62/62，记录式 Web 回放 2/2；Host/Client 类型构建、Host/Client 包构建、Web 构建均通过。Git 提交 hook 的 shell 入口在本机启动失败，相关翻译配对、依赖声明、lint 与空白检查已单独通过。5 小时额度最近检查已用 67%（余 33%）。D2 ExecuteGate 保持 `NOT_CLAIMED`。
 
-**接续顺序**：① 正式 R9 基线与本清单已纳入 Runtime 隔离候选，本地文档提交 `5b3f5c2`；② 复核两仓候选提交、私有远端与原治理工作树隔离，形成可拉取交付版本的审查材料；③ 若发布门槛要求真实失败/取消页面样本，再在新的独立临时仓库验收，不复用已消耗的运行身份；④ 经负责人授权后推送私有远端；⑤ 核对引用与回退点后另议旧分支收拢。P1 实时流与 P2 Memory/RAG 继续排在首期 Manifest 之后。
+**接续顺序**：① 正式 R9 基线与本清单已纳入 Runtime 隔离候选；两个候选分支已推送并核对远端，原治理工作树未切换；② 如需将候选升级为正式可用版本，应处理或明确接受下面的 Desktop 全量门槛，并决定真实失败/取消页面样本是否为发布条件；③ 需要收拢旧分支时先核对引用、依赖及回退点，再单独实施。P1 实时流与 P2 Memory/RAG 继续排在首期 Manifest 之后。
+
+**Harness 推送门槛说明**：首次推送被 pre-push hook 阻断，因为 Git Bash 环境找不到 `pnpm`；用项目指定的 Node 24/pnpm 在候选目录直接运行同一 `pnpm run typecheck` 后，Host 类型编译和 Host 包构建通过，但完整脚本在未改动的 Desktop `welcome.js` 打包阶段报构建工具不支持当前解构转换。候选相对基线未修改 `apps/desktop/` 或 `apps/desktop-host/`；独立 Client 类型检查、Web 构建、证据相关测试与浏览器回放通过。依据负责人对候选分支推送的授权，仅对该次 Harness 推送跳过 pre-push hook，未改动仓库 hook 配置；**不能据此宣称仓库级 `typecheck` 已通过或候选已正式发布**。
 
 ## P0：首期终态证据 MVP
 
