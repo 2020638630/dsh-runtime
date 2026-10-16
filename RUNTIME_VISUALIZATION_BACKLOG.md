@@ -12,6 +12,8 @@
 
 **首期私有交付审查（2026-10-17）**：Runtime 与 Harness 私有候选均已推送；Harness 文档修正提交为 `9f799daad1`（英中说明改为当前结算行为并更新配对记录）。Harness 文档配对与预提交检查通过，项目 Node 24 下完整 `pnpm run typecheck` 再次通过；Git Bash pre-push 环境仍找不到 `pnpm`，仅该次 Harness 推送在手动完成同一检查后跳过 hook。**两个分支是可拉取的私有试用候选，不是默认分支或稳定版标签**；真实只读/写入成功、轨迹闭合、Web 三视图、真实无模型进程失败/取消及受控负向浏览器页面已有对应证据。稳定发布前的优先项：① 从实际 `dsh web` 触发无模型负向子进程并在同一页面读取其真实 `run-state.json`，补齐贯通现场样本；② 评估需要模型的业务失败现场样本是否纳入首版发布条件，若纳入则另设独立临时仓库和调用额度；③ 明确私有分支的部署配置、版本标记与回退点后再考虑默认分支合并或旧分支收拢。两个原治理工作树继续保留原有改动及未跟踪文件，D2 ExecuteGate 保持 `NOT_CLAIMED`。
 
+**私有分支只读核对（2026-10-17）**：Runtime 远端 `master` 与 `codex/runtime-workflow-governance-closeout` 的已提交历史都包含在当前可视化候选内，但后者对应的原本地工作树仍有未提交改动。Harness 私有远端的 `integration/dsh-runtime-d1-q2-closeout` 和 `codex/d2-preflight04-preparation` 是候选祖先；`codex/d2-replayonly-repair-20261010` 尚有 5 个候选未包含的提交，`codex/upstream-sync-20261012` 尚有 1 个，不能按“只留最新”直接删除。Dependabot 分支不属于本次项目分支收拢范围。本轮没有合并、改默认分支或删除任何远端引用；先完成稳定发布验收，再单独核对未包含提交、依赖和回退点。
+
 **Harness 推送门槛处理**：首次推送被 pre-push hook 阻断，因为 Git Bash 环境找不到 `pnpm`；用项目指定的 Node 24/pnpm 直接运行同一 `pnpm run typecheck` 时，Host 阶段通过，Desktop `welcome.js` 打包报旧目标下解构转换不支持。候选新增单独提交 `e30644e7bc`，将只在 Electron 内运行的欢迎页 Vite `build.target` 对齐其余 Desktop 包的 `es2024`；Desktop 单独打包和完整 `pnpm run typecheck` 均通过。由于 Git Bash 仍找不到 `pnpm`，仅该次 Harness 推送跳过 pre-push hook，未改动 hook 配置。完整检查通过消除了此前 Desktop 构建阻断，但这不代表所有产品发布门槛或真实失败/取消样本已完成。
 
 ## P0：首期终态证据 MVP
