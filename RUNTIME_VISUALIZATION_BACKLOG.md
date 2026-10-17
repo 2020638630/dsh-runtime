@@ -28,6 +28,8 @@
 
 **完整父会话与 RC2 Runtime 固定（2026-10-17）**：第二次专用 Web 现场调用先核对活动会话 `session-0488f2d2-585f-4f66-a919-efd8b329b7ad` 属于独立测试 Git 仓库，父 Agent 两轮均完整结束，第二轮收到子任务结果并概述仓库状态；未再调用其他工具。Runtime 运行 `dsh-runtime-2b680d44-b432-49ad-861b-5ab5187f0e87` 终态 `completed` 且 Manifest 可用，审计 `settled`，观察变化 `+0 -0`，测试仓库保持干净。`vis-trial-rc2` 的 `runtimeRoot` 已指向 RC2 标签的独立 detached 检出 `D:\DeepSeekHarness\vis-runtime-rc2-fixed`，配置解析已复核。Harness provider 仍 `link:` 至当前 HEAD 为 RC2 的候选工作树，尚未形成不可变部署；Web UI 的 `Workspace Write` 是父 Agent 权限，不能等同于 Runtime 的只读治理。剩余稳定版门槛是固定 Harness 包、复核这层权限以及成对发布/回退演练；详情见 RC2 试用记录。
 
+**限额交接（2026-10-17 12:15 北京时间）**：五小时额度已用 88%（余 12%），预计 14:38:13 恢复；按负责人约定接近 10% 时停止新增模型试用。已完成并推送 Runtime 文档提交 `190da7c`，双仓 RC2 私有标签不移动；完整父会话试用、真实 Runtime 终态 Manifest、专用仓库干净及 Runtime RC2 detached 检出均已记录。当前未完成：① 将 Harness provider 从可变候选 `link:` 固定到可复现 RC2 包并复核 Profile 的父 Agent 一般工具权限；② 成对发布与回退演练；③ 稳定版再审。下一次续跑先核对候选及原工作树状态、额度和现有定时任务，再推进上述第一项。两个原工作树和所有未跟踪文件保留，D2 ExecuteGate 保持 `NOT_CLAIMED`。
+
 ## P0：首期终态证据 MVP
 
 | 顺序 | 任务 | 归属 | 完成条件 |
