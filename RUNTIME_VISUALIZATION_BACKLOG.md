@@ -30,6 +30,12 @@
 
 **限额交接（2026-10-17 12:15 北京时间）**：五小时额度已用 88%（余 12%），预计 14:38:13 恢复；按负责人约定接近 10% 时停止新增模型试用。已完成并推送 Runtime 文档提交 `190da7c`，双仓 RC2 私有标签不移动；完整父会话试用、真实 Runtime 终态 Manifest、专用仓库干净及 Runtime RC2 detached 检出均已记录。当前未完成：① 将 Harness provider 从可变候选 `link:` 固定到可复现 RC2 包并复核 Profile 的父 Agent 一般工具权限；② 成对发布与回退演练；③ 稳定版再审。下一次续跑先核对候选及原工作树状态、额度和现有定时任务，再推进上述第一项。两个原工作树和所有未跟踪文件保留，D2 ExecuteGate 保持 `NOT_CLAIMED`。
 
+**Harness provider 固定与回退审查（2026-10-17）**：专用 Profile 的 provider 已从可变候选链接改指 Harness RC2 `26c11095f9` 的 detached 检出 `D:\DeepSeekHarness\vis-harness-rc2-fixed`，RC2 已构建 `lib/index.js` 前后 SHA-256 相同；实际模块导入、CLI 认证浏览器启动无模型烟测通过。provider 源码固定，但依赖通过 junction 借用候选 `node_modules`，本机部署尚非完全自包含。pnpm 归档已存于 Profile `artifacts/`，离线安装被内部依赖缓存元数据缺失阻断，失败前后 Profile 包声明及锁文件哈希一致。权限边界：Runtime 子任务仅 `repository_inspection`，父 Agent 标准 Preset 仍启用 PowerShell/文件工具，页面显示 `Workspace Write`，故不可宣称整个 Web 会话只读。RC1→RC2 差异中 RC2 新增 `dsh_runtime` client slot catalog，RC1 不能作为保留同等抽屉能力的回退点；正式发布需另核对发布前版本或建立经实际验收的成对回退包。原工作树仍保留，D2 ExecuteGate `NOT_CLAIMED`。
+
+**配置回退演练（2026-10-17）**：默认线的本地远端引用为 Runtime `origin/master`、Harness 私有 `private/integration/dsh-runtime-d1-q2-closeout`。专用 Profile 暂时关闭 `tool-subagent-dsh-runtime` 后，解析配置为 `disabled:true`，真实 CLI 与认证浏览器页面无模型启动通过；恢复 `disabled:false` 后再次解析和启动通过，Profile patch SHA-256 与演练前完全一致，测试仓库干净。此结果仅证明功能开关的配置回退，不等于已验收默认线代码及完整依赖的整包版本回退。正式发布前仍需成对版本与依赖的独立启动、页面和回退验收；暂不合并默认分支、移动标签或删除旧分支。
+
+**官方打包与独立安装验收（2026-10-17）**：Harness RC2 候选官方构建通过并记录 357 个客户端产物；官方发布脚本生成 DSH 家族 334 个、vendor 家族 9 个 tarball，专用试用目录内保存 343 行 SHA-256 清单。首次安装验证暴露 Windows `spawnSync('npm')` 无法执行 `.cmd`；候选发布脚本修为查找 npm JavaScript 入口并用当前 Node 启动，聚焦测试 4/4、聚焦 lint、完整 `pnpm run typecheck` 通过。本机 npm 10.7 继续报其内部 `edgesOut` 依赖图错误；仅在试用目录安装 npm 12.2.0 后，同一批 tarball 的官方独立安装验证通过：343 包安装，601 个默认产品包排除实验包，安装的 `@deepseek-ai/dsh --version` 为 `0.2.1-alpha.2`。未更新全局 npm、原仓库依赖或 RC2 标签。此项关闭完整打包/独立安装门槛，默认线版本回退仍待独立演练。
+
 ## P0：首期终态证据 MVP
 
 | 顺序 | 任务 | 归属 | 完成条件 |
