@@ -42,3 +42,7 @@ RC2 补齐了 Harness 的生成式 client slot catalog 与 DeepSeek LLM 说明�
 在未改动产品代码的 Harness RC2 候选上运行官方构建，记录 357 个客户端产物；官方发布脚本将 DSH 家族 334 个包、配套 vendor 家族 9 个包打入专用试用目录。343 个 tarball 的 SHA-256 清单为 `D:\DeepSeekHarness\vis-trial-rc2-home\artifacts\release-rc2-sha256sums.txt`，清单本身 SHA-256 为 `9CB06411C599F6E71FE8FDE60F6C232B235280C30745EC2F941DC0C2C3DA789C`。原始 RC2 标记未移动。
 
 首次独立安装验证暴露 Windows `spawnSync('npm')` 无法启动 `.cmd` shim。Harness 候选中的发布脚本现改为在 Windows 上找到 npm 的 JavaScript 入口并交由当前 Node 执行；聚焦测试 4/4、聚焦 lint、完整 `pnpm run typecheck` 通过。使用本机 npm 10.7 时安装进入依赖解析但报内部 `edgesOut` 错误；仅在专用试用目录安装 npm 12.2.0 后，对同一批 tarball 重跑官方 `release:verify-packed-install` **通过**：343 包安装到临时 consumer，601 个默认产品包不包含实验包，安装后的 `@deepseek-ai/dsh` 报告 `0.2.1-alpha.2`。npm 12 只用于本次本机验证，没有改全局工具或仓库依赖版本。打包产物与安装验证均不代表默认线已部署；正式版本回退仍待实测。
+
+## 默认线发布范围审查（2026-10-17）
+
+已向两个私有远端直接核对当前引用。Runtime `origin/master` 是可视化候选祖先，候选领先 26 个提交，树差异 84 个文件。Harness 私有默认线 `private/integration/dsh-runtime-d1-q2-closeout` 虽也是候选祖先，但候选领先 **5,083 个提交**（第一父链 54 个），树差异 **11,469 个文件**；这些变化远超首期可视化范围。技术上可快进不等于适合作为小范围稳定发布。当前建议继续通过成对私有候选引用试用与审查，把 Harness 默认线同步作为独立的大范围升级项目；在负责人确认发布目标和回退策略前不更新任何默认线。两条旧 D2 分支及其候选未包含的独有提交继续保留。
