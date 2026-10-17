@@ -24,6 +24,10 @@
 
 **专用 RC2 试用 Profile 现场验收（2026-10-17）**：负责人选择新建专用 Profile。独立 `DSH_HOME` 为 `D:\DeepSeekHarness\vis-trial-rc2-home`，Profile `vis-trial-rc2`，测试 Git 仓库 `D:\DeepSeekHarness\vis-trial-rc2-repo`；标准 Web Preset 的嵌套 `dsh_runtime` 已启用，Runtime 治理仅允 `repository_inspection`。真实 CLI 启动及认证页面 HTTP 200 通过。先用无模型页面导航断言 `data-conversation-session=session-a4d070d3-1755-4dae-8961-b227499725cf`，再做一次真实只读调用：`dsh-runtime-2698f480-1c1c-4886-84c2-1f2d33b7b004` 结算 `completed`，Manifest 已生成，认证页面回放展开过程组后可打开“View evidence”抽屉；审计 `settled`、变化 `+0 -0`，测试仓库 Git 干净。该只读任务的轨迹 `not_applicable`、核验 `UNAVAILABLE`，不能声称 Safe Trace 或 PASS。自动化在 Runtime 结算即关闭 Web，父 Agent 后续回复被中断，因此完整父会话终态和可持续试用仍未验收；两次误落默认工作区的尝试不计入。Profile 当前以 `link:` 引用候选工作树，不是不可变部署；稳定发布前需固定版本、复核非 Runtime 工具权限并完成父会话与回退演练。详情见 `PRIVATE_VISUALIZATION_TRIAL_2026-10-17_RC2.md`。D2 ExecuteGate 保持 `NOT_CLAIMED`。
 
+**首版稳定版业务失败验收决策（2026-10-17）**：负责人采纳建议，不将“调用模型的业务失败现场样本”列为首版稳定版门槛；保留真实业务失败终态生成 Manifest 的可重复测试与 Web 呈现验收。模型现场样本列入发布后专项验证；若未来对外承诺模型失败一定有完整证据，先补做该现场样本。当前剩余优先级：① 固定专用试用版本并复核 Web Profile 的非 Runtime 工具权限；② 完成父 Agent 完整回复的独立仓库现场试用；③ 演练成对 RC2 标记的发布与回退；④ 通过稳定版门槛后再决定默认分支合并与旧 D2 分支收拢。D2 ExecuteGate 继续 `NOT_CLAIMED`。
+
+**完整父会话与 RC2 Runtime 固定（2026-10-17）**：第二次专用 Web 现场调用先核对活动会话 `session-0488f2d2-585f-4f66-a919-efd8b329b7ad` 属于独立测试 Git 仓库，父 Agent 两轮均完整结束，第二轮收到子任务结果并概述仓库状态；未再调用其他工具。Runtime 运行 `dsh-runtime-2b680d44-b432-49ad-861b-5ab5187f0e87` 终态 `completed` 且 Manifest 可用，审计 `settled`，观察变化 `+0 -0`，测试仓库保持干净。`vis-trial-rc2` 的 `runtimeRoot` 已指向 RC2 标签的独立 detached 检出 `D:\DeepSeekHarness\vis-runtime-rc2-fixed`，配置解析已复核。Harness provider 仍 `link:` 至当前 HEAD 为 RC2 的候选工作树，尚未形成不可变部署；Web UI 的 `Workspace Write` 是父 Agent 权限，不能等同于 Runtime 的只读治理。剩余稳定版门槛是固定 Harness 包、复核这层权限以及成对发布/回退演练；详情见 RC2 试用记录。
+
 ## P0：首期终态证据 MVP
 
 | 顺序 | 任务 | 归属 | 完成条件 |
