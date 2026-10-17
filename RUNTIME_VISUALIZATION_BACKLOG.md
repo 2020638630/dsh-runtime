@@ -2,6 +2,12 @@
 
 状态：已批准的 R9 设计基线之实施清单（2026-10-15）。设计依据：[PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md](PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md)。四项负责人决策均选 A。
 
+**最新交接：私有分支整合、上游更新与适配（2026-10-17）**：按负责人指定顺序，先刷新并核对私有引用。Harness 可视化候选 `f5884996c5` 已包含私有默认线、D2 preflight 分支及原治理工作树的全部**已提交**历史；另有 `codex/d2-replayonly-repair-20261010` 的 5 个、`codex/upstream-sync-20261012` 的 1 个独有提交，均属于旧 D2 内部治理。首个旧提交试取即与现行 R3 进程快照、来源哈希和测试冲突；另一提交会把 ExecuteGate 时效从现行 5 分钟放宽到 60 分钟。旧治理提交未强行并入用户功能候选，原分支和回退引用保留，D2 ExecuteGate 仍为 `NOT_CLAIMED`。
+
+在全新隔离工作树 `D:\DeepSeekHarness\vis-harness-private-integration`，由候选合入公开上游 `origin/master` 的 `687f282e86`（较候选独有约 990 个提交），解决 28 个冲突，形成双父提交 **`77cbead5fc`**，已推送到 Harness 私有远端新分支 `codex/private-consolidation-20261017`。未移动私有默认分支、旧可视化候选或 RC2 标签。合并后完整类型检查 **5/5**、正式构建 **9/9**（含 Web）、证据与治理聚焦测试 **10 文件、80 通过、1 跳过**；`doc-sync` 首轮 39/43，四个失败项已逐项修复并单独复验通过（链接、客户端槽位目录、持久化格式统计、仓库引用误判），双语配对 1034 组通过。依赖锁文件检查通过；Windows 原生依赖安装脚本因 `spawn EPERM` 未完成，隔离树用 `--ignore-scripts` 安装用于上述构建和测试。Git Bash 提交 hook 因 Win32 signal pipe 无法启动；已单独完成差异检查、类型、构建和相关文档测试，仅该整合提交与推送临时跳过 hook。
+
+**尚需更新后现场验收**：用与 RC2 试用 Profile 分开的新临时 Profile 指向整合分支和 Runtime 候选，先执行 `dsh web` 启动、只读 `repository_inspection`、认证证据抽屉及失败/取消降级页面，再视结果做独立临时仓库写入路径。不得将旧 RC2 现场样本直接算作本次上游更新的现场验收。完成现场验收后审查是否把新分支作为私有默认线；此时不删除旧 D2 分支。两个原工作树仍保持 Harness 106、Runtime 16 项待处理状态。周额度最近余约 11%，低于 10% 时记录结果并按已获授权在重置后约五分钟续跑。
+
 **当前交接摘要（2026-10-16，以下历次记录按发生时状态保留）**：VIS-01～05 已实现，VIS-06 的真实只读与写入成功路径、Safe Trace `.closed` 和 Web 三视图已验收。Runtime 与 Harness 候选均已按负责人授权推送到各自私有远端的 `codex/vis-manifest-mvp-20261016` 分支；Harness 最新受控负向 Web 验收提交为 `4e0a2422cb`。候选验证：Runtime 170/170；Harness 证据 provider 与抽屉 62/62，记录式 Web 回放 3/3；完整 `pnpm run typecheck`、Web 构建均通过。Git 提交 hook 的 shell 入口在本机启动失败，相关翻译配对、依赖声明、暂存差异检查已单独通过；Git Bash 的 pre-push hook 找不到 `pnpm`，已在候选目录用项目 Node 24/pnpm 手动执行同一完整检查。5 小时额度最近检查已用 89%（余 11%）；低于 10% 时按负责人要求暂停。D2 ExecuteGate 保持 `NOT_CLAIMED`。
 
 **接续顺序**：① 正式 R9 基线与本清单已纳入 Runtime 隔离候选；两个候选分支已推送，原治理工作树未切换；② 负责人已将失败/取消页面样本列为发布条件，受控无模型浏览器链路已通过，额度恢复后优先评估并执行独立临时仓库的真实子进程负向验收，再审查发布版本；③ 需要收拢旧分支时先核对引用、依赖及回退点，再单独实施。P1 实时流与 P2 Memory/RAG 继续排在首期 Manifest 之后。
