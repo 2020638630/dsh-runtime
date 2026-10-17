@@ -22,6 +22,8 @@
 
 **RC2 文档门槛与分支审查（2026-10-17）**：Harness 候选修正标准 Web Preset 工具启用说明后，`doc-sync` 首次为 41/43；失败项均已定位并小范围修复。生成的 client slot catalog 只补登记 `dsh_runtime` 抽屉槽位；DeepSeek LLM 双语说明同步既有 D2 sidecar 的“同步派生、异步落盘”语义并更新配对记录。修复提交为 Harness `26c11095f9`，第二次完整 `pnpm run doc-sync` 为 **43/43**。旧 Harness 分支相对可视化候选的 6 个独有提交均涉及 D2 内部治理：`codex/d2-replayonly-repair-20261010` 5 个、`codex/upstream-sync-20261012` 1 个。它们不混入用户可视化候选，保留旧分支及回退引用，待内部治理线单独处理；没有删除分支或更改默认分支。当前计划将该文档门槛修复纳入新的私有试用标记 RC2，RC1 保留不移动。
 
+**专用 RC2 试用 Profile 现场验收（2026-10-17）**：负责人选择新建专用 Profile。独立 `DSH_HOME` 为 `D:\DeepSeekHarness\vis-trial-rc2-home`，Profile `vis-trial-rc2`，测试 Git 仓库 `D:\DeepSeekHarness\vis-trial-rc2-repo`；标准 Web Preset 的嵌套 `dsh_runtime` 已启用，Runtime 治理仅允 `repository_inspection`。真实 CLI 启动及认证页面 HTTP 200 通过。先用无模型页面导航断言 `data-conversation-session=session-a4d070d3-1755-4dae-8961-b227499725cf`，再做一次真实只读调用：`dsh-runtime-2698f480-1c1c-4886-84c2-1f2d33b7b004` 结算 `completed`，Manifest 已生成，认证页面回放展开过程组后可打开“View evidence”抽屉；审计 `settled`、变化 `+0 -0`，测试仓库 Git 干净。该只读任务的轨迹 `not_applicable`、核验 `UNAVAILABLE`，不能声称 Safe Trace 或 PASS。自动化在 Runtime 结算即关闭 Web，父 Agent 后续回复被中断，因此完整父会话终态和可持续试用仍未验收；两次误落默认工作区的尝试不计入。Profile 当前以 `link:` 引用候选工作树，不是不可变部署；稳定发布前需固定版本、复核非 Runtime 工具权限并完成父会话与回退演练。详情见 `PRIVATE_VISUALIZATION_TRIAL_2026-10-17_RC2.md`。D2 ExecuteGate 保持 `NOT_CLAIMED`。
+
 ## P0：首期终态证据 MVP
 
 | 顺序 | 任务 | 归属 | 完成条件 |
