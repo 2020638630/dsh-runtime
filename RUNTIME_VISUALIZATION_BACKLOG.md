@@ -20,6 +20,8 @@
 
 **CLI 启动烟测（2026-10-17）**：用全新临时 `DSH_HOME` 直接运行 Harness 候选的 `dsh web --no-open --port 0`，Chrome 经命令打印的认证入口取得 HTTP 200 页面并加载 Web 框架，随后关闭子进程及临时配置。此项只验证真实 CLI 启动及页面可用；CLI 会话内的负向子任务仍由上一项 Web scaffold 贯通验收代表，不能合并称为单次 CLI 端到端运行。下一步冻结双仓私有试用版本、记录部署配置及成对提交和回退点。
 
+**RC2 文档门槛与分支审查（2026-10-17）**：Harness 候选修正标准 Web Preset 工具启用说明后，`doc-sync` 首次为 41/43；失败项均已定位并小范围修复。生成的 client slot catalog 只补登记 `dsh_runtime` 抽屉槽位；DeepSeek LLM 双语说明同步既有 D2 sidecar 的“同步派生、异步落盘”语义并更新配对记录。修复提交为 Harness `26c11095f9`，第二次完整 `pnpm run doc-sync` 为 **43/43**。旧 Harness 分支相对可视化候选的 6 个独有提交均涉及 D2 内部治理：`codex/d2-replayonly-repair-20261010` 5 个、`codex/upstream-sync-20261012` 1 个。它们不混入用户可视化候选，保留旧分支及回退引用，待内部治理线单独处理；没有删除分支或更改默认分支。当前计划将该文档门槛修复纳入新的私有试用标记 RC2，RC1 保留不移动。
+
 ## P0：首期终态证据 MVP
 
 | 顺序 | 任务 | 归属 | 完成条件 |
