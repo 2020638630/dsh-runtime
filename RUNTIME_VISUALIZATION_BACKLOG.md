@@ -16,6 +16,10 @@
 
 **Harness 推送门槛处理**：首次推送被 pre-push hook 阻断，因为 Git Bash 环境找不到 `pnpm`；用项目指定的 Node 24/pnpm 直接运行同一 `pnpm run typecheck` 时，Host 阶段通过，Desktop `welcome.js` 打包报旧目标下解构转换不支持。候选新增单独提交 `e30644e7bc`，将只在 Electron 内运行的欢迎页 Vite `build.target` 对齐其余 Desktop 包的 `es2024`；Desktop 单独打包和完整 `pnpm run typecheck` 均通过。由于 Git Bash 仍找不到 `pnpm`，仅该次 Harness 推送跳过 pre-push hook，未改动 hook 配置。完整检查通过消除了此前 Desktop 构建阻断，但这不代表所有产品发布门槛或真实失败/取消样本已完成。
 
+**Web 工具贯通负向验收（2026-10-17）**：Harness 候选新增手动、按环境变量启用的浏览器验收 `apps/web/tests/dsh-runtime-tool-negative.local.e2e.ts`，提交 `5393eea154`。测试用 Web scaffold 启动真实 Host/Web 组合、认证路由和 Chrome 页面，临时启用标准预设中默认关闭的 `dsh_runtime` 工具；父 Agent 的工具调用由本地 replay 提供，子 Agent 则通过真实 `startDshRuntimeRun` 与本地 Python 子进程执行候选 Runtime。每例新建独立临时 Git 仓库、非 D2 治理配置和证据目录，仅允许只读 `repository_inspection`；无效的 `DSH_CODEBUDDY_MAX_STREAM_CHARS` 保证执行在模型初始化前失败，取消例在子运行启动后发出中断。合并运行 2/2 通过：失败子运行 `03bbd91f-22b1-4d31-a4ca-13ce7472a18c` 的落盘状态为 `error`，页面显示 `Run failed · no terminal evidence`；取消子运行 `c523d9e7-6e49-475a-ba3c-124ff6ed86ce` 为 `aborted`，页面显示 `Run cancelled · no terminal evidence`。两例认证证据接口均返回 `manifestAvailable=false`，没有“View evidence”按钮。此证据覆盖 **Web 工具 → 真实 Runtime 子进程 → run-state → Host 认证读取 → 浏览器页面**，不等同于独立 `dsh web` CLI 启动或需要模型的业务失败。聚焦 lint、Host 类型检查及完整 `pnpm run typecheck` 通过；Git Bash 提交 hook 因 Win32 signal pipe 失败，已单独执行其适用的暂存 lint 与差异检查后，仅对该提交临时跳过 hook。下一步先用 `dsh web` CLI 和隔离 profile 作只读启动/负向烟测，再冻结双仓私有试用版本；D2 ExecuteGate 仍为 `NOT_CLAIMED`。
+
+**CLI 启动烟测（2026-10-17）**：用全新临时 `DSH_HOME` 直接运行 Harness 候选的 `dsh web --no-open --port 0`，Chrome 经命令打印的认证入口取得 HTTP 200 页面并加载 Web 框架，随后关闭子进程及临时配置。此项只验证真实 CLI 启动及页面可用；CLI 会话内的负向子任务仍由上一项 Web scaffold 贯通验收代表，不能合并称为单次 CLI 端到端运行。下一步冻结双仓私有试用版本、记录部署配置及成对提交和回退点。
+
 ## P0：首期终态证据 MVP
 
 | 顺序 | 任务 | 归属 | 完成条件 |
