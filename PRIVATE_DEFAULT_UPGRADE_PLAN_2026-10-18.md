@@ -9,7 +9,7 @@
 | Harness 私有默认线 `integration/dsh-runtime-d1-q2-closeout` | `60c8f0c813a55754338d1e53a655f480a5f62f02` | 当前用户可拉取的既有私有默认线 |
 | Harness 公开上游 `origin/master` | `687f282e8625c6b8d11ff58211a90524be2e4317` | 2026-10-18 现场远端查询也指向此提交 |
 | Harness 私有候选 `codex/private-consolidation-20261017` | `a6e8d20476450be8c48b27e310d760034610b15a` | RC3 精确验收来源；私有远端已重新核对 |
-| Runtime 私有候选 `codex/vis-manifest-mvp-20261016` | `a5531cf4c6e32231e05872063e58b4c64193c33d` | 本轮文档提交前的远端来源；后续文档已推进该候选 |
+| Runtime 私有候选 `codex/vis-manifest-mvp-20261016` | `f4bb685056c0f52f7f22dd18cddd8b3fb1c10034` | 当前远端候选；本轮仅继续补充发布审查文档 |
 | Runtime 既有默认线 `master` | `ebb191ae998af6251731f02e28ba16d4ce733fac` | 尚未移动 |
 
 Harness 候选同时包含私有默认线和公开上游。与私有默认线相比，它领先 **6077** 个提交、涉及 **12927** 个文件；与当前公开上游相比，它领先 **61** 个提交、涉及 **236** 个文件。私有默认线与公开上游并非线性关系：两者共同祖先之后，私有默认线独有 2 个提交，上游独有 6018 个提交。`dae159ae1f` 把截至公开上游 `d743267388` 的一波更新并入了 D2 整合，`77cbead5fc` 再把上游 `687f282e86` 并入可视化候选。因此直接快进私有默认线会一次交付大量上游变化及 D2 内部治理代码，不能作为单一 Evidence Manifest 更新审查。
@@ -24,11 +24,26 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 
 文档总检查在该预备分支为 **35/43**，余下 8 项失败，集中在旧默认线带来的 `AGENTS.md` 篇幅/段落、Runtime README 缺中文配对且文档种类仍为旧值、旧 Agent Note 状态/双语记录、插件包目录生成及仓库引用校验。配置目录本身已通过生成器检查。要发布独立的上游批次，须先完成这批旧文档迁移并重新通过 43 项检查；直接复用已经完整通过验收的 RC3 候选，仍是当前更短的试用路径。预备分支的失败不倒推 RC3 候选的验收失效。
 
+## 私有 CI 与默认线切换门槛
+
+以下是从 Harness 候选 `.github/workflows/ci.yml` 和 `.github/workflows/release.yml` 读取的**工作流定义**，并非远端运行结果或仓库分支保护规则。`CI` 只在 pull request 触发；单纯推送候选分支不会产生这组 PR 判定。私有 PR 的汇总 `all checks passed` 必须看到 `node-24` 静态检查、`node-24-coverage`、`node-24-consumers`、Node 22.19/24.9/26 兼容矩阵、Python 3.10 SDK、`windows-build` 和 `windows-native-tests` 成功。上游专用的 `node-24-bench` 与 `python-runtime` 在私有仓库按设计跳过，汇总允许这两项跳过；`windows-coverage` 不在汇总依赖中，需单独阅读结果。具体是否被远端分支保护列为 required check，仍须从私有仓库设置或 PR 状态核对，不能从 YAML 推断。
+
+私有仓库的 `Release (dsh)` 在普通 PR 与默认分支推送时，`dependencies` 和 `pack` 工作均按条件跳过；完整的依赖布局、`release:verify`、正式构建、全包打包与安装布局复验，需要对确定的候选引用手动触发 `workflow_dispatch`。本地 RC3 的标准安装、51/51 发布测试及 Web 现场验收已有证据，但不能写成私有远端 Release 工作流通过。Runtime 候选的 `.github/workflows/python-tests.yml` 会对 PR 和目标分支 push 运行 Windows Python 测试，也需核对其远端状态。
+
+切换前按以下顺序收口：
+
+1. 在私有 Harness 候选 `a6e8d20476` 对当前默认线 `60c8f0c813` 建立审查请求，记录远端 PR URL、实际 head/base、`all checks passed` 及每项被允许跳过的原因；若远端检查失败，先修复候选并重新固定 RC 来源。
+2. 对同一候选引用手动运行私有 `Release (dsh)`；保存 `dependencies`、`pack` 的运行链接与结论。若仓库策略不允许手动运行，明确将这项标为未完成发布门槛，不借用本地通过替代。
+3. 在 Runtime 私有候选上取得 Windows Python 工作流结论，并确认正式部署仍引用 RC3 标签固定的 Runtime 源码 `15d871d`；文档提交可在候选头部继续前移，但不能悄悄改变验收源。
+4. 复核远端候选与默认线 SHA、分支保护、使用者拉取与回退说明后，单独批准默认线切换。Harness 默认线的快进会带入 6077 个提交和 D2 内部治理代码；Runtime `master` 应单独审查。切换前保留所有旧分支和 RC2 回退包。
+
+当前门槛状态：本地 RC3 功能和归档验收已完成；私有 PR CI、手动远端 Release、Runtime 远端 Python 检查及分支保护规则**尚无本计划可引用的运行证据**。因此保持两个默认线不动，RC3 私有候选可继续用于专用只读试用。
+
 ## 按顺序推进的审查批次
 
 ### P0：保持 RC3 可复现，关闭来源漂移
 
-- 以 Harness `a6e8d20476`、Runtime `15d871d` 的干净固定检出和已记录的归档哈希为验收来源；保留 Runtime 私有候选 `a5531cf4c6` 为设计与任务记录来源。
+- 以 Harness `a6e8d20476`、Runtime `15d871d` 的干净固定检出和已记录的归档哈希为验收来源；保留 Runtime 私有候选 `f4bb685056` 为设计与任务记录来源，后续文档提交单独追踪。
 - 私有远端已重新核对上述引用；若后来前移，仅审查新提交，不重跑已通过的 9/9 构建、51/51 发布测试或模型现场样本。
 - 成对候选已建立不可变 RC3 引用；正式版本和正式部署路径须指向同一对已验收提交。现有 RC1/RC2 标签保持原样。
 
