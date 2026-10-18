@@ -20,6 +20,10 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 
 **上游分批可行性**：对公开上游 `687f282e86` 与私有默认线 `60c8f0c813` 做只读三方合并探测，结果有三个冲突：`docs/config-catalog.md`、已被上游删除的旧 `packages/preset/agent-presets/presets/standard/agent.cordis.yml`、`pnpm-lock.yaml`。旧默认线在该已删除预设中新增的只是默认关闭的 `tool-subagent-dsh-runtime` 行；当前候选已将默认关闭的工具行移到新布局 `packages/bundle/web-app/presets/standard.patch.yml`。因此若建立“先上游、后产品”的新集成分支，应保留上游删除、在新预设位置保留 opt-in 工具行，随后按新依赖重新生成锁文件和配置目录，并核对生成内容。不能把三方合并的自动产物直接作为可用升级批次；本探测没有写入任一工作树。
 
+**独立预备分支验证**：另建 `D:\DeepSeekHarness\vis-harness-upstream-stage`，本地分支 `codex/private-upstream-stage-20261018` 从公开上游出发，合入旧私有默认线并解决上述三处文本冲突；配置目录双语生成、锁文件重新计算，旧预设工具行迁至新 Web 预设且继续默认关闭。旧 provider 的目录校验与测试夹具适配上游服务 API。聚焦 provider/bridge/Web 测试 **54/54**，`build:artifacts` **7/7**，Host 与 Client 类型检查均通过，配置目录校验通过。此分支仍保持**本地、未提交的合并状态**，没有推送或用于试用；它是升级拆分的审查实验，不是 RC3 或新的可用版本。
+
+文档总检查在该预备分支为 **35/43**，余下 8 项失败，集中在旧默认线带来的 `AGENTS.md` 篇幅/段落、Runtime README 缺中文配对且文档种类仍为旧值、旧 Agent Note 状态/双语记录、插件包目录生成及仓库引用校验。配置目录本身已通过生成器检查。要发布独立的上游批次，须先完成这批旧文档迁移并重新通过 43 项检查；直接复用已经完整通过验收的 RC3 候选，仍是当前更短的试用路径。预备分支的失败不倒推 RC3 候选的验收失效。
+
 ## 按顺序推进的审查批次
 
 ### P0：保持 RC3 可复现，关闭来源漂移
