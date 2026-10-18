@@ -18,6 +18,8 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 
 **路径级审查结果**：以公开上游到 Harness 候选的差异为口径，`.agents`、`scripts`、`.github`、`docs` 合计 114 个文件（约 8230 行新增）；三个 Runtime 相关 subagent 包合计 42 个文件（约 7597 行新增）；Web/CLI、工具行及 DeepSeek 适配合计 27 个文件（约 3130 行新增、55 行删除）；根锁文件、桌面、bundle 与 boot 等 11 个文件（约 814 行新增、289 行删除）。这些是有交叉可能的审查分组，不能相加当作 236 个文件的完整分割。`packages/subagent/subagent-dsh-runtime` 和 `subagent-governance-python` 的包版本已是 `0.2.1-rc.2`。候选 `.github/workflows/ci.yml` 对私有仓库改用托管 runner，并让 Python release 形态矩阵与 benchmark 在私有 PR 中跳过；`.github/workflows/release.yml` 仅允许私有仓库手动触发发布演练。因此当前本地通过的构建、测试与打包不能代替这些被跳过或仅手动运行的远端门槛。默认线切换前须逐项确认私有 CI 的实际必需检查，明确未跑的检查由哪一项证据补足或保留为发布限制。
 
+**上游分批可行性**：对公开上游 `687f282e86` 与私有默认线 `60c8f0c813` 做只读三方合并探测，结果有三个冲突：`docs/config-catalog.md`、已被上游删除的旧 `packages/preset/agent-presets/presets/standard/agent.cordis.yml`、`pnpm-lock.yaml`。旧默认线在该已删除预设中新增的只是默认关闭的 `tool-subagent-dsh-runtime` 行；当前候选已将默认关闭的工具行移到新布局 `packages/bundle/web-app/presets/standard.patch.yml`。因此若建立“先上游、后产品”的新集成分支，应保留上游删除、在新预设位置保留 opt-in 工具行，随后按新依赖重新生成锁文件和配置目录，并核对生成内容。不能把三方合并的自动产物直接作为可用升级批次；本探测没有写入任一工作树。
+
 ## 按顺序推进的审查批次
 
 ### P0：保持 RC3 可复现，关闭来源漂移
