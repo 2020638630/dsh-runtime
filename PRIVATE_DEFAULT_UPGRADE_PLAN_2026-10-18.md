@@ -39,7 +39,7 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 
 当前门槛状态：本地 RC3 功能和归档验收已完成；远端 CI、手动 Release 和分支保护仍未关闭。因此保持两个默认线不动，RC3 私有候选可继续用于专用只读试用。
 
-**2026-10-18 远端审查入口与阻断**：Harness 已建 [draft PR #13](https://github.com/2020638630/deepseek-harness-private/pull/13)，`a6e8d20476` 对 `60c8f0c813`；Runtime 已建 [draft PR #2](https://github.com/2020638630/dsh-runtime/pull/2)，创建时 `3dce8776f2` 对 `ebb191ae99`。两者均未合并。创建后 Harness PR 的 head `check-runs` 查询为空，`mergeable_state: clean` 只说明 GitHub 未报告合并冲突，不代表 CI 通过。Runtime PR 的 [Python tests 运行](https://github.com/2020638630/dsh-runtime/actions/runs/39135705574)为 `failure`，但 job **0 个步骤、无 runner**；唯一注释明确写明 GitHub 因近期付款失败或支出上限需要提高而未启动 job。同一原因也出现在候选 push [运行](https://github.com/2020638630/dsh-runtime/actions/runs/39135427054)。这是账户/账务层阻断，尚无 pytest 结果；须由账户负责人处理后重新运行并取得绿色结论。当前 Git 凭据读取两个仓库分支保护接口均返回 403，不能据此断言保护规则有无。
+**2026-10-18 远端审查入口与阻断**：Harness 已建 [draft PR #13](https://github.com/2020638630/deepseek-harness-private/pull/13)，`a6e8d20476` 对 `60c8f0c813`；Runtime 已建 [draft PR #2](https://github.com/2020638630/dsh-runtime/pull/2)，创建时 `3dce8776f2` 对 `ebb191ae99`。两者均未合并。Harness 默认线的 CI 工作流声明 `pull_request` 触发，但仓库 Actions 权限接口实际返回 `enabled: false`；因此新 PR 没有运行记录，`mergeable_state: clean` 只说明 GitHub 未报告合并冲突，不代表 CI 通过。仓库负责人需决定是否启用 Actions 并核对 runner/secret 权限，随后取得真实 PR 检查结果。Runtime PR 的 [Python tests 运行](https://github.com/2020638630/dsh-runtime/actions/runs/39135705574)为 `failure`，但 job **0 个步骤、无 runner**；唯一注释明确写明 GitHub 因近期付款失败或支出上限需要提高而未启动 job。同一原因也出现在候选 push [运行](https://github.com/2020638630/dsh-runtime/actions/runs/39135427054)。这是账户/账务层阻断，尚无 pytest 结果；须由账户负责人处理后重新运行并取得绿色结论。当前 Git 凭据读取两个仓库分支保护接口均返回 403，不能据此断言保护规则有无。
 
 **分支保护现场提示**：负责人提供的 2026-10-18 内置浏览器截图显示 Runtime 私有仓库 `master` 页面提示 `Your master branch isn't protected`。这是截图观察，尚未通过仓库设置或平台接口独立复核；默认线切换前须确认 `master` 的保护规则与实际 required checks，并先建立适合私有发布的保护策略。不要把截图提示误写成 Harness 私有默认线的状态。
 
@@ -81,6 +81,6 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 
 ## 本轮操作边界
 
-两个原工作树仍有未提交改动与未跟踪文件；只在隔离候选中写本计划。未清理、重置或覆盖原树；未移动默认线、删除旧分支、宣称 D2 ExecuteGate 或创建稳定版标签。成对 RC3 试用标签已固定，两个 draft PR 已建立；下一项外部依赖是由账户负责人解除 GitHub Actions 账务阻断，随后重跑远端检查并继续 P1/P2 审查。默认线切换仍是单独的最终决策。
+两个原工作树仍有未提交改动与未跟踪文件；只在隔离候选中写本计划。未清理、重置或覆盖原树；未移动默认线、删除旧分支、宣称 D2 ExecuteGate 或创建稳定版标签。成对 RC3 试用标签已固定，两个 draft PR 已建立；下一项外部依赖是由负责人决定 Harness Actions 启用策略并解除 Runtime 的 GitHub 账务阻断，随后运行远端检查并继续 P1/P2 审查。默认线切换仍是单独的最终决策。
 
 **安装包 Profile 补验（本轮）**：`D:\DeepSeekHarness\vis-trial-rc3-home\profiles\packed-rc3-readonly` 使用已标准安装的 RC3 provider，`sandbox-policy.mode: read-only`，Runtime 治理只允许 `repository_inspection`，审计和证据各有独立路径。配置解析通过。已安装的 RC3 CLI 用此 Profile 启动真实 Web，HTTP 200、启动错误日志为空；浏览器在新会话入口选定现有的独立 `vis-trial-rc3-readonly3-repo`，页面显示“访问模式，当前：仅可查看”。未发消息、未调用模型或 Runtime，故这证明新会话**入口默认值**，不证明已运行的任务权限。服务已停止。最初在完全独立的 `rc3-packed-home` 下建立的同名 Profile 也通过配置解析、HTTP 200 和只读入口显示，但浏览器文件选择器未完成新仓库登记；因此改用已有试用 Home 的独立 Profile 完成工作区选择。首次受限启动出现 `spawn EPERM`、provider 未激活；最终 HTTP 200 和空错误日志来自允许治理 worker 启动的正式复验，不混同两次结果。
