@@ -39,6 +39,8 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 
 当前门槛状态：本地 RC3 功能和归档验收已完成；私有 PR CI、手动远端 Release、Runtime 远端 Python 检查及分支保护规则**尚无本计划可引用的运行证据**。因此保持两个默认线不动，RC3 私有候选可继续用于专用只读试用。
 
+**分支保护现场提示**：负责人提供的 2026-10-18 内置浏览器截图显示 Runtime 私有仓库 `master` 页面提示 `Your master branch isn't protected`。这是截图观察，尚未通过仓库设置或平台接口独立复核；默认线切换前须确认 `master` 的保护规则与实际 required checks，并先建立适合私有发布的保护策略。不要把截图提示误写成 Harness 私有默认线的状态。
+
 ## 按顺序推进的审查批次
 
 ### P0：保持 RC3 可复现，关闭来源漂移
@@ -59,6 +61,7 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 
 - 将 `packages/subagent/subagent-dsh-runtime`、`packages/subagent/subagent-governance-python`、`packages/llm/llm-deepseek`、CLI 宿主及 `.agents`/`scripts` 治理文件列为独立审查面。确认版本对齐、工具允许表和来源绑定；D2 代码虽在候选中，ExecuteGate 仍未获业务执行声明。
 - 已核对候选两个 Runtime 子代理包均为 `0.2.1-rc.2`；标准 Web 预设在 `delegation` 内提供 `tool-subagent-dsh-runtime`，但明确 `disabled: true`。产品试用 Profile 需另行显式启用并将治理任务限于 `repository_inspection`。Provider 源码的通用任务默认值仍是 `repository_change`，所以不能把仅安装 Bundle 或打开工具行等同于只读部署；必须检查实际 Profile 解析结果。现有安装包只读 Profile 已通过此项入口核对。D2 的 `NOT_CLAIMED` 是独立治理状态，不随这项产品配置改变。
+- 来源与治理绑定进一步核对：Provider 的用户工作区始终取父会话 `header.cwd`；配置的 `runtimeRoot` 只负责子进程模块定位。组合配置默认治理 v1，v2 必须显式选择已随 Runtime 部署的 policy locator 和固定 SHA-256；治理 worker 返回 READY 后才注册 provider。Bridge 对会话 policy identity 做 pin，按队列执行 bind 与 pre-start evaluate，异常返回 FAILURE。这些源码约束支持当前隔离试用的边界，但不能代替真实 Profile、远端 CI 或 D2 ExecuteGate 的独立验收。
 - 旧 D2 分支另有 5 个和 1 个独有提交；保留原引用，逐项判定是否仍适用。不得为“只留最新分支”强行并入或删除。
 - 将私有治理 CI 对公开上游的影响单独核对，不以产品可视化验收替代 D2 门槛。
 
