@@ -8,7 +8,8 @@
 | --- | --- | --- |
 | Harness 私有默认线 `integration/dsh-runtime-d1-q2-closeout` | `60c8f0c813a55754338d1e53a655f480a5f62f02` | 当前用户可拉取的既有私有默认线 |
 | Harness 公开上游 `origin/master` | `687f282e8625c6b8d11ff58211a90524be2e4317` | 2026-10-18 现场远端查询也指向此提交 |
-| Harness 私有候选 `codex/private-consolidation-20261017` | `a6e8d20476450be8c48b27e310d760034610b15a` | RC3 精确验收来源；私有远端已重新核对 |
+| Harness 固定 RC3 标签 `vis-manifest-mvp-20261018-rc3` | `a6e8d20476450be8c48b27e310d760034610b15a` | RC3 精确验收来源，未随候选分支前移 |
+| Harness 私有候选 `codex/private-consolidation-20261017` | `819dc46ea7953598b239a82e25abe7d87c64add3` | 2026-10-19 静态门槛修复后的当前私有远端；新源码尚未做整包现场复验 |
 | Runtime 私有候选 `codex/vis-manifest-mvp-20261016` | `f4bb685056c0f52f7f22dd18cddd8b3fb1c10034` | 本轮审查开始时的远端头部；后续审查文档提交继续前移 |
 | Runtime 既有默认线 `master` | `ebb191ae998af6251731f02e28ba16d4ce733fac` | 尚未移动 |
 
@@ -44,6 +45,10 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 **Actions 关闭后的离线门槛现场**：Runtime 固定 RC3 源码 `15d871d` 在隔离干净工作树运行 `python -m pytest -q`，结果 **511 passed in 13.19s**（Python 3.12.2、pytest 9.1.1）。Harness 固定 RC3 源码 `a6e8d` 使用 Node 24.19.0 运行 `pnpm run check:ci:static`，汇总为 **58 passed、6 failed、0 skipped**。六项失败是：`constraints`（Runtime subagent 包的 `files` 清单）、`verify-package-dependencies`（`ui-tool` 重复声明 React 类型）、`verify-cordis-config`（`apps/cli/tests/profiles/acp/cordis.yml` 根结构）、`verify-no-unknown-casts`（D2 evidence producer 断言）、`verify-cli-help`（子进程 `SIGKILL`，需独立复核）、`verify-module-graph`（双语模块图过期）。这是实际门槛失败，不可归为 GitHub 账务问题，也不能因为 RC3 功能验收通过就忽略。测试运行后两个固定源码工作树仍干净。下一步在独立候选中逐项修复并重跑失败项；若修复导致源码 SHA 变化，必须重新固定验收来源与必要的产品回归，再讨论默认线或稳定版。远端 Windows 矩阵、发布工作流、分支保护仍缺平台证据，需由负责人决定是否接受离线替代及其限制。
 
 **额度阈值交接（2026-10-18）**：五小时额度到 10% 时暂停进一步验收。Harness 隔离候选从固定 RC3 `a6e8d` 前移两个**仅本地**提交：`aae4aeb42e` 移除 `ui-tool` 重复 React 类型声明及锁文件对应 importer，删除 D2 evidence producer 的多余 `as unknown`；`d6b7fad4dd` 将 Manifest schema 加入包发布清单策略并重生成双语模块图。对应单项检查已通过：`verify-package-dependencies`、`verify-no-unknown-casts`、`check-workspace-constraints`、`gen-module-graph --check`；提交时 staged lint 与 whitespace 也通过。尚未推送这两个 Harness 修复提交，也未重跑完整 64 项静态门槛，RC3 标签继续指向旧固定源码。剩余待查两项：`verify-cordis-config` 在 Windows 检出中读取到 mode `120000` 的符号链接占位文本，应验证真实符号链接检出或让检查器按 Git 链接目标解析；`verify-cli-help` 先脱离并行门槛独立重跑以判定 `SIGKILL` 是否为资源竞争。随后复跑完整静态门槛和相关产品回归，审查候选源码新 SHA，再决定是否推送、固定新的试用引用。Runtime 候选文档提交 `82661bf` 已推送至 draft PR #2；Harness draft PR #13 仍指向旧远端 `a6e8d`。两个原始仓库工作树与固定 RC3 工作树均不应清理或覆盖，D2 ExecuteGate 保持 `NOT_CLAIMED`。
+
+**续跑结果（2026-10-19，取代上段的“尚未推送/未复验”状态）**：五小时额度恢复后，`verify-cli-help` 脱离并行门槛运行通过（7 个帮助页）；Windows 检出的符号链接文本由 Cordis 配置读取器解析为仓库内目标文件，聚焦测试 **3/3**、全部配置检查 **277/277** 通过。Harness 私有候选另增 `819dc46ea7`，三项修复提交已推送到现有 draft PR #13，远端与本地均为 `819dc46ea7953598b239a82e25abe7d87c64add3`。使用 Node 24.19.0、仓库自带 pnpm 11.28.5、`DSH_GATE_CONCURRENCY=4` 完整运行 `check:ci:static`，结果 **64 passed、0 failed、0 skipped**；推送钩子类型检查 **5/5**，在该 SHA 重建 `build:artifacts` **7/7**，发布相关测试 **194 passed、3 skipped**，冻结离线锁文件校验通过且工作树干净。pnpm 的执行前依赖状态检查仍提示本地 `node_modules` 可能与锁文件不同步并尝试安装失败；实际门槛继续运行成功，冻结锁文件校验只证明清单一致，不能替代全新依赖安装。未对新 SHA 重复模型现场、整包安装或 RC2 往返；原 RC3 成对标签仍固定 Harness `a6e8d` / Runtime `15d871d`，不得把新候选自动称作已完整验收的新 RC 或稳定版。两个仓库 Actions 仍关闭，未产生远端 CI 结论。下一步若要以 `819dc46` 发布新的候选引用，先完成该 SHA 的打包与安装形态复验，并审查 P1/P2 的大范围上游及 D2 内部治理差异；默认分支切换仍单独决策。
+
+**定时任务复核**：上一轮在 2026-10-18 23:11（北京时间）设置的一次性 heartbeat 到 2026-10-19 00:26（北京时间）仍为 `ACTIVE`，本线程没有收到预期续跑。规则未写入时区，不能仅凭现有记录断言调度器按 UTC 解释；因此本轮已将旧任务 `dsh` 暂停，避免之后重复启动。此次由负责人主动发消息触发续跑。下次限额续排必须核对应用显示的下一次触发时间与任务运行记录，不能只凭 RRULE 文本宣称安排成功。
 
 **分支保护现场提示**：负责人提供的 2026-10-18 内置浏览器截图显示 Runtime 私有仓库 `master` 页面提示 `Your master branch isn't protected`。这是截图观察，尚未通过仓库设置或平台接口独立复核；默认线切换前须确认 `master` 的保护规则与实际 required checks，并先建立适合私有发布的保护策略。不要把截图提示误写成 Harness 私有默认线的状态。
 
