@@ -50,7 +50,7 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 
 **定时任务复核**：上一轮在 2026-10-18 23:11（北京时间）设置的一次性 heartbeat 到 2026-10-19 00:26（北京时间）仍为 `ACTIVE`，本线程没有收到预期续跑。规则未写入时区，不能仅凭现有记录断言调度器按 UTC 解释；因此本轮已将旧任务 `dsh` 暂停，避免之后重复启动。此次由负责人主动发消息触发续跑。下次限额续排必须核对应用显示的下一次触发时间与任务运行记录，不能只凭 RRULE 文本宣称安排成功。
 
-**RC4 成对私有试用引用（2026-10-19）**：在整组静态门槛、official 构建、发布测试及 npm 12 独立安装通过后，新注释标签 `vis-manifest-mvp-20261019-rc4` 已推送并从两个私有远端核对：Harness 解析至 `819dc46ea7953598b239a82e25abe7d87c64add3`，Runtime 解析至不变的 `15d871d1d960291fe7ab5ed22eb39a9c1d3b9a17`。354 个本地归档的哈希清单和验收边界见 [RC4 试用证据](PRIVATE_VISUALIZATION_TRIAL_2026-10-19_RC4.md)。RC3 标签保留；两个默认线未动。RC4 尚未重复安装包 Web/模型现场或完成 P1/P2 审查，因此不宣称稳定版或默认线就绪。
+**RC4 成对私有试用引用（2026-10-19）**：在整组静态门槛、official 构建、发布测试及 npm 12 独立安装通过后，新注释标签 `vis-manifest-mvp-20261019-rc4` 已推送并从两个私有远端核对：Harness 解析至 `819dc46ea7953598b239a82e25abe7d87c64add3`，Runtime 解析至不变的 `15d871d1d960291fe7ab5ed22eb39a9c1d3b9a17`。354 个本地归档的哈希清单和验收边界见 [RC4 试用证据](PRIVATE_VISUALIZATION_TRIAL_2026-10-19_RC4.md)。RC4 安装包的专用只读 Profile 已完成配置解析与认证后的 Web HTTP 200；未重复 Manifest 页面目视或模型现场。RC3 标签保留；两个默认线未动。P1 宽范围上游审查仍未收口，因此不宣称稳定版或默认线就绪。
 
 **分支保护现场提示**：负责人提供的 2026-10-18 内置浏览器截图显示 Runtime 私有仓库 `master` 页面提示 `Your master branch isn't protected`。这是截图观察，尚未通过仓库设置或平台接口独立复核；默认线切换前须确认 `master` 的保护规则与实际 required checks，并先建立适合私有发布的保护策略。不要把截图提示误写成 Harness 私有默认线的状态。
 
@@ -76,6 +76,8 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 - 已核对候选两个 Runtime 子代理包均为 `0.2.1-rc.2`；标准 Web 预设在 `delegation` 内提供 `tool-subagent-dsh-runtime`，但明确 `disabled: true`。产品试用 Profile 需另行显式启用并将治理任务限于 `repository_inspection`。Provider 源码的通用任务默认值仍是 `repository_change`，所以不能把仅安装 Bundle 或打开工具行等同于只读部署；必须检查实际 Profile 解析结果。现有安装包只读 Profile 已通过此项入口核对。D2 的 `NOT_CLAIMED` 是独立治理状态，不随这项产品配置改变。
 - 来源与治理绑定进一步核对：Provider 的用户工作区始终取父会话 `header.cwd`；配置的 `runtimeRoot` 只负责子进程模块定位。组合配置默认治理 v1，v2 必须显式选择已随 Runtime 部署的 policy locator 和固定 SHA-256；治理 worker 返回 READY 后才注册 provider。Bridge 对会话 policy identity 做 pin，按队列执行 bind 与 pre-start evaluate，异常返回 FAILURE。这些源码约束支持当前隔离试用的边界，但不能代替真实 Profile、远端 CI 或 D2 ExecuteGate 的独立验收。
 - 旧 D2 分支另有 5 个和 1 个独有提交；保留原引用，逐项判定是否仍适用。不得为“只留最新分支”强行并入或删除。
+
+**P2 旧治理分支逐项筛选（2026-10-19）**：相对 Harness RC4 候选，`codex/d2-replayonly-repair-20261010` 有 5 个独有提交（`8b3237`、`3edc41`、`31a20c`、`b46c81`、`2d9096`），覆盖 replay-only 夹具、进程分类、直接 Runtime MCP 子进程、旧证据窗口和发行时重验；`codex/d2-no-listener-error-guard-20261013` 有 1 个独有提交 `57f6a8`，绑定 R8 预授权及最多三次尝试。当前候选已演进到 R12 预授权和**一次**尝试，发行时会重新读取现场并二次评估门槛，进程分类器也已有 Runtime MCP 分类。Git patch-id 仍判定上述 6 个提交独有，不能因此认定每项细节都被完整替代；但直接合入 R8/三次尝试会与当前一次尝试合同冲突。结论：这六项全部暂缓移植，保留旧分支；以后若 D2 内部治理正式重启，再按当前 R12 合同逐项提取仍适用的测试或边界修复。此筛选不改变 ExecuteGate 的 `NOT_CLAIMED`，也不是删除旧分支的依据。
 - 将私有治理 CI 对公开上游的影响单独核对，不以产品可视化验收替代 D2 门槛。
 
 ### P3：Evidence Manifest 产品增量审查
@@ -92,6 +94,6 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 
 ## 本轮操作边界
 
-两个原工作树仍有未提交改动与未跟踪文件；只在隔离候选中写本计划。未清理、重置或覆盖原树；未移动默认线、删除旧分支、宣称 D2 ExecuteGate 或创建稳定版标签。成对 RC3 试用标签已固定，两个 draft PR 已建立。负责人已选择关闭两个仓库的 Actions；下一步先修复离线静态门槛的六项失败，再做固定来源复验和 P1/P2 审查。默认线切换仍是单独的最终决策。
+两个原工作树仍有未提交改动与未跟踪文件；只在隔离候选中写本计划。未清理、重置或覆盖原树；未移动默认线、删除旧分支、宣称 D2 ExecuteGate 或创建稳定版标签。成对 RC3/RC4 私有试用标签与两个 draft PR 均已建立。负责人已选择关闭两个仓库的 Actions；RC4 离线静态、构建、打包与安装门槛已记录，下一步继续 P1 上游升级审查、RC4 专用只读 Web 复验与私有默认线发布条件核对。默认线切换仍是单独的最终决策。
 
 **安装包 Profile 补验（本轮）**：`D:\DeepSeekHarness\vis-trial-rc3-home\profiles\packed-rc3-readonly` 使用已标准安装的 RC3 provider，`sandbox-policy.mode: read-only`，Runtime 治理只允许 `repository_inspection`，审计和证据各有独立路径。配置解析通过。已安装的 RC3 CLI 用此 Profile 启动真实 Web，HTTP 200、启动错误日志为空；浏览器在新会话入口选定现有的独立 `vis-trial-rc3-readonly3-repo`，页面显示“访问模式，当前：仅可查看”。未发消息、未调用模型或 Runtime，故这证明新会话**入口默认值**，不证明已运行的任务权限。服务已停止。最初在完全独立的 `rc3-packed-home` 下建立的同名 Profile 也通过配置解析、HTTP 200 和只读入口显示，但浏览器文件选择器未完成新仓库登记；因此改用已有试用 Home 的独立 Profile 完成工作区选择。首次受限启动出现 `spawn EPERM`、provider 未激活；最终 HTTP 200 和空错误日志来自允许治理 worker 启动的正式复验，不混同两次结果。

@@ -20,10 +20,12 @@ Harness 在隔离的 `vis-harness-private-integration` 工作树中使用 Node 2
 - 发布相关测试：**194 passed、3 skipped**；冻结、离线、仅锁文件安装检查通过，1698 个条目符合供应链策略。
 - 发布打包：vendor **9** 包、DSH **345** 包，均从同一 Harness 提交构建；独立 npm 12.2.0 消费者标准安装全部 **354** 包，确认 658 个默认产品包隔离实验包，安装后 `dsh --version` 为 `0.2.1-rc.2`。
 
+**安装包 Web 入口补验**：另建 `D:\DeepSeekHarness\vis-harness-private-integration\dist\rc4-packed-consumer`，使用 RC4 的 354 个本地归档及 npm 12.2.0 安装，包含 Windows 可选依赖，共新增 884 包。独立 `D:\DeepSeekHarness\vis-trial-rc4-home` 的 `packed-rc4-readonly` Profile 链接已安装的 RC4 provider，指向固定 Runtime `15d871d`；配置解析退出码 0，确认父会话 `read-only`、非 D2 `repository_inspection`、审计和证据各在 RC4 Home 独立路径。已安装 CLI 从此 Profile 启动 Web，在本机随机端口以启动时的一次性访问令牌请求页面，HTTP **200**、HTML 37448 字节、启动 stderr **0 字节**；随后停止服务并确认端口关闭。未发送会话消息、未调用模型或 Runtime，也未通过浏览器目视核对 Manifest 抽屉；因此此项只证明安装包 Web 与配置入口可启动，不扩大为任务或页面交互验收。访问令牌仅留在本机试用 Home 的日志中，不写入本仓库。
+
 归档位于隔离候选下 `dist/npm-819dc46-vendor` 与 `dist/npm-819dc46-dsh`，逐包 SHA-256 清单位于忽略文件 `dist/npm-819dc46-sha256.txt`，清单 SHA-256 为 `96d85dd6f297fe61c84f4e1f891b728ecb70f2c5d9df57962578523368f88c12`。这三个本地产物路径没有推送；标签固定的是源码。首次 DSH 打包因普通客户端构建缺正式配置被脚本拒绝，随后使用 `--profile official` 重建才完成打包；该首次失败不算归档验收。pnpm 执行前依赖状态检查仍提示本地 `node_modules` 可能与锁文件不同步，冻结锁文件检查及实际门槛均通过；这不等于在全新工作树重装全部开发依赖。
 
 ## 适用边界与下一步
 
-RC4 相比 RC3 的 Harness 源码只改 9 个文件：发布清单/依赖约束、双语生成模块图、D2 证据脚本中的多余类型断言，以及 Windows Cordis 配置检查器与测试。Runtime 源码未变。此前 RC3 的真实任务、Safe Trace、安装包 Web、只读 Profile 和 RC2 往返现场仍属于 RC3 证据；本轮没有在 RC4 上重复模型调用、Web 页面现场或跨版本数据迁移验收。若将 RC4 部署给新用户，先以 RC4 归档启动一次专用只读 Web Profile，核对 provider 开关及 Manifest 页面，再更新试用指引。
+RC4 相比 RC3 的 Harness 源码只改 9 个文件：发布清单/依赖约束、双语生成模块图、D2 证据脚本中的多余类型断言，以及 Windows Cordis 配置检查器与测试。Runtime 源码未变。此前 RC3 的真实任务、Safe Trace、浏览器页面、只读会话入口和 RC2 往返现场仍属于 RC3 证据；本轮没有在 RC4 上重复模型调用、Manifest 页面目视、provider 关闭开关或跨版本数据迁移验收。若将 RC4 部署给新用户，仍需浏览器核对 Manifest 页面与只读新会话入口，再更新试用指引。
 
 接下来按 [私有默认线升级审查与发布顺序](PRIVATE_DEFAULT_UPGRADE_PLAN_2026-10-18.md) 的 P1/P2 审查大范围上游与 D2 内部治理差异；确认默认线的分支保护和离线发布门槛由负责人单独决策。两个原工作树的未提交改动与未跟踪文件继续保留；不清理、重置或覆盖。D2 ExecuteGate 保持 `NOT_CLAIMED`。
