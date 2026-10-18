@@ -32,14 +32,16 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 
 切换前按以下顺序收口：
 
-1. Harness 审查请求已建立为 draft PR #13；继续记录其 `all checks passed` 及每项被允许跳过的原因。若远端检查真正执行后暴露代码失败，先修复候选并重新固定 RC 来源。
-2. 对同一候选引用手动运行私有 `Release (dsh)`；保存 `dependencies`、`pack` 的运行链接与结论。若仓库策略不允许手动运行，明确将这项标为未完成发布门槛，不借用本地通过替代。
-3. 在 Runtime 私有候选上取得 Windows Python 工作流结论，并确认正式部署仍引用 RC3 标签固定的 Runtime 源码 `15d871d`；文档提交可在候选头部继续前移，但不能悄悄改变验收源。
+1. Harness 审查请求已建立为 draft PR #13；Actions 关闭期间，以固定来源的本地门槛记录替代远端运行记录。先修复下列静态检查失败，再复验，不把 PR 的 `mergeable_state` 当作检查通过。
+2. `Release (dsh)` 目前无法手动运行；将其列为缺失的远端发布证据。保留现有标准安装、打包和回退现场记录，发布决策须明确离线替代的边界。
+3. Runtime 固定源码 `15d871d` 的本地 pytest 已通过；Windows Python 工作流未执行成功且 Actions 已关闭。正式部署仍须引用固定源码；文档提交可在候选头部继续前移，但不能悄悄改变验收源。
 4. 复核远端候选与默认线 SHA、分支保护、使用者拉取与回退说明后，单独批准默认线切换。Harness 默认线的快进会带入 6077 个提交和 D2 内部治理代码；Runtime `master` 应单独审查。切换前保留所有旧分支和 RC2 回退包。
 
-当前门槛状态：本地 RC3 功能和归档验收已完成；远端 CI、手动 Release 和分支保护仍未关闭。因此保持两个默认线不动，RC3 私有候选可继续用于专用只读试用。
+当前门槛状态：本地 RC3 功能和归档验收已完成；两个仓库的 Actions 均已由负责人关闭，远端 CI 与手动 Release 在此策略下无法执行。分支保护仍未核实。因此保持两个默认线不动，RC3 私有候选可继续用于专用只读试用。离线验收的剩余项见下文，不能把本地结果写成远端 CI 通过。
 
-**2026-10-18 远端审查入口与阻断**：Harness 已建 [draft PR #13](https://github.com/2020638630/deepseek-harness-private/pull/13)，`a6e8d20476` 对 `60c8f0c813`；Runtime 已建 [draft PR #2](https://github.com/2020638630/dsh-runtime/pull/2)，创建时 `3dce8776f2` 对 `ebb191ae99`。两者均未合并。Harness 默认线的 CI 工作流声明 `pull_request` 触发，但仓库 Actions 权限接口实际返回 `enabled: false`；因此新 PR 没有运行记录，`mergeable_state: clean` 只说明 GitHub 未报告合并冲突，不代表 CI 通过。仓库负责人需决定是否启用 Actions 并核对 runner/secret 权限，随后取得真实 PR 检查结果。Runtime PR 的 [Python tests 运行](https://github.com/2020638630/dsh-runtime/actions/runs/39135705574)为 `failure`，但 job **0 个步骤、无 runner**；唯一注释明确写明 GitHub 因近期付款失败或支出上限需要提高而未启动 job。同一原因也出现在候选 push [运行](https://github.com/2020638630/dsh-runtime/actions/runs/39135427054)。这是账户/账务层阻断，尚无 pytest 结果；须由账户负责人处理后重新运行并取得绿色结论。当前 Git 凭据读取两个仓库分支保护接口均返回 403，不能据此断言保护规则有无。
+**2026-10-18 远端审查入口与阻断**：Harness 已建 [draft PR #13](https://github.com/2020638630/deepseek-harness-private/pull/13)，`a6e8d20476` 对 `60c8f0c813`；Runtime 已建 [draft PR #2](https://github.com/2020638630/dsh-runtime/pull/2)，创建时 `3dce8776f2` 对 `ebb191ae99`。两者均未合并。负责人关闭 Actions 后，权限接口对两个私有仓库均返回 `enabled: false`。因此当前策略下不会有新的远端 PR 检查或手动 Release 运行，`mergeable_state: clean` 只说明 GitHub 未报告合并冲突，不代表 CI 通过。Runtime 关闭前的 [Python tests 运行](https://github.com/2020638630/dsh-runtime/actions/runs/39135705574)为 `failure`，但 job **0 个步骤、无 runner**；唯一注释明确写明 GitHub 因近期付款失败或支出上限需要提高而未启动 job。同一原因也出现在候选 push [运行](https://github.com/2020638630/dsh-runtime/actions/runs/39135427054)。这是账户/账务层阻断，不是 pytest 失败；现在改由固定源码本地测试提供替代证据，且不能称作远端 Windows CI 通过。当前 Git 凭据读取两个仓库分支保护接口均返回 403，不能据此断言保护规则有无。
+
+**Actions 关闭后的离线门槛现场**：Runtime 固定 RC3 源码 `15d871d` 在隔离干净工作树运行 `python -m pytest -q`，结果 **511 passed in 13.19s**（Python 3.12.2、pytest 9.1.1）。Harness 固定 RC3 源码 `a6e8d` 使用 Node 24.19.0 运行 `pnpm run check:ci:static`，汇总为 **58 passed、6 failed、0 skipped**。六项失败是：`constraints`（Runtime subagent 包的 `files` 清单）、`verify-package-dependencies`（`ui-tool` 重复声明 React 类型）、`verify-cordis-config`（`apps/cli/tests/profiles/acp/cordis.yml` 根结构）、`verify-no-unknown-casts`（D2 evidence producer 断言）、`verify-cli-help`（子进程 `SIGKILL`，需独立复核）、`verify-module-graph`（双语模块图过期）。这是实际门槛失败，不可归为 GitHub 账务问题，也不能因为 RC3 功能验收通过就忽略。测试运行后两个固定源码工作树仍干净。下一步在独立候选中逐项修复并重跑失败项；若修复导致源码 SHA 变化，必须重新固定验收来源与必要的产品回归，再讨论默认线或稳定版。远端 Windows 矩阵、发布工作流、分支保护仍缺平台证据，需由负责人决定是否接受离线替代及其限制。
 
 **分支保护现场提示**：负责人提供的 2026-10-18 内置浏览器截图显示 Runtime 私有仓库 `master` 页面提示 `Your master branch isn't protected`。这是截图观察，尚未通过仓库设置或平台接口独立复核；默认线切换前须确认 `master` 的保护规则与实际 required checks，并先建立适合私有发布的保护策略。不要把截图提示误写成 Harness 私有默认线的状态。
 
@@ -81,6 +83,6 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 
 ## 本轮操作边界
 
-两个原工作树仍有未提交改动与未跟踪文件；只在隔离候选中写本计划。未清理、重置或覆盖原树；未移动默认线、删除旧分支、宣称 D2 ExecuteGate 或创建稳定版标签。成对 RC3 试用标签已固定，两个 draft PR 已建立；下一项外部依赖是由负责人决定 Harness Actions 启用策略并解除 Runtime 的 GitHub 账务阻断，随后运行远端检查并继续 P1/P2 审查。默认线切换仍是单独的最终决策。
+两个原工作树仍有未提交改动与未跟踪文件；只在隔离候选中写本计划。未清理、重置或覆盖原树；未移动默认线、删除旧分支、宣称 D2 ExecuteGate 或创建稳定版标签。成对 RC3 试用标签已固定，两个 draft PR 已建立。负责人已选择关闭两个仓库的 Actions；下一步先修复离线静态门槛的六项失败，再做固定来源复验和 P1/P2 审查。默认线切换仍是单独的最终决策。
 
 **安装包 Profile 补验（本轮）**：`D:\DeepSeekHarness\vis-trial-rc3-home\profiles\packed-rc3-readonly` 使用已标准安装的 RC3 provider，`sandbox-policy.mode: read-only`，Runtime 治理只允许 `repository_inspection`，审计和证据各有独立路径。配置解析通过。已安装的 RC3 CLI 用此 Profile 启动真实 Web，HTTP 200、启动错误日志为空；浏览器在新会话入口选定现有的独立 `vis-trial-rc3-readonly3-repo`，页面显示“访问模式，当前：仅可查看”。未发消息、未调用模型或 Runtime，故这证明新会话**入口默认值**，不证明已运行的任务权限。服务已停止。最初在完全独立的 `rc3-packed-home` 下建立的同名 Profile 也通过配置解析、HTTP 200 和只读入口显示，但浏览器文件选择器未完成新仓库登记；因此改用已有试用 Home 的独立 Profile 完成工作区选择。首次受限启动出现 `spawn EPERM`、provider 未激活；最终 HTTP 200 和空错误日志来自允许治理 worker 启动的正式复验，不混同两次结果。
