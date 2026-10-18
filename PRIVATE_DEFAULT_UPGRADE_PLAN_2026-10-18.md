@@ -9,7 +9,7 @@
 | Harness 私有默认线 `integration/dsh-runtime-d1-q2-closeout` | `60c8f0c813a55754338d1e53a655f480a5f62f02` | 当前用户可拉取的既有私有默认线 |
 | Harness 公开上游 `origin/master` | `687f282e8625c6b8d11ff58211a90524be2e4317` | 2026-10-18 现场远端查询也指向此提交 |
 | Harness 私有候选 `codex/private-consolidation-20261017` | `a6e8d20476450be8c48b27e310d760034610b15a` | RC3 精确验收来源；私有远端已重新核对 |
-| Runtime 私有候选 `codex/vis-manifest-mvp-20261016` | `f4bb685056c0f52f7f22dd18cddd8b3fb1c10034` | 当前远端候选；本轮仅继续补充发布审查文档 |
+| Runtime 私有候选 `codex/vis-manifest-mvp-20261016` | `f4bb685056c0f52f7f22dd18cddd8b3fb1c10034` | 本轮审查开始时的远端头部；后续审查文档提交继续前移 |
 | Runtime 既有默认线 `master` | `ebb191ae998af6251731f02e28ba16d4ce733fac` | 尚未移动 |
 
 Harness 候选同时包含私有默认线和公开上游。与私有默认线相比，它领先 **6077** 个提交、涉及 **12927** 个文件；与当前公开上游相比，它领先 **61** 个提交、涉及 **236** 个文件。私有默认线与公开上游并非线性关系：两者共同祖先之后，私有默认线独有 2 个提交，上游独有 6018 个提交。`dae159ae1f` 把截至公开上游 `d743267388` 的一波更新并入了 D2 整合，`77cbead5fc` 再把上游 `687f282e86` 并入可视化候选。因此直接快进私有默认线会一次交付大量上游变化及 D2 内部治理代码，不能作为单一 Evidence Manifest 更新审查。
@@ -58,6 +58,7 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 ### P2：私有集成和 D2 内部治理审查
 
 - 将 `packages/subagent/subagent-dsh-runtime`、`packages/subagent/subagent-governance-python`、`packages/llm/llm-deepseek`、CLI 宿主及 `.agents`/`scripts` 治理文件列为独立审查面。确认版本对齐、工具允许表和来源绑定；D2 代码虽在候选中，ExecuteGate 仍未获业务执行声明。
+- 已核对候选两个 Runtime 子代理包均为 `0.2.1-rc.2`；标准 Web 预设在 `delegation` 内提供 `tool-subagent-dsh-runtime`，但明确 `disabled: true`。产品试用 Profile 需另行显式启用并将治理任务限于 `repository_inspection`。Provider 源码的通用任务默认值仍是 `repository_change`，所以不能把仅安装 Bundle 或打开工具行等同于只读部署；必须检查实际 Profile 解析结果。现有安装包只读 Profile 已通过此项入口核对。D2 的 `NOT_CLAIMED` 是独立治理状态，不随这项产品配置改变。
 - 旧 D2 分支另有 5 个和 1 个独有提交；保留原引用，逐项判定是否仍适用。不得为“只留最新分支”强行并入或删除。
 - 将私有治理 CI 对公开上游的影响单独核对，不以产品可视化验收替代 D2 门槛。
 
