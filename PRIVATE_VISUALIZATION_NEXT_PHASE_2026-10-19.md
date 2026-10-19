@@ -1,6 +1,6 @@
 # RC4 私有试用后的下一阶段任务
 
-状态：2026-10-19 的执行顺序。依据 [R9 设计基线](PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md)、[实施清单](RUNTIME_VISUALIZATION_BACKLOG.md)和[完整 Home 并行试用记录](PRIVATE_HOME_STAGE_AND_ROLLBACK_RUNBOOK_2026-10-19.md)。当前不移动默认分支、不删除旧分支、不发布稳定版；D2 ExecuteGate 保持 `NOT_CLAIMED`。
+状态：2026-10-19 的执行顺序。依据 [R9 设计基线](PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md)、[实施清单](RUNTIME_VISUALIZATION_BACKLOG.md)和[完整 Home 并行试用记录](PRIVATE_HOME_STAGE_AND_ROLLBACK_RUNBOOK_2026-10-19.md)。负责人已批准并完成两个私有默认分支的普通快进；尚未切换日常 Home、清理旧分支或发布稳定版；D2 ExecuteGate 保持 `NOT_CLAIMED`。
 
 ## 已关闭的前置项
 
@@ -18,9 +18,11 @@
 | P0 | 固定安全试用入口 | 在独立 Home 中使用专用只读 Profile，验证启动、会话列表、可读历史及关闭服务；给使用者一份不指向旧 `web` Profile 的启动说明 | 已关闭：真实只读调用及三页抽屉通过，临时仓库干净；审计目录入口预检已生效 |
 | P1 | 完成附件和凭据的实际使用验收 | 用独立数据和有引用的附件样本走认证读取与页面展示；核对已完成模型会话的终态、证据和仓库无变化 | 已关闭：有限只读模型调用、真实新会话图片引用、刷新重开后的展示和图片查看层均有现场回执；旧日常 Home 中两张无引用图片仍不算历史附件验收 |
 | P2 | 固定私有发布审查结果 | 对两个候选远端 SHA、默认分支、版本/锁文件、已完成的构建与安装证据、Actions 关闭后的必需门槛逐项签收；仅针对新增差异重验 | 审查已完成：成对 RC4 标签和远端 SHA 相符，本地构建/安装与现场试用有据；两个仓库均无传统保护或 Rulesets，Actions 已关闭，因此没有平台强制检查 |
-| P3 | 决定部署和分支切换 | 前三项关闭后，提交可回退的日常启动与默认分支方案，明确负责人批准点；发布稳定标签和清理旧分支分别决策 | 待负责人决定是否在无平台保护/CI 的前提下按人工门槛推进默认分支；日常 Home、稳定标签和旧分支清理仍分别决策 |
+| P3 | 决定部署和分支切换 | 前三项关闭后，提交可回退的日常启动与默认分支方案，明确负责人批准点；发布稳定标签和清理旧分支分别决策 | 默认分支已按负责人批准快进并复核；日常 Home 切换、稳定版标签和旧分支清理仍分别决策 |
 
 ## 执行约束
+
+**P3 默认分支快进回执（2026-10-19）**：负责人接受 P2 明示的“无生效分支保护、Actions 未运行、Harness 大范围升级”边界后，分别批准两个私有默认分支以普通推送快进。Harness `integration/dsh-runtime-d1-q2-closeout` 从 `60c8f0c813` 到 `819dc46ea795`；Runtime `master` 从 `ebb191ae99` 到 `985237cf39`。推送后远端 `HEAD`、默认分支与候选分支均已核对指向对应新 SHA；两个 RC4 标签仍分别固定 Harness `819dc46`、Runtime 功能源码 `15d871d`，后者到 Runtime 新默认线仅有六份 Markdown 记录变化。没有强推、删分支、发布稳定版或切换日常 Home。两处原工作树的已有改动/未跟踪项仍保留；D2 ExecuteGate 仍为 `NOT_CLAIMED`。本机回执见独立试用目录 `artifacts/RC4_DEFAULT_PROMOTION_2026-10-19.md`；以下 P2 审查段落保留快进前的查询值作为历史证据。
 
 **P2 当前核对（2026-10-19）**：官方 Harness `master` 仍为 `687f282e8625c6b8d11ff58211a90524be2e4317`，是私有候选的祖先，没有新上游提交待合并。Harness 私有默认线仍为 `60c8f0c813a55754338d1e53a655f480a5f62f02`，候选为 `819dc46ea7953598b239a82e25abe7d87c64add3`；Runtime `master` 仍为 `ebb191ae998af6251731f02e28ba16d4ce733fac`，候选文档头部为 `f234880421a1cc180a1fdad0c811726d507f0f46`。私有远端的 RC4 注释标签分别剥离为 Harness `819dc46`、Runtime `15d871d`，与[固定源码表](PRIVATE_VISUALIZATION_TRIAL_2026-10-19_RC4.md#固定源码)一致。Harness 本地归档清单 SHA-256 仍为 `96d85dd6f297fe61c84f4e1f891b728ecb70f2c5d9df57962578523368f88c12`，归档仍为 DSH 345 包和 vendor 9 包；先前的静态检查、正式构建、标准安装及桌面未签名目录包证据继续适用于固定源码。此项是来源和产物存在性复核，没有重跑全套门槛或取得远端 CI 结果。传统分支保护已由下面的设置页回执核对；Rulesets 与离线发布判定完成前，不移动默认分支或发布稳定版。
 

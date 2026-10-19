@@ -1,5 +1,7 @@
 # DSH Runtime 运行可视化开发任务
 
+**私有默认分支快进（2026-10-19）**：负责人在了解两仓无生效分支保护、Actions 已关闭、Harness 与旧默认线差异较大的情况下，批准按人工门槛更新默认分支。Harness 私有默认线已普通快进至 RC4 固定源码 `819dc46ea795`；Runtime `master` 已普通快进至 `985237cf39`，其功能代码与 RC4 标签 `15d871d` 一致，之后仅有 Markdown 文档提交。两处远端 `HEAD` 已复核，无强推、删分支或稳定版发布。原日常 Home 未切换，两个原脏工作树未清理，D2 ExecuteGate 仍为 `NOT_CLAIMED`。后续剩余日常启动迁移、稳定标签与旧分支收拢等独立决策，见[下一阶段任务](PRIVATE_VISUALIZATION_NEXT_PHASE_2026-10-19.md)。
+
 **RC4 只读现场复验（2026-10-19）**：独立完整 Home 的审计目录补齐后，负责人在专用 Web Profile 与独立临时 Git 仓库完成一次真实非 D2 `repository_inspection`。落盘 Manifest `completed`、退出码 0、审计 `settled`；抽屉三页与落盘证据一致，临时仓库干净。首次 `audit_persistence_failed` 已复验关闭；轨迹“不适用”和审查 `UNAVAILABLE` 均按非 D2 原值记录。详见 [RC4 私有试用记录](PRIVATE_VISUALIZATION_TRIAL_2026-10-19_RC4.md) 与 [下一阶段任务](PRIVATE_VISUALIZATION_NEXT_PHASE_2026-10-19.md)。下一优先项是有历史引用附件的实际页面样本，再做发布审查；日常 Home、默认分支和 D2 ExecuteGate 未切换。
 
 状态：已批准的 R9 设计基线之实施清单（2026-10-15）。设计依据：[PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md](PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md)。四项负责人决策均选 A。
