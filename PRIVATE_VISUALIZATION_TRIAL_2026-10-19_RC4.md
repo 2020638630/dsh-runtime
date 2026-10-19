@@ -24,8 +24,16 @@ Harness 在隔离的 `vis-harness-private-integration` 工作树中使用 Node 2
 
 归档位于隔离候选下 `dist/npm-819dc46-vendor` 与 `dist/npm-819dc46-dsh`，逐包 SHA-256 清单位于忽略文件 `dist/npm-819dc46-sha256.txt`，清单 SHA-256 为 `96d85dd6f297fe61c84f4e1f891b728ecb70f2c5d9df57962578523368f88c12`。这三个本地产物路径没有推送；标签固定的是源码。首次 DSH 打包因普通客户端构建缺正式配置被脚本拒绝，随后使用 `--profile official` 重建才完成打包；该首次失败不算归档验收。pnpm 执行前依赖状态检查仍提示本地 `node_modules` 可能与锁文件不同步，冻结锁文件检查及实际门槛均通过；这不等于在全新工作树重装全部开发依赖。
 
+## 负责人页面回执与补充验证
+
+2026-10-19，负责人在已安装 RC4 的独立 `packed-rc4-readonly` Web 中检查了新会话入口和一条**导入的历史只读任务**。入口显示“仅可查看”；历史会话“**一次性只读检查工作区**”的 `dsh_runtime` 行可以打开 Evidence Manifest 抽屉，负责人提供的三张截图分别显示“执行轨迹”“实际变动”“审计”页签。页面显示任务 `completed`、审查判决 `UNAVAILABLE`、轨迹与轮次“不适用”、新增/修改/删除均无、审计 `settled`；这些值与该次 `repository_inspection` 的保存 Manifest 一致。截图副本保存在本机独立试用 Home 的 `artifacts/manual-rc4-page-review/`，不包含访问令牌，未推送到源码仓库。此项是负责人实际浏览器回执，不是自动化浏览器通过记录。
+
+为使保存的历史样本可在 RC4 Web 查看，本轮只向 RC4 试用 Home 复制一条 V4 Session、对应投影缓存和四个证据文件，补入该独立 Home 的工作区会话索引，并将**副本** Manifest 的 `diff_content_ref` 从旧 Home 改为副本 Diff 的绝对路径；旧 Home 的会话与证据保持原样。修正前页面正确显示“终态证据不可用”；修正后认证的证据接口 HTTP **200**，返回 `completed` 和审计 `settled`，负责人随后确认三页签内容。页面回执证明 RC4 安装包能读取并展示此历史只读样本，**不等于在 RC4 上重新执行该任务或模型**。验收服务结束后已停止。
+
+RC4 安装包另使用临时 `--patch` 将 `subagent-dsh-runtime` 设为 `disabled: true`：最终配置解析退出码 **0**、明确显示该行已关闭；同一安装包 Web 启动 HTTP **200**、stderr **0 字节**，服务随后停止。固定 Harness 源码的 V3→V4 转换、JSONL 重启迁移及迁移拒绝路径聚焦测试 **3 文件、158/158 通过**。这些测试覆盖代码路径，不证明用户现有 Home 原地升级与旧版降级；该项仍需在复制的真实旧数据上独立验收。
+
 ## 适用边界与下一步
 
-RC4 相比 RC3 的 Harness 源码只改 9 个文件：发布清单/依赖约束、双语生成模块图、D2 证据脚本中的多余类型断言，以及 Windows Cordis 配置检查器与测试。Runtime 源码未变。此前 RC3 的真实任务、Safe Trace、浏览器页面、只读会话入口和 RC2 往返现场仍属于 RC3 证据；本轮没有在 RC4 上重复模型调用、Manifest 页面目视、provider 关闭开关或跨版本数据迁移验收。若将 RC4 部署给新用户，仍需浏览器核对 Manifest 页面与只读新会话入口，再更新试用指引。
+RC4 相比 RC3 的 Harness 源码只改 9 个文件：发布清单/依赖约束、双语生成模块图、D2 证据脚本中的多余类型断言，以及 Windows Cordis 配置检查器与测试。Runtime 源码未变。此前 RC3 的真实任务、Safe Trace 和 RC2 往返现场仍属于 RC3 证据；本轮补齐了 RC4 安装包对导入历史样本的页面目视、只读入口与 provider 关闭验证，但没有在 RC4 上重复模型调用或完成用户现有 Home 的原地迁移与跨版回退验收。
 
 接下来按 [私有默认线升级审查与发布顺序](PRIVATE_DEFAULT_UPGRADE_PLAN_2026-10-18.md) 的 P1/P2 审查大范围上游与 D2 内部治理差异；确认默认线的分支保护和离线发布门槛由负责人单独决策。两个原工作树的未提交改动与未跟踪文件继续保留；不清理、重置或覆盖。D2 ExecuteGate 保持 `NOT_CLAIMED`。
