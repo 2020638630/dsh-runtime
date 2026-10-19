@@ -171,4 +171,6 @@ D2 ExecuteGate 是调用前资格评估，保持 `NOT_CLAIMED`。本清单不创
 
 **下一步顺序（2026-10-19 更新）**：完整 Home 备份、RC4 副本迁移与 RC3 快照回退已完成；见[下一阶段优先队列](PRIVATE_VISUALIZATION_NEXT_PHASE_2026-10-19.md)。先固定安全试用入口与有引用附件/凭据的实际使用验收，再审查两个私有默认线及 Actions 关闭后的发布门槛，最后分别决定日常启动、默认分支和稳定标签。旧 Profile 原样启动、完整凭据功能与有引用附件页面尚未通过，不能据此宣称日常 Home 原地升级或桌面稳定版发布。
 
+**实际只读试用阻断与局部修复**：负责人首次从专用 RC4 Web 在干净临时仓库发起 `repository_inspection`，子代理被 `audit_persistence_failed` 拒绝，任务未执行。诊断确认独立 Home 的审计文件父目录缺失，而 Runtime 审计 sink 要求它预先存在；已在**独立 Home** 建立 `audit` 目录、验证写入权限，并给本机入口加目录预检。临时仓库仍干净；修复后尚未重新调用，故此项继续开放。详情见[RC4 试用证据](PRIVATE_VISUALIZATION_TRIAL_2026-10-19_RC4.md)。
+
 **仓库边界**：Runtime 私有候选上次已推送提交 `842a109`；Harness 私有 RC4 固定源码 `819dc46`，两个默认分支与标签未移动。两个原工作树的未提交改动和未跟踪文件继续保留；不清理、重置或覆盖。GitHub Actions 保持关闭，D2 ExecuteGate 保持 `NOT_CLAIMED`。
