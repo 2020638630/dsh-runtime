@@ -157,8 +157,10 @@ D2 ExecuteGate 是调用前资格评估，保持 `NOT_CLAIMED`。本清单不创
 
 **官方与桌面端状态**：公开 Harness `master` 仍为 `687f282e86`，已在私有 RC4 候选 `819dc46` 的祖先链内，无新官方 `master` 提交可合并。候选 Desktop 构建和三组聚焦测试 136/136 通过。官方 Electron 与锁定依赖在本地逐一校验 SHA-256 后，独立无凭据示例配置的 Windows 未签名目录包已完整构建；最新打包记录 `result.json` 为 `success=true`，打包后运行自检通过，目录包在 `D:\DeepSeekHarness\vis-harness-private-integration\apps\desktop\.desktop-build\targets\win-x64\unsigned-artifacts\win-unpacked`。直接从本机 D 盘源码工作树打开 GUI 时，Electron 因 AppContainer 路径读取 ACL 在窗口加载前退出；给目录包根增加读取权限及试用 `--no-sandbox` 后仍同样失败。此前下载中断与这次 GUI 失败记录均保留。未运行安装器、上传或发布，也尚无负责人桌面页面回执；共享 Web 预设中的 Runtime provider 仍默认关闭。
 
-**桌面启动补验**：目录包另复制到 `C:\Program Files\DeepSeek Harness RC4 Trial` 专用位置。在正常本机进程环境使用独立 `DSH_HOME` 启动，Desktop 进程保持运行，独立桌面 Profile 与会话目录已创建，内置 Web 认证页面 HTTP 200、HTML 38,244 字节、启动 stderr 0。受限进程环境即使在此位置仍报 ACL 错误，属当前验收环境差异。负责人桌面窗口截图、只读 Runtime provider 接入和桌面 Manifest 抽屉仍待验收；不得把本次启动写成桌面页面通过。
+**桌面启动补验**：目录包另复制到 `C:\Program Files\DeepSeek Harness RC4 Trial` 专用位置。在正常本机进程环境使用独立 `DSH_HOME` 启动，Desktop 进程保持运行，独立桌面 Profile 与会话目录已创建，内置 Web 认证页面 HTTP 200、HTML 38,244 字节、启动 stderr 0。受限进程环境即使在此位置仍报 ACL 错误，属当前验收环境差异。该时点尚无桌面窗口截图和 Manifest 抽屉回执；不得把后端启动写成桌面页面通过。
 
-**下一步顺序**：① 负责人核对已启动的 RC4 桌面窗口；随后把受控只读 Runtime provider 接入独立 Desktop Profile，导入已验收历史样本，再做桌面 Manifest 页面回执。② 对复制 Home 制定完整迁移与可恢复快照步骤，并补附件有引用样本，验收后才考虑日常 Home 维护窗口。③ 每次合并前重新读取官方远端 SHA；若前移则在独立分支集成、测试与适配。不得据当前结果宣称整 Home 原地升级、完整旧版回退或桌面版发布通过。
+**桌面历史证据补验**：负责人截图确认 RC4 桌面新会话页和侧栏实际显示。在独立 Desktop Home 添加已验收的 provider 本地链接，配置只读非 D2 治理，把此前已核对的历史会话、投影缓存和证据复制到此 Home，合并工作区索引并修正副本 Diff 引用。重启后 Desktop 启动 stderr 0，认证证据接口 HTTP 200、Manifest `completed`；没有发送新消息或调用模型。三个抽屉页签的桌面目视回执仍待负责人提供。
+
+**下一步顺序**：① 负责人在已运行的 RC4 桌面窗口打开导入的历史任务，核对 Manifest 抽屉三个页签并回传截图。② 对复制 Home 制定完整迁移与可恢复快照步骤，并补附件有引用样本，验收后才考虑日常 Home 维护窗口。③ 每次合并前重新读取官方远端 SHA；若前移则在独立分支集成、测试与适配。不得据当前结果宣称整 Home 原地升级、完整旧版回退或桌面版发布通过。
 
 **仓库边界**：Runtime 私有候选上次已推送提交 `842a109`；Harness 私有 RC4 固定源码 `819dc46`，两个默认分支与标签未移动。两个原工作树的未提交改动和未跟踪文件继续保留；不清理、重置或覆盖。GitHub Actions 保持关闭，D2 ExecuteGate 保持 `NOT_CLAIMED`。

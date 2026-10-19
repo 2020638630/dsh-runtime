@@ -56,6 +56,8 @@ RC4 安装包另使用临时 `--patch` 将 `subagent-dsh-runtime` 设为 `disabl
 
 **正常本机进程环境启动补验**：把上述目录包复制到 `C:\Program Files\DeepSeek Harness RC4 Trial` 专用位置。在受限进程环境里直接启动仍遇到相同 ACL 错误；以正常本机进程环境、独立 `D:\DeepSeekHarness\vis-trial-rc4-home\desktop-programfiles-trial-20261019c` 作为 `DSH_HOME` 与 Electron 用户数据目录启动后，Desktop 进程保持运行，创建独立 `profiles/desktop`、`sessions` 和 `storages`，启动 stderr **0 字节**，其内置 Web 认证页面 HTTP **200**、HTML **38,244 字节**。此项证明安装位置与正常进程环境下的首次启动和后端页面可用；窗口内容尚待负责人截图确认，桌面 Profile 尚未接入只读 Runtime provider，也未在桌面端查看 Manifest 抽屉。
 
+**桌面窗口与历史证据联动**：负责人随后提供截图，确认专用 RC4 Desktop 新会话页、侧栏和工作区选择器实际显示。关闭空白试用窗口后，只在该独立 Desktop Home 安装已验收的 RC4 provider 链接，配置父会话只读、非 D2 `repository_inspection`、独立审计与证据目录；将此前负责人已核对的两条历史会话及投影缓存复制入独立 Home，增量合并工作区索引，并把复制 Manifest 的 Diff 路径指向复制的 Diff。首次从本地归档直接添加 provider 时，包管理器因私有依赖在 npmmirror 返回 404 而失败，Profile 未改；改用已验收消费者目录中的本地链接安装成功。Desktop 重启后启动 stderr **0 字节**，其认证证据接口 HTTP **200**、返回 `manifest.status=completed`。这是打包桌面后端读取导入历史样本的证据；三个抽屉页签仍待负责人在桌面窗口目视回执。没有发送新会话消息或调用模型。
+
 ## 适用边界与下一步
 
 RC4 相比 RC3 的 Harness 源码只改 9 个文件：发布清单/依赖约束、双语生成模块图、D2 证据脚本中的多余类型断言，以及 Windows Cordis 配置检查器与测试。Runtime 源码未变。此前 RC3 的真实任务、Safe Trace 和 RC2 往返现场仍属于 RC3 证据；本轮补齐了 RC4 安装包对导入历史样本的页面目视、只读入口、provider 关闭验证及一条真实 V3 会话的隔离迁移抽样，但没有在 RC4 上重复模型调用或完成用户现有 Home 的整体原地迁移与跨版回退验收。
