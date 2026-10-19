@@ -56,7 +56,7 @@ RC4 安装包另使用临时 `--patch` 将 `subagent-dsh-runtime` 设为 `disabl
 
 **正常本机进程环境启动补验**：把上述目录包复制到 `C:\Program Files\DeepSeek Harness RC4 Trial` 专用位置。在受限进程环境里直接启动仍遇到相同 ACL 错误；以正常本机进程环境、独立 `D:\DeepSeekHarness\vis-trial-rc4-home\desktop-programfiles-trial-20261019c` 作为 `DSH_HOME` 与 Electron 用户数据目录启动后，Desktop 进程保持运行，创建独立 `profiles/desktop`、`sessions` 和 `storages`，启动 stderr **0 字节**，其内置 Web 认证页面 HTTP **200**、HTML **38,244 字节**。此项证明安装位置与正常进程环境下的首次启动和后端页面可用；窗口内容尚待负责人截图确认，桌面 Profile 尚未接入只读 Runtime provider，也未在桌面端查看 Manifest 抽屉。
 
-**桌面窗口与历史证据联动**：负责人随后提供截图，确认专用 RC4 Desktop 新会话页、侧栏和工作区选择器实际显示。关闭空白试用窗口后，只在该独立 Desktop Home 安装已验收的 RC4 provider 链接，配置父会话只读、非 D2 `repository_inspection`、独立审计与证据目录；将此前负责人已核对的两条历史会话及投影缓存复制入独立 Home，增量合并工作区索引，并把复制 Manifest 的 Diff 路径指向复制的 Diff。首次从本地归档直接添加 provider 时，包管理器因私有依赖在 npmmirror 返回 404 而失败，Profile 未改；改用已验收消费者目录中的本地链接安装成功。Desktop 重启后启动 stderr **0 字节**，其认证证据接口 HTTP **200**、返回 `manifest.status=completed`。这是打包桌面后端读取导入历史样本的证据；三个抽屉页签仍待负责人在桌面窗口目视回执。没有发送新会话消息或调用模型。
+**桌面窗口与历史证据联动**：负责人随后提供截图，确认专用 RC4 Desktop 新会话页、侧栏和工作区选择器实际显示。关闭空白试用窗口后，只在该独立 Desktop Home 安装已验收的 RC4 provider 链接，配置父会话只读、非 D2 `repository_inspection`、独立审计与证据目录；将此前负责人已核对的两条历史会话及投影缓存复制入独立 Home，增量合并工作区索引，并把复制 Manifest 的 Diff 路径指向复制的 Diff。首次从本地归档直接添加 provider 时，包管理器因私有依赖在 npmmirror 返回 404 而失败，Profile 未改；改用已验收消费者目录中的本地链接安装成功。Desktop 重启后启动 stderr **0 字节**，其认证证据接口 HTTP **200**、返回 `manifest.status=completed`。负责人随后在桌面窗口提供三张抽屉截图：执行轨迹显示状态和轮次均“不适用”；实际变动显示运行窗口内未观察到文件变化，新增、修改、删除均无；审计显示 `settled`、调用 ID 与输出摘要，审查判决 `UNAVAILABLE`。这些值与导入 Manifest 一致。截图副本保存在独立试用 Home 的 `artifacts/manual-rc4-desktop-page-review/`，不推送至源码仓库。此项是负责人实际桌面页面回执；历史任务在本轮仅被导入和读取，没有发送新会话消息或调用模型。
 
 ## 适用边界与下一步
 
