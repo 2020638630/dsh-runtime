@@ -21,7 +21,7 @@
 
 ## 执行约束
 
-- 本机试用入口为 `D:\DeepSeekHarness\vis-trial-rc4-home\artifacts\START_RC4_READONLY_TRIAL.cmd`。双击后通过已安装 RC4、独立完整 Home 和专用只读 Profile 启动本机 Web，浏览器应自动打开；关闭前用 `Ctrl+C` 停止。仅在试用会话中选择临时 Git 仓库，不把两个源码仓库设为任务工作区。启动本身不调用模型；发送消息前需明确该次任务内容。
+- 本机试用入口为 `D:\DeepSeekHarness\vis-trial-rc4-home\artifacts\START_RC4_READONLY_TRIAL.cmd`。双击后通过已安装 RC4、独立完整 Home 和专用只读 Profile 启动本机 Web，浏览器应自动打开；关闭前用 `Ctrl+C` 停止。试用工作区已在 `D:\DeepSeekHarness\vis-rc4-readonly-usage-20261019` 新建并提交初始 README，`main` 分支干净；仅在试用会话中选择该仓库，不把两个源码仓库设为任务工作区。启动本身不调用模型；发送消息前需明确该次任务内容。
 - 优先在独立 Home、独立临时 Git 仓库完成 P0/P1；日常 Home 保持原状。凭据内容、备份 Manifest 和用户截图只留本机，不进入 Git。
 - 若官方 `master` 后续前移，先在隔离候选中合并新提交并审查差异，再做受影响范围的适配验收；已通过的历史证据不无故重跑。
 - 两个原工作树的已跟踪改动和未跟踪文件保留；不清理、不重置、不覆盖。旧 D2 分支继续留作内部治理审查，不能因“只留最新”而直接删除。
