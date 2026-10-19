@@ -32,8 +32,12 @@ Harness 在隔离的 `vis-harness-private-integration` 工作树中使用 Node 2
 
 RC4 安装包另使用临时 `--patch` 将 `subagent-dsh-runtime` 设为 `disabled: true`：最终配置解析退出码 **0**、明确显示该行已关闭；同一安装包 Web 启动 HTTP **200**、stderr **0 字节**，服务随后停止。固定 Harness 源码的 V3→V4 转换、JSONL 重启迁移及迁移拒绝路径聚焦测试 **3 文件、158/158 通过**。这些测试覆盖代码路径，不证明用户现有 Home 原地升级与旧版降级；该项仍需在复制的真实旧数据上独立验收。
 
+**复制的旧数据迁移抽样（2026-10-19）**：只读盘点日常 `C:\Users\Administrator\.dsh`，其中有 21 条 V3 和 8 条 V4 压缩 Session；未复制或读取凭据。选择其中一条 16,674 字节的 V3 Session，仅将该文件按原相对路径复制到 `D:\DeepSeekHarness\vis-trial-rc4-home\artifacts\legacy-v3-session-migration`，源与副本 SHA-256 一致。固定 RC4 的 JSONL persistence 对副本只读打开得到 V4 逻辑头与 19 条事件；写入打开生成 15,494 字节的 V4 继任文件，重新挂载后仍可读到 V4 与 19 条事件；前后 V3 副本 SHA-256 不变。全过程无模型调用，未写日常 Home。这是**一条真实旧会话的隔离迁移抽样**，不是全部 21 条或整个 Home 的迁移通过。
+
+另将日常 `profiles/web` 的四个非凭据文本文件复制到独立测试 Home，用已安装 RC4 CLI 解析旧 Profile，退出码 **0**；stderr 提示旧 `cordis.patch.yml` 中的 `agent-presets` 补丁条目未找到。最终配置中的 Runtime provider 只有 `runtimeRoot`，缺少当前试用所需治理与证据路径。故解析成功不代表旧 Profile 可直接启动为受控只读产品配置；未用该配置启动服务或调用模型，也未在原 Home 改配置。跨版回退尚未用旧版二进制加升级后 Home 验证；当前安全回退路径仍是保留升级前 Home 快照，并用旧版整包在**独立恢复副本**上验证读取。
+
 ## 适用边界与下一步
 
-RC4 相比 RC3 的 Harness 源码只改 9 个文件：发布清单/依赖约束、双语生成模块图、D2 证据脚本中的多余类型断言，以及 Windows Cordis 配置检查器与测试。Runtime 源码未变。此前 RC3 的真实任务、Safe Trace 和 RC2 往返现场仍属于 RC3 证据；本轮补齐了 RC4 安装包对导入历史样本的页面目视、只读入口与 provider 关闭验证，但没有在 RC4 上重复模型调用或完成用户现有 Home 的原地迁移与跨版回退验收。
+RC4 相比 RC3 的 Harness 源码只改 9 个文件：发布清单/依赖约束、双语生成模块图、D2 证据脚本中的多余类型断言，以及 Windows Cordis 配置检查器与测试。Runtime 源码未变。此前 RC3 的真实任务、Safe Trace 和 RC2 往返现场仍属于 RC3 证据；本轮补齐了 RC4 安装包对导入历史样本的页面目视、只读入口、provider 关闭验证及一条真实 V3 会话的隔离迁移抽样，但没有在 RC4 上重复模型调用或完成用户现有 Home 的整体原地迁移与跨版回退验收。
 
 接下来按 [私有默认线升级审查与发布顺序](PRIVATE_DEFAULT_UPGRADE_PLAN_2026-10-18.md) 的 P1/P2 审查大范围上游与 D2 内部治理差异；确认默认线的分支保护和离线发布门槛由负责人单独决策。两个原工作树的未提交改动与未跟踪文件继续保留；不清理、重置或覆盖。D2 ExecuteGate 保持 `NOT_CLAIMED`。

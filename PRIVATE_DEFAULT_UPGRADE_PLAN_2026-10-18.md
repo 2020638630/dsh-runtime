@@ -62,6 +62,8 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 
 **RC4 页面与关闭开关补验（2026-10-19，取代上段的页面待验状态）**：负责人使用自己的浏览器对已安装 RC4 的独立只读 Profile 提供截图回执：新会话入口“仅可查看”；导入的一条历史只读 Session 的 Evidence Manifest 抽屉三页签均可打开，显示 `completed`、`UNAVAILABLE`、轨迹/轮次不适用、工作区零变化和审计 `settled`。导入时只复制到 RC4 试用 Home，并修正副本 Manifest 的绝对 Diff 路径；原历史 Home 不变。补验的是**历史样本的 RC4 页面读取与展示**，不是 RC4 的新模型调用。另在临时覆盖层关闭 Runtime provider，RC4 最终配置解析退出 0、Web HTTP 200、stderr 0；服务已停止。Harness V3→V4 转换、JSONL 重启迁移和拒绝路径的聚焦测试 **158/158** 通过。具体来源与边界见 [RC4 试用证据](PRIVATE_VISUALIZATION_TRIAL_2026-10-19_RC4.md)。下一步保留两项独立任务：在复制的真实旧 Home 上验证原地迁移、旧版回退及 Profile 补丁兼容；核对默认线保护规则与远端 SHA 后再作发布决定。Actions 仍关闭，远端 CI 仍未运行。
 
+**旧 Home 复制数据抽样（2026-10-19）**：日常 Home 的 21 条 V3、8 条 V4 Session 中，一条 V3 已在独立测试 Home 用 RC4 persistence 完成读取、生成 V4 继任文件及重启读回；原 V3 文件和副本前后哈希不变。旧 Web Profile 的非凭据文本副本可被 RC4 CLI 解析，但出现 `agent-presets` 补丁目标未找到警告，Runtime provider 仍只有 `runtimeRoot`。因此继续将**全 Home 原地升级、旧 Profile 受控启动、旧版二进制回退读取**列为未完成。下一步先在独立副本补齐兼容 Profile 并做不调用模型的启动检查；再对升级前快照与旧版整包做独立恢复演练。真正切换日常 Home 前须确认停机窗口和可验证备份，不能把 V3 文件仍在解释成旧版可直接读取混合代 Home。证据细节见 [RC4 试用证据](PRIVATE_VISUALIZATION_TRIAL_2026-10-19_RC4.md)。
+
 **分支保护现场提示**：负责人提供的 2026-10-18 内置浏览器截图显示 Runtime 私有仓库 `master` 页面提示 `Your master branch isn't protected`。这是截图观察，尚未通过仓库设置或平台接口独立复核；默认线切换前须确认 `master` 的保护规则与实际 required checks，并先建立适合私有发布的保护策略。不要把截图提示误写成 Harness 私有默认线的状态。
 
 ## 按顺序推进的审查批次
