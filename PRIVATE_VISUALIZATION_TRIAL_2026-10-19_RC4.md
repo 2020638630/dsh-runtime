@@ -42,6 +42,10 @@ RC4 安装包另使用临时 `--patch` 将 `subagent-dsh-runtime` 设为 `disabl
 
 **官方 Desktop 来源与聚焦检查**：2026-10-19 直接查询官方 `deepseek-ai/deepseek-harness` 远端 `master`，仍为 `687f282e86`，且该提交是私有 RC4 `819dc46` 的祖先；官方 Desktop 源码已经在候选中，本轮没有新的官方 `master` 提交可合并。候选的 `apps/desktop` 构建通过，Desktop bundle imports、Profile MCP、main startup 三组聚焦测试 **136/136 通过**；首次构建因子进程落到 Node 20 缺 `node:sqlite`，改为全程 Node 24 后受限环境拒绝启动 Git 子进程，最终在已授权的正常进程环境通过。测试第一次同样受限于进程启动，正常环境复验通过。共享 Web 预设中的 `dsh_runtime` 工具仍为 `disabled: true`，Desktop 尚未安装独立只读 Runtime provider 或完成打包后 Manifest 页面验收。构建与聚焦测试不等于桌面安装包可用。
 
+**旧版完整 Web 恢复烟测**：从旧私有默认线固定提交 `60c8f0c813` 新建 `D:\DeepSeekHarness\vis-harness-v3-rollback` 独立工作树，按其 pnpm 11.7.0 锁文件安装依赖。旧仓库完整构建在 Host 类型检查处出现 19 个旧 D2 子代理测试夹具错误；随后只为恢复诊断按原打包配置分别生成 Host、Client 和 Web 运行文件，不把该绕过类型检查的产物称为合格发布包。CLI 报 `0.1.5-rc.1`。它在另建的、只含一条原始 V3 会话的隔离 Home 上无模型启动 Web，认证页面 HTTP **200**、HTML **27,659 字节**、启动 stderr **0 字节**，停止后端口关闭，来源 V3 与副本哈希仍一致。首次尝试查看旧 Web 帮助时未设置隔离 `DSH_HOME`，CLI 试图准备日常 Home 的配置文件，被沙箱 `EPERM` 在写入前阻断；随后所有旧版 CLI 调用均显式设置隔离 Home。此烟测证明旧版完整 Web 壳可从一条 V3 恢复副本启动，未验证旧 Profile、自带的 8 条 V4、索引、附件或历史页面读取。
+
+**RC4 受控 Profile 与旧 Session 文件同场启动**：另建 `artifacts/legacy-rc4-profile-reconciled-20261019`，只从日常 Home 复制 21 个 V3、8 个 V4 压缩 Session 文件，不复制凭据；从已验收的 RC4 只读 Profile 复制配置，并把审计和证据路径改到这个独立 Home。因 Profile 换位置，锁文件中的链接相对路径需在副本内重新计算。最终配置解析退出 **0**、stderr **0**，父会话 `read-only`，治理 v2 只启用 `repository_inspection`。首次受限启动的治理 worker 报 `spawn EPERM`，不计入通过；正常权限复验的 Web 认证页面 HTTP **200**、HTML **37,448 字节**、启动 stderr **0 字节**。29 份 Session 副本与日常源文件 SHA-256 均一致，服务和端口随后关闭。此项只证明配置与旧数据文件同场可启动，未在页面逐条打开会话、未迁移完整 Home，也未调用模型。旧 `agent-presets` 中的 `standard-codex` 在 RC4 新预设中不存在；迁移路线是保留旧 Profile 原件，建立受控新 Profile，并单独决定替代预设，不直接套用旧补丁。
+
 ## 适用边界与下一步
 
 RC4 相比 RC3 的 Harness 源码只改 9 个文件：发布清单/依赖约束、双语生成模块图、D2 证据脚本中的多余类型断言，以及 Windows Cordis 配置检查器与测试。Runtime 源码未变。此前 RC3 的真实任务、Safe Trace 和 RC2 往返现场仍属于 RC3 证据；本轮补齐了 RC4 安装包对导入历史样本的页面目视、只读入口、provider 关闭验证及一条真实 V3 会话的隔离迁移抽样，但没有在 RC4 上重复模型调用或完成用户现有 Home 的整体原地迁移与跨版回退验收。
