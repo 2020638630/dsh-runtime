@@ -52,6 +52,10 @@ RC4 安装包另使用临时 `--patch` 将 `subagent-dsh-runtime` 设为 `disabl
 
 **Windows Desktop 未签名目录包（2026-10-19）**：官方 Electron `44.7.0` 与锁定的 Node/Python/Wheel 依赖均按固定来源下载并核对 SHA-256，写入独立打包缓存；先前的直连下载 `ECONNRESET` 不再阻断。使用独立无凭据示例配置和 Node 24，`package:win:x64:dir --unsigned` 完整运行成功；打包记录 `2026-10-19T07-11-40.770Z` 的 `result.json` 标记 `success=true`，源码构建、354 个 DSH 与 9 个 vendor 归档、runtime 准备、Electron 打包及打包后运行自检均通过。产物位于私有 Harness 候选工作树 `apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/`，其中 `DeepSeek Harness.exe` 与 `resources/app.asar` 均存在。本轮未安装或发布桌面版，也未取得负责人桌面页面回执；共享 Web 预设的 Runtime provider 仍为 `disabled: true`，不能把目录包自检写成 Desktop Manifest 页面验收。
 
+**目录包 GUI 启动边界**：在独立 `DSH_HOME` 和 Electron 用户数据目录中直接打开上述未签名目录包时，Electron 在窗口加载前退出，stderr 指向 Windows AppContainer 对该 D 盘工作树目录的读取 ACL。仅给目录包根增加 `ALL APPLICATION PACKAGES` 读取权限后复验仍报同一错误；`--no-sandbox` 也未改变结果。原日常 Home 没有被选为启动目录。该故障发生在本机源码工作树的目录包启动环境，不推翻打包后运行自检，也不能据此宣称 GUI 启动通过。后续应在专用安装或复制位置核对完整路径权限，再由负责人进行桌面页面验收。
+
+**正常本机进程环境启动补验**：把上述目录包复制到 `C:\Program Files\DeepSeek Harness RC4 Trial` 专用位置。在受限进程环境里直接启动仍遇到相同 ACL 错误；以正常本机进程环境、独立 `D:\DeepSeekHarness\vis-trial-rc4-home\desktop-programfiles-trial-20261019c` 作为 `DSH_HOME` 与 Electron 用户数据目录启动后，Desktop 进程保持运行，创建独立 `profiles/desktop`、`sessions` 和 `storages`，启动 stderr **0 字节**，其内置 Web 认证页面 HTTP **200**、HTML **38,244 字节**。此项证明安装位置与正常进程环境下的首次启动和后端页面可用；窗口内容尚待负责人截图确认，桌面 Profile 尚未接入只读 Runtime provider，也未在桌面端查看 Manifest 抽屉。
+
 ## 适用边界与下一步
 
 RC4 相比 RC3 的 Harness 源码只改 9 个文件：发布清单/依赖约束、双语生成模块图、D2 证据脚本中的多余类型断言，以及 Windows Cordis 配置检查器与测试。Runtime 源码未变。此前 RC3 的真实任务、Safe Trace 和 RC2 往返现场仍属于 RC3 证据；本轮补齐了 RC4 安装包对导入历史样本的页面目视、只读入口、provider 关闭验证及一条真实 V3 会话的隔离迁移抽样，但没有在 RC4 上重复模型调用或完成用户现有 Home 的整体原地迁移与跨版回退验收。
