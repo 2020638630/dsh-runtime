@@ -161,6 +161,8 @@ D2 ExecuteGate 是调用前资格评估，保持 `NOT_CLAIMED`。本清单不创
 
 **日常 Home 并行试用准备**：已整理[完整备份、并行迁移与回退操作清单](PRIVATE_HOME_STAGE_AND_ROLLBACK_RUNBOOK_2026-10-19.md)，拟在维护窗口先对日常 Home 做包含凭据的 Git 仓库外备份和逐文件哈希核对，再以副本进行 RC4 迁移及 RC3 快照回退；尚未读取凭据内容、复制完整日常 Home 或切换默认启动。
 
+**完整 Home 并行试用与回退执行（2026-10-19，更新上段状态）**：负责人选择当前维护窗口后，日常 Home 的 88 个文件及 515 个依赖链接已完整备份到受限的 Git 仓库外目录，备份前后路径、大小、SHA-256 和链接元数据逐项一致；包含凭据但未读取其内容。两个权限受限的独立完整副本分别用于 RC4 与 RC3，无一写回日常 Home。RC4 专用只读 Profile 解析通过，迁移前后 Web 均 HTTP 200、列表 33/33；副本内 33 条 Session 迁移与重读全通过，新增 25 个 V4，第二遍新增 0，原有 88 个文件哈希不变。RC3 已安装包配合另一份升级前完整副本，Web HTTP 200、列表 33/33，底层只读打开 33/33，原文件变化 0。两个 Web 服务均已停止。凭据实际功能、旧 Profile 原样启动、有引用附件的页面展示、日常默认启动与稳定发布仍未验收。详见[执行清单](PRIVATE_HOME_STAGE_AND_ROLLBACK_RUNBOOK_2026-10-19.md)；D2 ExecuteGate `NOT_CLAIMED`。
+
 **官方与桌面端状态**：公开 Harness `master` 仍为 `687f282e86`，已在私有 RC4 候选 `819dc46` 的祖先链内，无新官方 `master` 提交可合并。候选 Desktop 构建和三组聚焦测试 136/136 通过。官方 Electron 与锁定依赖在本地逐一校验 SHA-256 后，独立无凭据示例配置的 Windows 未签名目录包已完整构建；最新打包记录 `result.json` 为 `success=true`，打包后运行自检通过，目录包在 `D:\DeepSeekHarness\vis-harness-private-integration\apps\desktop\.desktop-build\targets\win-x64\unsigned-artifacts\win-unpacked`。直接从本机 D 盘源码工作树打开 GUI 时，Electron 因 AppContainer 路径读取 ACL 在窗口加载前退出；给目录包根增加读取权限及试用 `--no-sandbox` 后仍同样失败。此前下载中断与这次 GUI 失败记录均保留。未运行安装器、上传或发布，也尚无负责人桌面页面回执；共享 Web 预设中的 Runtime provider 仍默认关闭。
 
 **桌面启动补验**：目录包另复制到 `C:\Program Files\DeepSeek Harness RC4 Trial` 专用位置。在正常本机进程环境使用独立 `DSH_HOME` 启动，Desktop 进程保持运行，独立桌面 Profile 与会话目录已创建，内置 Web 认证页面 HTTP 200、HTML 38,244 字节、启动 stderr 0。受限进程环境即使在此位置仍报 ACL 错误，属当前验收环境差异。该时点尚无桌面窗口截图和 Manifest 抽屉回执；不得把后端启动写成桌面页面通过。
