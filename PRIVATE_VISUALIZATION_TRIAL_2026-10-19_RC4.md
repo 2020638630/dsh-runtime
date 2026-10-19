@@ -34,7 +34,13 @@ RC4 安装包另使用临时 `--patch` 将 `subagent-dsh-runtime` 设为 `disabl
 
 **复制的旧数据迁移抽样（2026-10-19）**：只读盘点日常 `C:\Users\Administrator\.dsh`，其中有 21 条 V3 和 8 条 V4 压缩 Session；未复制或读取凭据。选择其中一条 16,674 字节的 V3 Session，仅将该文件按原相对路径复制到 `D:\DeepSeekHarness\vis-trial-rc4-home\artifacts\legacy-v3-session-migration`，源与副本 SHA-256 一致。固定 RC4 的 JSONL persistence 对副本只读打开得到 V4 逻辑头与 19 条事件；写入打开生成 15,494 字节的 V4 继任文件，重新挂载后仍可读到 V4 与 19 条事件；前后 V3 副本 SHA-256 不变。全过程无模型调用，未写日常 Home。这是**一条真实旧会话的隔离迁移抽样**，不是全部 21 条或整个 Home 的迁移通过。
 
+**全部 V3 会话副本补验**：另建 `artifacts/legacy-v3-batch-20261019`，只复制上述日常 Home 的 21 个 V3 文件，逐条用 RC4 persistence 完成读取、写入 V4 继任文件、重新挂载读回：**21/21 通过**，生成 21 个 V4 文件，事件数范围 19–1615；21 个日常 V3 文件与副本的 SHA-256 在验收后仍相同。第一次批量调用把 persistence 根目录误设为测试 Home 而非其 `sessions` 子目录，出现 21 个 `NotFound`，保留原始失败摘要；修正参数后的通过摘要也留在独立测试 Home。此项验证全部已发现 V3 文件的 Session 格式迁移，但仍未覆盖 Profile、索引、投影缓存、附件、凭据及旧版整包回退。
+
 另将日常 `profiles/web` 的四个非凭据文本文件复制到独立测试 Home，用已安装 RC4 CLI 解析旧 Profile，退出码 **0**；stderr 提示旧 `cordis.patch.yml` 中的 `agent-presets` 补丁条目未找到。最终配置中的 Runtime provider 只有 `runtimeRoot`，缺少当前试用所需治理与证据路径。故解析成功不代表旧 Profile 可直接启动为受控只读产品配置；未用该配置启动服务或调用模型，也未在原 Home 改配置。跨版回退尚未用旧版二进制加升级后 Home 验证；当前安全回退路径仍是保留升级前 Home 快照，并用旧版整包在**独立恢复副本**上验证读取。
+
+**旧版读取组件回退探针**：从官方 npm 仓库将 `@deepseek-ai/dsh-session-persistence-jsonl`、`dsh-session`、格式转换等会话组件固定安装为 `0.1.5-rc.1`，Cordis 固定为 `4.0.2`，置于独立消费者目录；没有使用候选源码的工作区依赖。第一次消费者安装解析出候选源码的本地依赖和较新的传递依赖，已弃用，不计入回退证据；最终从新的独立目录安装并核对版本。用同一条真实旧会话分别制作“仅升级前 V3”和“V3 加 RC4 生成的 V4”两个副本。旧版组件对前者只读打开得到 V3、19 条事件；对后者返回 `SessionFormatUnsupportedError`，明确指出该版本只读 V3、遇到 V4 需升级；两组文件前后哈希不变。这个实测确认**只降级程序而保留混合代 Home 不可作为回退方案**，升级前快照恢复才是候选路径；但它只验证旧会话读取组件的一条样本，尚未验证完整旧版 CLI/Web、Profile、索引与附件恢复。日常 Home 本来已有 8 条 V4，会进一步限制旧版整包的全量读取能力。
+
+**官方 Desktop 来源与聚焦检查**：2026-10-19 直接查询官方 `deepseek-ai/deepseek-harness` 远端 `master`，仍为 `687f282e86`，且该提交是私有 RC4 `819dc46` 的祖先；官方 Desktop 源码已经在候选中，本轮没有新的官方 `master` 提交可合并。候选的 `apps/desktop` 构建通过，Desktop bundle imports、Profile MCP、main startup 三组聚焦测试 **136/136 通过**；首次构建因子进程落到 Node 20 缺 `node:sqlite`，改为全程 Node 24 后受限环境拒绝启动 Git 子进程，最终在已授权的正常进程环境通过。测试第一次同样受限于进程启动，正常环境复验通过。共享 Web 预设中的 `dsh_runtime` 工具仍为 `disabled: true`，Desktop 尚未安装独立只读 Runtime provider 或完成打包后 Manifest 页面验收。构建与聚焦测试不等于桌面安装包可用。
 
 ## 适用边界与下一步
 
