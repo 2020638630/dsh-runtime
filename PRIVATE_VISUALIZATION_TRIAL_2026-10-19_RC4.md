@@ -60,6 +60,8 @@ RC4 安装包另使用临时 `--patch` 将 `subagent-dsh-runtime` 设为 `disabl
 
 **负责人实际只读试用首次回执（2026-10-19）**：在新建且干净的 `D:\DeepSeekHarness\vis-rc4-readonly-usage-20261019` 临时 Git 仓库，负责人从专用 RC4 Web 发出一次 `dsh_runtime` 的 `repository_inspection` 请求。截图显示父会话已返回，但子代理被治理层以 `audit_persistence_failed` 拒绝，检查任务未执行；临时仓库随后核对仍干净。现场独立 Home 的 `auditPath` 为副本内 `audit/packed-rc4-readonly.jsonl`，但 `audit` 父目录不存在；Runtime 的 `AppendOnlyJsonlAuditSink.persist` 明确要求父目录预先存在，否则抛出路径验证错误。这解释了此次拒绝，不能将它记录为功能成功。已只在独立试用 Home 建立 `audit` 目录，创建并同步准确审计路径的空 JSONL 文件（0 字节），入口脚本亦加入目录及文件存在检查；原日常 Home、两个源码仓库和 D2 ExecuteGate 未变。负责人截图副本只保存在本机试用 artifacts，**修复后的真实调用仍待重新验收**。
 
+**负责人实际只读试用复验（2026-10-19）**：在同一独立完整 Home 与 `D:\DeepSeekHarness\vis-rc4-readonly-usage-20261019` 临时 Git 仓库，负责人再次从专用 RC4 Web 发起一次非 D2 `repository_inspection`。页面显示子任务 `completed`，三页抽屉依次显示轨迹/轮次“不适用”、运行窗口未观察到文件变化、审计 `settled`。落盘 Manifest `run_id=dsh-runtime-d9f72538-513e-4771-9ae2-e5eea4498dc0`、`task_id=6ec10ea5-7f28-464a-811e-5636aff992cf`、退出码 **0**、耗时 **32,934 ms**，`task_ceiling_allow_write=false`、新增/修改/删除均 0、审查判决 `UNAVAILABLE`。后者是这次非 D2 检查的实际字段，不代表 D2 通过。Call Trace 为 `call_started → call_terminal(returned)`，调用 ID `17bdf143-21b9-4abc-a7d2-e07008a0c97b`，stdout SHA-256 `d8994da0416fe64098f07af8b216e0faad3b648ee456347320027a26a618da80` 与截图一致；`run-state.json` 为 `settled/completed/manifest_available=true`。审计 JSONL 有 1 条 `ALLOW` 记录；空 `diff.patch` 与无文件变化一致。临时仓库仍在 `main`、HEAD `04c0263516a137852f535baad1162101f93d10d6`，工作树干净。页面三张截图已按原件 SHA-256 校验并保存在独立试用 Home 的 `artifacts/manual-rc4-readonly-usage-success-20261019/`，不进入 Git。此项关闭上面的修复后复验和 P0 实际只读试用门槛；同时证明这份隔离 Home 的现有凭据可完成本次有限模型请求。轨迹“不适用”、D2 ExecuteGate `NOT_CLAIMED` 及有历史引用附件的页面验收边界仍然保留。
+
 **Windows Desktop 未签名目录包（2026-10-19）**：官方 Electron `44.7.0` 与锁定的 Node/Python/Wheel 依赖均按固定来源下载并核对 SHA-256，写入独立打包缓存；先前的直连下载 `ECONNRESET` 不再阻断。使用独立无凭据示例配置和 Node 24，`package:win:x64:dir --unsigned` 完整运行成功；打包记录 `2026-10-19T07-11-40.770Z` 的 `result.json` 标记 `success=true`，源码构建、354 个 DSH 与 9 个 vendor 归档、runtime 准备、Electron 打包及打包后运行自检均通过。产物位于私有 Harness 候选工作树 `apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/`，其中 `DeepSeek Harness.exe` 与 `resources/app.asar` 均存在。本轮未运行安装器或发布桌面版，也未取得负责人桌面页面回执；共享 Web 预设的 Runtime provider 仍为 `disabled: true`，不能把目录包自检写成 Desktop Manifest 页面验收。
 
 **目录包 GUI 启动边界**：在独立 `DSH_HOME` 和 Electron 用户数据目录中直接打开上述未签名目录包时，Electron 在窗口加载前退出，stderr 指向 Windows AppContainer 对该 D 盘工作树目录的读取 ACL。仅给目录包根增加 `ALL APPLICATION PACKAGES` 读取权限后复验仍报同一错误；`--no-sandbox` 也未改变结果。原日常 Home 没有被选为启动目录。该故障发生在本机源码工作树的目录包启动环境，不推翻打包后运行自检，也不能据此宣称 GUI 启动通过。后续应在专用安装或复制位置核对完整路径权限，再由负责人进行桌面页面验收。
@@ -70,6 +72,8 @@ RC4 安装包另使用临时 `--patch` 将 `subagent-dsh-runtime` 设为 `disabl
 
 ## 适用边界与下一步
 
-RC4 相比 RC3 的 Harness 源码只改 9 个文件：发布清单/依赖约束、双语生成模块图、D2 证据脚本中的多余类型断言，以及 Windows Cordis 配置检查器与测试。Runtime 源码未变。此前 RC3 的真实任务、Safe Trace 和 RC2 往返现场仍属于 RC3 证据；本轮补齐了 RC4 安装包对导入历史样本的页面目视、只读入口、provider 关闭验证及一条真实 V3 会话的隔离迁移抽样，但没有在 RC4 上重复模型调用或完成用户现有 Home 的整体原地迁移与跨版回退验收。
+**2026-10-19 复验更新**：上面的首次审计路径拒绝已经由真实只读调用复验关闭；RC4 现在具有独立完整 Home 中的有限模型调用及三页终态抽屉现场证据。下面保留原先发布边界的历史判断；当前仍待有历史引用的附件页面样本、私有发布审查和日常切换决策。
+
+RC4 相比 RC3 的 Harness 源码只改 9 个文件：发布清单/依赖约束、双语生成模块图、D2 证据脚本中的多余类型断言，以及 Windows Cordis 配置检查器与测试。Runtime 源码未变。此前 RC3 的真实写入任务、Safe Trace 和 RC2 往返现场仍属于 RC3 证据；本轮补齐了 RC4 安装包对导入历史样本的页面目视、只读入口、provider 关闭验证、一条真实 V3 会话的隔离迁移抽样，以及独立完整 Home 的真实只读模型调用。尚未完成用户现有 Home 的日常切换、实际有引用附件的页面验收或安装器级回退。
 
 接下来按 [私有默认线升级审查与发布顺序](PRIVATE_DEFAULT_UPGRADE_PLAN_2026-10-18.md) 的 P1/P2 审查大范围上游与 D2 内部治理差异；确认默认线的分支保护和离线发布门槛由负责人单独决策。两个原工作树的未提交改动与未跟踪文件继续保留；不清理、重置或覆盖。D2 ExecuteGate 保持 `NOT_CLAIMED`。

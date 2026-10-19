@@ -1,5 +1,7 @@
 # DSH Runtime 运行可视化开发任务
 
+**RC4 只读现场复验（2026-10-19）**：独立完整 Home 的审计目录补齐后，负责人在专用 Web Profile 与独立临时 Git 仓库完成一次真实非 D2 `repository_inspection`。落盘 Manifest `completed`、退出码 0、审计 `settled`；抽屉三页与落盘证据一致，临时仓库干净。首次 `audit_persistence_failed` 已复验关闭；轨迹“不适用”和审查 `UNAVAILABLE` 均按非 D2 原值记录。详见 [RC4 私有试用记录](PRIVATE_VISUALIZATION_TRIAL_2026-10-19_RC4.md) 与 [下一阶段任务](PRIVATE_VISUALIZATION_NEXT_PHASE_2026-10-19.md)。下一优先项是有历史引用附件的实际页面样本，再做发布审查；日常 Home、默认分支和 D2 ExecuteGate 未切换。
+
 状态：已批准的 R9 设计基线之实施清单（2026-10-15）。设计依据：[PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md](PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md)。四项负责人决策均选 A。
 
 **额度恢复后的推进（2026-10-18）**：五小时剩余约 99%、周剩余约 85% 时已停用本次一次性续跑。双仓原工作树继续保留全部未提交改动与未跟踪文件；候选分支干净。已将私有默认线的大规模上游升级拆成 P0–P4 审查批次，见 [私有默认线升级审查与运行可视化发布顺序](PRIVATE_DEFAULT_UPGRADE_PLAN_2026-10-18.md)。已安装 RC3 的独立只读 Profile `packed-rc3-readonly` 完成配置解析、Web HTTP 200、空启动错误日志及既有独立仓库的新会话入口“仅可查看”核对；没有调用模型或 Runtime。受限环境中的首次私有远端查询失败，随后经正常 Git 远端访问重新核对：Harness 默认线、候选线和 Runtime 默认线、候选线均与本地记录一致。旧 D2 分支保留，ExecuteGate 仍为 `NOT_CLAIMED`。
