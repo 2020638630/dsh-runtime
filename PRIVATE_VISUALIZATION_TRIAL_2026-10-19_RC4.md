@@ -46,6 +46,12 @@ RC4 安装包另使用临时 `--patch` 将 `subagent-dsh-runtime` 设为 `disabl
 
 **RC4 受控 Profile 与旧 Session 文件同场启动**：另建 `artifacts/legacy-rc4-profile-reconciled-20261019`，只从日常 Home 复制 21 个 V3、8 个 V4 压缩 Session 文件，不复制凭据；从已验收的 RC4 只读 Profile 复制配置，并把审计和证据路径改到这个独立 Home。因 Profile 换位置，锁文件中的链接相对路径需在副本内重新计算。最终配置解析退出 **0**、stderr **0**，父会话 `read-only`，治理 v2 只启用 `repository_inspection`。首次受限启动的治理 worker 报 `spawn EPERM`，不计入通过；正常权限复验的 Web 认证页面 HTTP **200**、HTML **37,448 字节**、启动 stderr **0 字节**。29 份 Session 副本与日常源文件 SHA-256 均一致，服务和端口随后关闭。此项只证明配置与旧数据文件同场可启动，未在页面逐条打开会话、未迁移完整 Home，也未调用模型。旧 `agent-presets` 中的 `standard-codex` 在 RC4 新预设中不存在；迁移路线是保留旧 Profile 原件，建立受控新 Profile，并单独决定替代预设，不直接套用旧补丁。
 
+**完整旧 Home 副本读取与原地迁移（2026-10-19）**：从日常 Home 仅复制 `sessions`、`attachments`、`storages` 到独立 `artifacts/legacy-full-home-20261019`，初始 70 个文件逐一核对 SHA-256 一致，不复制凭据。副本含 33 个 Session 文件（21 个 V3、8 个 V4、4 个未标注旧格式）、2 个 PNG 附件、33 个投影缓存；工作区索引含 5 个工作区、29 条普通会话索引。已安装 RC4 使用独立的非 D2 只读 Profile 启动 Web，认证页面 HTTP 200、stderr 0；会话列表返回全部 33 条，29 条普通会话与工作区索引相符。分页读取全部 33 条历史会话，共 4,399 条记录，读取错误 0。打开其中一条需迁移的旧会话后，副本生成一条 V4 继任文件；21 个 V3 文件保留，V4 文件由 8 个变为 9 个，投影缓存有刷新。原始 Home 未作为运行 Home，未写入。该验收证明副本上的历史列表、分页读取和单条原地迁移；其余 24 条待迁移会话仍需逐条或批量迁移。全部 4,399 条记录未发现对这 2 个 PNG 附件的引用，因此不能据此认定附件展示已通过。
+
+**旧版整包对完整快照的读取（2026-10-19）**：在独立 `artifacts/legacy-full-old-rollback-20261019` 恢复相同旧数据副本，用旧版 CLI `0.1.5-rc.1` 无模型启动 Web；认证页面可用、stderr 0，但会话列表只返回 33 条中的 25 条。旧版读取组件此前已对 V3+V4 混合副本返回 `SessionFormatUnsupportedError`。因此仅回退程序不能恢复完整 Home，且即使恢复升级前快照，当前旧版也无法完整读取这份本来已有 V4 的日常数据。需将可读取的旧版范围和快照恢复步骤作为维护窗口前的单独门槛。两个服务已停止并确认端口关闭。
+
+**Windows Desktop 未签名目录包（2026-10-19）**：官方 Electron `44.7.0` 与锁定的 Node/Python/Wheel 依赖均按固定来源下载并核对 SHA-256，写入独立打包缓存；先前的直连下载 `ECONNRESET` 不再阻断。使用独立无凭据示例配置和 Node 24，`package:win:x64:dir --unsigned` 完整运行成功；打包记录 `2026-10-19T07-11-40.770Z` 的 `result.json` 标记 `success=true`，源码构建、354 个 DSH 与 9 个 vendor 归档、runtime 准备、Electron 打包及打包后运行自检均通过。产物位于私有 Harness 候选工作树 `apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/`，其中 `DeepSeek Harness.exe` 与 `resources/app.asar` 均存在。本轮未安装或发布桌面版，也未取得负责人桌面页面回执；共享 Web 预设的 Runtime provider 仍为 `disabled: true`，不能把目录包自检写成 Desktop Manifest 页面验收。
+
 ## 适用边界与下一步
 
 RC4 相比 RC3 的 Harness 源码只改 9 个文件：发布清单/依赖约束、双语生成模块图、D2 证据脚本中的多余类型断言，以及 Windows Cordis 配置检查器与测试。Runtime 源码未变。此前 RC3 的真实任务、Safe Trace 和 RC2 往返现场仍属于 RC3 证据；本轮补齐了 RC4 安装包对导入历史样本的页面目视、只读入口、provider 关闭验证及一条真实 V3 会话的隔离迁移抽样，但没有在 RC4 上重复模型调用或完成用户现有 Home 的整体原地迁移与跨版回退验收。
