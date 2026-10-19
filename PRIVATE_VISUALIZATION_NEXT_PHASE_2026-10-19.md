@@ -1,6 +1,8 @@
 # RC4 私有试用后的下一阶段任务
 
-状态：2026-10-19 的执行顺序。依据 [R9 设计基线](PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md)、[实施清单](RUNTIME_VISUALIZATION_BACKLOG.md)和[完整 Home 并行试用记录](PRIVATE_HOME_STAGE_AND_ROLLBACK_RUNBOOK_2026-10-19.md)。负责人已批准并完成两个私有默认分支的普通快进；尚未切换日常 Home、清理旧分支或发布稳定版；D2 ExecuteGate 保持 `NOT_CLAIMED`。
+状态：2026-10-19 的执行顺序。依据 [R9 设计基线](PROJECT_TARGET_AND_RUNTIME_VISUALIZATION.md)、[实施清单](RUNTIME_VISUALIZATION_BACKLOG.md)和[完整 Home 并行试用记录](PRIVATE_HOME_STAGE_AND_ROLLBACK_RUNBOOK_2026-10-19.md)。负责人已批准并完成两个私有默认分支的普通快进；RC4 已作为独立 Home 的并行日常入口，原日常 Home 未替换；尚未清理旧分支或发布稳定版；D2 ExecuteGate 保持 `NOT_CLAIMED`。
+
+**P3 并行日常入口回执（2026-10-19）**：原日常 Home 与受限备份再次核对为 88/88 文件哈希和 515/515 链接元数据一致。RC4 独立 Home 的只读入口在桌面启动，负责人确认旧会话可见。负责人随后明确批准只在独立 Home 新建 `workspace-write` Profile；它保留 Runtime `enabledWorkloads: [ repository_inspection ]`，并使用独立审计与证据目录。配置解析和无模型 Web 启动通过；在全新临时 Git 仓库的真实模型会话中，唯一新增文件内容正确，原双仓工作树未变。相同 Profile 下的非 D2 `repository_inspection` 终态 Manifest 为 `completed`、退出码 0、审计 `settled`、观察到的文件变动为 0；负责人确认抽屉三页可见。父会话额外尝试 `wait` 工具并收到 `unknown tool`，这是单独的非致命交互问题，不能写成全程无错。负责人选择**并行作为日常入口**：桌面新增“DeepSeek Harness RC4 (日常工作)”指向独立 Home；旧 Home、原应用入口和只读入口保留，未原地迁移。敏感备份、会话与详细本机操作回执只存独立试用目录的 `artifacts/RC4_DAILY_READONLY_ENTRY_2026-10-19.md`，不入 Git。下一优先项是观察并处理 `unknown tool wait`、完成稳定发布门槛与旧分支收拢决策。
 
 ## 已关闭的前置项
 
@@ -18,7 +20,7 @@
 | P0 | 固定安全试用入口 | 在独立 Home 中使用专用只读 Profile，验证启动、会话列表、可读历史及关闭服务；给使用者一份不指向旧 `web` Profile 的启动说明 | 已关闭：真实只读调用及三页抽屉通过，临时仓库干净；审计目录入口预检已生效 |
 | P1 | 完成附件和凭据的实际使用验收 | 用独立数据和有引用的附件样本走认证读取与页面展示；核对已完成模型会话的终态、证据和仓库无变化 | 已关闭：有限只读模型调用、真实新会话图片引用、刷新重开后的展示和图片查看层均有现场回执；旧日常 Home 中两张无引用图片仍不算历史附件验收 |
 | P2 | 固定私有发布审查结果 | 对两个候选远端 SHA、默认分支、版本/锁文件、已完成的构建与安装证据、Actions 关闭后的必需门槛逐项签收；仅针对新增差异重验 | 审查已完成：成对 RC4 标签和远端 SHA 相符，本地构建/安装与现场试用有据；两个仓库均无传统保护或 Rulesets，Actions 已关闭，因此没有平台强制检查 |
-| P3 | 决定部署和分支切换 | 前三项关闭后，提交可回退的日常启动与默认分支方案，明确负责人批准点；发布稳定标签和清理旧分支分别决策 | 默认分支已按负责人批准快进并复核；日常 Home 切换、稳定版标签和旧分支清理仍分别决策 |
+| P3 | 决定部署和分支切换 | 前三项关闭后，提交可回退的日常启动与默认分支方案，明确负责人批准点；发布稳定标签和清理旧分支分别决策 | 默认分支已快进；RC4 独立 Home 的并行日常入口已通过只读与写入验收，原 Home 未替换；稳定版标签和旧分支清理仍分别决策 |
 
 ## 执行约束
 
