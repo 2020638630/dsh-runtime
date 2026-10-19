@@ -54,6 +54,10 @@ Harness 候选同时包含私有默认线和公开上游。与私有默认线相
 
 **RC4 成对私有试用引用（2026-10-19）**：在整组静态门槛、official 构建、发布测试及 npm 12 独立安装通过后，新注释标签 `vis-manifest-mvp-20261019-rc4` 已推送并从两个私有远端核对：Harness 解析至 `819dc46ea7953598b239a82e25abe7d87c64add3`，Runtime 解析至不变的 `15d871d1d960291fe7ab5ed22eb39a9c1d3b9a17`。354 个本地归档的哈希清单和验收边界见 [RC4 试用证据](PRIVATE_VISUALIZATION_TRIAL_2026-10-19_RC4.md)。RC4 安装包的专用只读 Profile 已完成配置解析与认证后的 Web HTTP 200；未重复 Manifest 页面目视或模型现场。RC3 标签保留；两个默认线未动。P1 宽范围上游审查仍未收口，因此不宣称稳定版或默认线就绪。
 
+**P1 发布与启动接口复核（2026-10-19，第一批）**：旧 Harness 私有默认线 `60c8f0c813` 的根版本是 `0.1.5-rc.1`、pnpm `11.7.0`；公开上游 `687f282e86` 与 RC4 均是 `0.2.1-rc.2`、pnpm `11.28.5`。公开上游从 `dsh-v0.2.1-rc.1` 到 `rc.2` 的核心发行改动是版本更新、Base Bundle 新增共用 `DEEPSEEK_API_KEY` 的 DeepSeek Search/Fetch API、Web Bundle 新增 1017 模型标签 UI；此区间未改 `apps/cli/src`、`packages/boot/app-boot/src` 或 `scripts/release`，故不能把 RC4 的启动诊断改动误写为上游 `rc.2` 自带。RC4 相比上游另改 CLI `profile-boot.ts` 启动阶段诊断、`stdin-stop.ts`，以及发行打包进程、安装验证和对应测试；标准 Web 预设还增加默认关闭的 Runtime 子代理工具行。直接运行固定源码 `819dc46` 的 `scripts/release/verify.ts --family dsh` 通过：**345 个 DSH 包**均为 `0.2.1-rc.2`，发布顺序解析成功、未排序 peer 声明 0 项。普通 pnpm 入口先因当前依赖目录状态尝试安装并在非交互终端退出，随后直接调用同一校验脚本通过；没有刷新或清理现有依赖目录。RC4 的 354 包安装与只读 Web 启动证据见试用记录。这关闭**版本一致性、打包清单与新安装入口**的审查点；旧默认线到上游的 6080 提交跨度、旧会话数据兼容、跨版原地升级和远端 CI 仍未验证，不据此批准默认线切换。
+
+**下一批执行顺序**：先对 RC4 已安装包复核浏览器中的 Manifest 抽屉、只读新会话入口及 provider 关闭开关（沿用独立试用 Home，不触碰原工作树）；再按 `0.1.5-rc.1` 到 `0.2.1-rc.2` 的 Session/配置迁移文档核对原地升级风险，给出新装优先与回退说明；最后复核私有默认线的保护规则与远端 SHA，形成一次性发布决定。两个仓库 Actions 关闭期间，远端检查维持“未运行”，不得把本地通过改写为 CI 通过。
+
 **分支保护现场提示**：负责人提供的 2026-10-18 内置浏览器截图显示 Runtime 私有仓库 `master` 页面提示 `Your master branch isn't protected`。这是截图观察，尚未通过仓库设置或平台接口独立复核；默认线切换前须确认 `master` 的保护规则与实际 required checks，并先建立适合私有发布的保护策略。不要把截图提示误写成 Harness 私有默认线的状态。
 
 ## 按顺序推进的审查批次
