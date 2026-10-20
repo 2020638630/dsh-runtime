@@ -8,9 +8,12 @@
     "typecheck": "tsc --noEmit",
     "test:admission": "tsc -p tsconfig.test.json && node .build/test/admission.test.js",
     "test:worker": "tsc -p tsconfig.test.json && node .build/test/worker.test.js",
-    "test:provider": "tsc -p tsconfig.test.json && node .build/test/provider.test.js"
+    "test:provider": "tsc -p tsconfig.test.json && node .build/test/provider.test.js",
+    "test:launcher": "tsc -p tsconfig.test.json && node .build/test/runtime-launcher.test.js"
   },
   "dependencies": {
+    "@deepseek-ai/dsh-brand": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.2",
     "@deepseek-ai/dsh-session": "0.2.1-rc.2",
     "@deepseek-ai/dsh-session-projection": "0.2.1-rc.2",
     "@deepseek-ai/dsh-subagent": "0.2.1-rc.2",
