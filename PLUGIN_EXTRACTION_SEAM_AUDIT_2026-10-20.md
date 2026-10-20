@@ -66,3 +66,5 @@
 双 provider 的 `start()` 已通过 `createGovernedProvider` 接上 `startGoverned`，公开 `@deepseek-ai/dsh-subagent@0.2.1-rc.2` 类型检查通过，`pnpm test:provider` 三例通过：直接调用只读 provider 遇策略拒绝不启动、明确允许启动一次、直接调用写入 provider 遇桥接失败不启动。两个 provider 的 task kind 与 reason code 在构造时固定，不经过官方请求的私有字段。此处 launcher 仍为测试回调；下一门槛是把真实 Runtime 子进程适配器接入并在官方 Host 现场确认会话身份、取消和终态证据。
 
 现已将原有 `run.ts` 和其终态 Evidence Manifest、工作区快照、Safe Trace、调用轨迹、终态读取模块复制到独立骨架；公开 `@deepseek-ai/*@0.2.1-rc.2` 下类型检查通过。`createRuntimeLauncher` 将双 provider 的固定工作类型接给原有 one-shot transport，只使用父 Session 的 `header.cwd` 作为目标工作区，缺失时在 product entrypoint 前失败。两项无模型测试通过。这证明迁移代码的类型与工作区选择，**尚未**验证官方 Host 中真实 Runtime 子进程、终态 Manifest 或证据抽屉。
+
+`mountHostCore` 将策略 pin、Python worker、Runtime launcher、双 provider 组合在一起；只有 worker READY 后才注册 provider。启动失败时逐项撤销注册并释放 worker/pin，卸载函数可重复调用。类型检查与一项 worker 启动失败回滚测试通过。它目前是库入口，尚无可安装 Host bundle 或模型工具；正式安装之前必须补真实 Host 会话、工具、证据路由和生命周期验收。
