@@ -1,6 +1,6 @@
 # 官方 Harness 插件抽离：首轮接口与差异审计
 
-日期：2026-10-20。性质：PLUG-01/02 的只读源码探针；**尚非外部安装验收**。比较基准是本机官方 `origin/master` `687f282e86` 与私有候选 `08d207d31e`。用户的两个原源码工作树及 ZCode 凭据目录未被改动。
+日期：2026-10-20。性质：PLUG-01 官方发行包外部插件探针及 PLUG-02 源码差异审计；**尚非真实 Runtime 任务验收**。比较基准是本机官方 `origin/master` `687f282e86` 与私有候选 `08d207d31e`。用户的两个原源码工作树及 ZCode 凭据目录未被改动。
 
 ## 可直接使用的官方扩展机制
 
@@ -28,10 +28,25 @@
 
 若工具入口无法在公开 Subagent API 上准确传递 `repository_inspection` / `repository_change`，本轮先记录需要的最小上游接口提案，再决定是否创建专属工具包；不得提前宣布“官方零补丁”。
 
-## 官方发行包最小外部插件探针（同日追加）
+## 官方发行包最小外部插件探针（同日完成）
 
 - 在 `D:\DeepSeekHarness\vis-stable-release-artifacts\official-plugin-probe-20261020` 用公开 npm registry 安装官方 `@deepseek-ai/dsh@0.2.1-rc.2`；CLI 用独立 Node 24 运行，`--version` 返回 `0.2.1-rc.2`。此消费者不引用私有 Harness 候选包。
 - 建立全新 `DSH_HOME`，首次 `--profile web --dump-config` 成功。最小包 `@local/dsh-runtime-probe@0.0.1` 只含空 Host `apply` 和一个注册 `dsh_runtime_probe` 键的 Web client bundle，打包为本地 tarball；没有模型、Runtime 任务或证据内容。
 - `dsh plugin --profile web add <tarball>` 成功，Profile 配置中出现插件。官方 `dsh web --no-open --port 0` 启动后，本地认证入口 HTTP 200、HTML 包含该插件的客户端 bundle 引用；插件所在 `/plugins/??...client.js` 资源 HTTP 200，响应含 `@local/dsh-runtime-probe` 的客户端工厂。
 - 停止本次探针服务后，`dsh plugin --profile web remove @local/dsh-runtime-probe` 成功；再次转储配置不含探针，内容与安装前转储完全一致。
-- 这证明**外部包安装、官方 Web 加载图与配置卸载**可行；尚未用浏览器执行该客户端模块，也未注册或调用 Host 认证 API，更未证明真实 Runtime provider / `task_kind` 能零补丁工作。PLUG-01 仍为进行中。全部产物及不含用户凭据的输出留在上述独立探针目录。
+- 将探针升级为 `@local/dsh-runtime-probe@0.0.3`：Host 用官方 `ctx.connection.fetch.register` 注册 `/api/dsh-runtime-plugin-probe`，Web client 注册 `dsh_runtime_probe` 工具视图并在激活时加入测试用 DOM 标记。官方 Web 的匿名路由返回 **401**；浏览器通过一次性本地认证入口后，路由返回 **200** 和 `{"plugin":"loaded"}`；Playwright 真浏览器加载官方页面并确认客户端标记已挂载，记录 `{"http":200,"clientActivated":true}`。测试驱动只借用本机 Playwright，运行目标仍是公开 npm 官方包；没有使用私有 Harness 业务源码。
+- 再次停止官方 Web 并卸载 0.0.3 探针。卸载后的配置不含包，`git diff --no-index` 对基线配置无语义/行差异（PowerShell 原始字符串比较因换行编码不同返回 false）；重启后的认证首页为 **200**，HTML 不再引用探针 bundle，同一认证会话访问原 Host 路由返回 **404**。探针服务已停止。
+- 因此 PLUG-01 的**安装、Host 认证路由、Web 客户端执行、卸载**最小接口验收通过。它只注册了测试视图，没有显示真实 Manifest，更没有运行 Python Runtime；不代表 PLUG-03/04/REL-01 通过。所有探针产物保留在独立目录，未进入两个原源码工作树。
+
+## 阻碍现有 Runtime provider 直接安装到官方版的两条私有核心依赖
+
+1. 私有 `subagent-dsh-runtime` 在 `apply` 时依赖 `PythonGovernanceBridgeService`，该服务向通用 `ctx.subagents` 注册 `registerGovernedStartRoute`、`registerGovernedStartBinding`、`registerGovernedStartEvaluator`。官方 `@deepseek-ai/dsh-subagent@0.2.1-rc.2` 不具备这些注册方法。原包直接打包到官方版会在装载阶段失败。只删除服务并让官方 `SubagentService.startActivation` 直接调用 `provider.start` 会绕过已批准的预启动策略、审计与会话策略 pin，**禁止作为兼容修复**。
+2. 私有 `tool-subagent` 在工具参数中声明 `task_kind`，限制到 `workloadProposal: dsh-runtime`，并将其转发为子代理请求的 `taskKind`；官方工具及请求类型没有这套契约。现有 provider 的 `resolveTaskKind(request.taskKind)` 需要精确值。不能凭提示词、默认写入类型或模型解释来补足。
+
+### PLUG-02 安全抽离路径
+
+先做独立 Host 工具入口，参数必须是枚举 `repository_inspection | repository_change`，由工具实现固定 reason code，校验当前父会话和工作区，且一次调用只能启动一次 Runtime。将 `GovernanceBridge.evaluatePreStart` 的会话 pin、Python 持久 worker、失败关闭、审计输出移入该外部包的可信启动路径；**拿到允许决策后**才创建子进程。外部工具不得依赖官方通用 `tool-subagent` 自动注入的 `task_kind`，也不得将模型传来的 reason code 当作可信输入。
+
+首个实现门槛：用官方包的公开 Host tool API 证明工具注册、会话身份及取消信号可达；针对 `repository_inspection`、`repository_change`、拒绝/超时/worker 异常做启动前阻断测试，再与原治理审计逐项对照。若公开 API 不提供可信会话或取消信号，应提交最小通用上游接口提案并等待公开发行，不能以私有宿主补丁假装插件独立。之后才迁移现有 provider、Manifest 和 Web 抽屉，并做官方安装包真实读写/失败/取消及卸载回退验收。D2 ExecuteGate 保持 `NOT_CLAIMED`。
+
+已核对官方 `@deepseek-ai/dsh-tools@0.2.1-rc.2` 的发行类型：`ToolRunContext` 有由宿主设置的 `agent?: Agent` 与 `signal: AbortSignal`；因此外部专属工具可从 `exec.agent` 获取调用者并按 `exec.signal` 取消，而不让模型提供身份。仍须在真实官方 Host 运行时验证 agent 与会话的可信绑定。官方 `@deepseek-ai/dsh-subagent@0.2.1-rc.2` 暴露 `startActivation`，但缺少上述治理注册接口；不能仅靠类型强转传递 `taskKind` 后声称预启动治理已成立。
