@@ -62,3 +62,5 @@
 `integrations/deepseek-harness` 建立为 `private: true` 的不可发布骨架，固定公开 `@deepseek-ai/*@0.2.1-rc.2` 依赖；从私有候选迁出 `protocol.ts`、`session-pin.ts`、`bridge.ts`，只把原私有 `GovernedSubagentStartRoute` 类型改成插件自身的封闭二元组类型。`pnpm typecheck` 通过。`startGoverned` 作为未来 provider `start()` 的最后启动门，六个无模型单元测试通过：明确允许一次启动、策略拒绝、worker FAILURE、桥接异常、预取消、评估期间取消。单元测试的 launch 仅为计数器，**尚非真实 Python worker/审计或 Runtime 子进程验收**。下一步是隔离 worker 的真实拒绝、超时和持久 pin 测试，再把该门接入双 provider。
 
 随后 `pnpm test:worker` 在独立临时目录以 Python 3.12 启动真实 `dsh_runtime.governance_worker`，通过 Node 桥完成 READY、会话绑定、inspection 允许和部署未启用的 change 拒绝；相同会话的策略 pin 保持一致，审计 JSONL 有对应 ALLOW/DENY 两条。另两例证明审计路径不可写时真实 worker 不触发 Runtime 启动回调、worker 不响应而超时时同样不触发。此测试的启动回调仍为计数器，**不代表官方 Host 中的 provider 已接线或真实 Runtime 子进程已验收**。下一步是把 `startGoverned` 接入双 provider 的 `start()`，针对官方 Host 的实际会话和取消信号做现场验证。
+
+双 provider 的 `start()` 已通过 `createGovernedProvider` 接上 `startGoverned`，公开 `@deepseek-ai/dsh-subagent@0.2.1-rc.2` 类型检查通过，`pnpm test:provider` 三例通过：直接调用只读 provider 遇策略拒绝不启动、明确允许启动一次、直接调用写入 provider 遇桥接失败不启动。两个 provider 的 task kind 与 reason code 在构造时固定，不经过官方请求的私有字段。此处 launcher 仍为测试回调；下一门槛是把真实 Runtime 子进程适配器接入并在官方 Host 现场确认会话身份、取消和终态证据。
