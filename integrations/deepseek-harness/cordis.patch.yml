@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-runtime-standalone
+      name: '@dsh-runtime/harness-plugin'

@@ -1,6 +1,6 @@
 # 官方 Harness 插件抽离续接单
 
-更新：2026-10-20。候选工作树：`D:\DeepSeekHarness\vis-runtime-candidate`，分支 `codex/vis-manifest-mvp-20261016`；截至 `69d72cc` 相对远端领先 11 个本地提交，尚未推送。本文件只记录独立候选与探针，不改变两个原工作树。D2 ExecuteGate 仍为 `NOT_CLAIMED`。
+更新：2026-10-20。候选工作树：`D:\DeepSeekHarness\vis-runtime-candidate`，分支 `codex/vis-manifest-mvp-20261016`；本文件只记录独立候选与探针，不改变两个原工作树。以实时 `git status` 为准，候选提交尚未推送。D2 ExecuteGate 仍为 `NOT_CLAIMED`。
 
 ## 已完成与证据
 
@@ -11,8 +11,8 @@
 
 ## 未完成与下次顺序
 
-1. 将独立库构建为可安装 Host bundle，加入 Profile 配置校验、治理策略/证据路径校验与完整卸载；在官方公开发行包的独立 Home 中安装，不使用私有 Harness 构建产物作为宿主。
-2. 在官方 Host 真实会话中验证 `exec.agent`、父 Session cwd、取消信号、策略 pin 与两种固定 provider。先做无模型拒绝与只读任务；真实模型调用/写入只在临时 Git 仓库和非 D2 配置中执行。
+1. 已将独立库打成私有可安装 Host tarball `@dsh-runtime/harness-plugin@0.1.0-rc.0`，加入完整 Profile 必填配置校验、路径校验、构建与 `dsh.bundle.patch`。安装位置为独立消费者 `D:\DeepSeekHarness\vis-stable-release-artifacts\official-plugin-probe-20261020` 的 `runtime-official` Profile，未修改官方包。真实官方 Host 已启动 Python 治理 worker，零激活警告、鉴权首页 HTTP 200；沙箱首次启动碰到 Windows `spawn EPERM`，窄范围提权重试成功。验收后已停止隔离 Host，确认治理 worker 退出；Profile 与 tarball 保留。`pnpm build`、`pnpm typecheck`、`pnpm test:entry` 通过。当前只证明启动与 worker READY；尚未发起模型/Runtime 任务。
+2. 下一步在官方 Host 真实会话中验证专用工具注册、`exec.agent`、父 Session cwd、取消信号、策略 pin 与两种固定 provider。先做无模型拒绝与只读任务；真实模型调用/写入只在全新临时 Git 仓库和非 D2 配置中执行。`runtime-official` 目前仅启用 inspection；change provider 应由治理拒绝。
 3. 接入认证 Evidence Manifest 路由并迁移 Web 抽屉；做读、写、失败、取消、证据缺失、卸载回退及旧 Home 副本验收。完成这些后才评估移除私有 Harness 分支的日常用途，归档/删除旧分支另审。
 
 ## 保护事项

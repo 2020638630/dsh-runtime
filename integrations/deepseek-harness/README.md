@@ -1,15 +1,29 @@
-# Standalone Harness adapter (work in progress)
+# DSH Runtime for official DeepSeekHarness (private preview)
 
-This private package is the migration staging area for DSH Runtime's Python governance bridge and future Host/Web plugin. It is not installable product software yet. The source was copied from the user's private Harness candidate and must retain the existing wire protocol, durable policy pin, FIFO worker transport, and fail-closed semantics while removing all private Harness core hooks.
+This package is an independently installable Host bundle for the unmodified public `@deepseek-ai/dsh@0.2.1-rc.2`. It is still a private preview. It does not provide the authenticated Evidence Manifest route or Web drawer yet, and has not passed a real official Host model task. Keep the private RC4 Harness as the parallel daily fallback.
 
-The first gate, `pnpm typecheck`, passes against public `@deepseek-ai/*@0.2.1-rc.2` packages. The original governance protocol, session pin and worker transport now compile without private Harness core types. `pnpm test:admission` verifies six process-start ordering cases: allow once, policy block, worker failure, bridge exception, pre-cancellation and cancellation during evaluation. The launch callback is a sentinel; these tests do not start Python or prove the worker's real policy/audit behavior.
+## Build and install in an isolated Profile
 
-The second gate, `pnpm test:worker`, now passes with a real isolated Python governance worker. It verifies worker READY and exact policy hash, an allowed inspection, a deployment-disabled change, durable session pin, and two persisted ALLOW/DENY audit records. It also verifies that a real audit persistence failure and an unresponsive worker timeout cannot reach the Runtime launch callback. The test adapter spawns only the governance worker (or the deliberately unresponsive test process); the launch callback remains a sentinel.
+Run `pnpm build` and `pnpm pack`. The tarball contains `lib/` and `cordis.patch.yml`; its `dsh.bundle.patch` inserts the external plugin. Install the tarball in an isolated consumer/Profile. The plugin requires a complete Profile config before activation:
 
-The third gate adds `createGovernedProvider` for the two fixed routes and `pnpm test:provider`. Direct calls to either provider's `start()` are gated: an inspection policy block and a change bridge failure never call the injected Runtime launcher; an explicit inspection allow calls it once. This removes the private `taskKind` request extension while keeping governance inside each provider, including direct Host starts that bypass the dedicated tool.
+```yaml
+- id: dsh-runtime-standalone
+  config:
+    runtimeRoot: D:/path/to/dsh-runtime
+    python: C:/path/to/python.exe
+    policySource: D:/path/to/dsh-runtime/dsh_runtime/resources/selection_policy/selection-v2.json
+    expectedPolicyHash: <pinned-lowercase-sha256>
+    enabledWorkloads: [repository_inspection]
+    auditPath: D:/isolated/audit/governance.jsonl
+    evidenceRoot: D:/isolated/evidence
+```
 
-The original one-shot Runtime transport and terminal evidence modules have been copied into `src/runtime` and typecheck against public packages. `createRuntimeLauncher` passes the governed task type and **parent Session cwd** to the product entrypoint, never the optional child request cwd. `pnpm test:launcher` verifies that target selection and rejects a missing parent workspace before reaching the entrypoint. No real Runtime subprocess has been started by this adapter yet.
+The Runtime root and policy file must exist. The audit parent and evidence directory must exist. The worker confirms the policy identity and audit availability before either provider or the tool is registered. The caller's parent Session supplies the target workspace. Profile paths never redirect a task into either source checkout. No D2 ExecuteGate claim is made.
 
-`mountHostCore` now assembles the bridge, Runtime launcher, two providers and a dedicated `dsh_runtime` tool only after worker READY, with reverse-order idempotent disposal. `pnpm test:host-core` verifies a failed worker startup leaves neither provider nor tool registered and releases the session pin. `pnpm test:tool` verifies that missing Host agent identity rejects and that an inspection selects only the fixed inspection provider. These tests use injected Host service doubles; no model or Runtime child ran.
+The current isolated official Host acceptance Profile is `D:/DeepSeekHarness/vis-stable-release-artifacts/official-plugin-probe-20261020/home/profiles/runtime-official`; the tarball is beside the consumer. This Profile enables inspection only. Its full config is local acceptance state, not a production template. The official Host booted with a real Python governance worker, zero activation warnings and an authenticated HTTP 200. A sandboxed launch first returned Windows `spawn EPERM`; a narrow elevated retry succeeded. No real model task or Runtime child was run in this gate.
 
-The next gates are an installable bundle/Profile adapter, official Host parent-session identity and cancellation acceptance, terminal Manifest, and uninstall. Do not enable the plugin in a daily Profile until real official Host read/write and rollback acceptance pass. D2 ExecuteGate remains `NOT_CLAIMED`.
+## Verified gates
+
+`pnpm typecheck`, `pnpm build`, and `pnpm test:entry` pass. Earlier focused tests also cover fail-closed admission, real Python worker ALLOW/DENY and durable audit, both fixed provider routes, parent Session cwd, Host startup rollback, and dedicated tool route. The worker tests use isolated audit paths; the provider and tool tests use Host doubles.
+
+Next: verify official Host tool/provider state and a non-D2 read-only Runtime task in a fresh temporary Git repository, add an authenticated terminal Manifest route and Web drawer, then test write, failure, cancellation, missing evidence and uninstall. Do not enable this Profile as the daily entry until those gates pass.
