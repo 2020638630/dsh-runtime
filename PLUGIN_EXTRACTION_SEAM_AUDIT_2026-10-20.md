@@ -56,3 +56,7 @@
 隔离消费者将 `tests/fixtures/official_harness_tool_probe` 打包为 `@local/dsh-runtime-tool-probe@0.0.3`，通过官方 `dsh plugin` 安装到全新 Home。未调用模型和 Runtime。官方 Web 认证页为 200，鉴权诊断路由返回 200，并报告 `registered=true`、`hasTaskKind=true`、`inspectionProviderRegistered=true`、`changeProviderRegistered=true`、`noAgentRejected=true`、`invalidTaskKindRejected=true`、`preAbortedRejected=true`。这是真实官方 Host 的工具与两个固定用途 provider 注册、负向执行结果；它**尚未**证明真实父 Agent/Session 绑定、治理 worker 决策或 Runtime 启动。停止服务、卸载包后，Profile 配置与基线无行差异。探针代码作为可复验夹具入库，详细说明见夹具 README。
 
 官方发行的 `SubagentStartRequest` 类型确实没有 `taskKind`。因此正式实现按检查/写入两个 provider 名称固定工作类型及 reason code，专属工具只从已验证枚举选择 provider；不在官方请求对象上增加私有字段。治理调用须放在**每个 provider 自身的 `start()`**，在 Python Runtime 子进程启动之前完成，并且拒绝、超时、worker 异常均失败关闭。这样即使其他合法 Host 入口直接启动某个 provider，也不能绕开治理。探针 provider 故意无条件抛出“governance is not installed”，只验证可注册性。
+
+### 独立治理桥移植首轮（同日）
+
+`integrations/deepseek-harness` 建立为 `private: true` 的不可发布骨架，固定公开 `@deepseek-ai/*@0.2.1-rc.2` 依赖；从私有候选迁出 `protocol.ts`、`session-pin.ts`、`bridge.ts`，只把原私有 `GovernedSubagentStartRoute` 类型改成插件自身的封闭二元组类型。`pnpm typecheck` 通过。`startGoverned` 作为未来 provider `start()` 的最后启动门，六个无模型单元测试通过：明确允许一次启动、策略拒绝、worker FAILURE、桥接异常、预取消、评估期间取消。单元测试的 launch 仅为计数器，**尚非真实 Python worker/审计或 Runtime 子进程验收**。下一步是隔离 worker 的真实拒绝、超时和持久 pin 测试，再把该门接入双 provider。

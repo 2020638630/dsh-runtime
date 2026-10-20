@@ -77,4 +77,4 @@ roles:
 
 截至 2026-10-20：R9 首期终态证据已在私有 Harness 与 Runtime 组合中验证；0.2.1 私有 Windows 版已并行试用。PLUG-01 最小外部 Host/Web 插件已在官方公开 `@deepseek-ai/dsh@0.2.1-rc.2` 实际安装、加载、浏览器激活、认证读取及卸载通过，详见同目录的 `PLUGIN_EXTRACTION_SEAM_AUDIT_2026-10-20.md`。**真实 Runtime provider 仍依赖私有治理预启动钩子及 `task_kind` 传输**；模型角色可配置、官方版真实读写及 Manifest 抽屉、全功能无私有核心补丁均未通过，不作为当前已交付声明。
 
-下一项直接工作为 PLUG-02 的可信 Host 工具入口和预启动治理抽离；以官方发行版的公开 API 证明会话身份、明确的 `task_kind`、取消与治理失败关闭可以在外部包中完整实现。完成这项后才进行 PLUG-03/04 的真实 Runtime/Manifest 迁移。探针使用独立 Home 与临时仓库，不碰两个原工作树和用户 ZCode 的凭据文件。私有 Harness 分支暂作为可回退的已验收实现保留；只有 REL-01 官方安装端到端通过后，才从日常路径移除并审查分支归档。
+PLUG-02 进展：官方 Host 专属工具与双固定用途 provider 的安装/注册和三项负向执行已通过；独立治理桥骨架在公开依赖上通过类型检查，启动门六项失败关闭测试通过。下一项直接工作是**真实 Python governance worker** 的隔离拒绝、超时、审计和会话 pin 验证，再把启动门接入两个 provider 的 `start()`；接着进行 PLUG-03/04 的真实 Runtime/Manifest 迁移。以上探针不调用模型，不碰两个原工作树和用户 ZCode 的凭据文件。私有 Harness 分支暂作为可回退的已验收实现保留；只有 REL-01 官方安装端到端通过后，才从日常路径移除并审查分支归档。
