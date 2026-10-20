@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-runtime-tool-probe",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -9,7 +9,8 @@
   },
   "files": ["lib/index.js", "cordis.patch.yml"],
   "dependencies": {
-    "@deepseek-ai/dsh-tools": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-subagent": "0.2.1-rc.2"
   },
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" }

@@ -61,7 +61,7 @@ roles:
 | ID / 优先级 | 任务 | 可验证完成条件 |
 | --- | --- | --- |
 | PLUG-01 / P0 | 官方 Host 插件接口探针 | 在**未修改的官方发行包**中，以包或 tarball 安装一个最小 Host+Web 客户端插件；能注册独立工具视图和认证 API；禁用/卸载后官方功能正常。记录真实兼容版本、安装命令及任何缺口。 |
-| PLUG-02 / P0 | 宿主核心差异归类 | 对私有 Harness 相对官方的 Runtime 功能差异逐项标记“迁入扩展 / 通用接口需上游 / 非产品 D2 / 发布兼容修复”；特别处理 `tool-subagent` 的 `task_kind`、一次性提示和 `subagent` 请求类型，证明不依赖私有核心后才能宣布零补丁。 |
+| PLUG-02 / P0 | 宿主核心差异归类 | 对私有 Harness 相对官方的 Runtime 功能差异逐项标记“迁入扩展 / 通用接口需上游 / 非产品 D2 / 发布兼容修复”；专属外部工具验证 `task_kind` 枚举，以两个固定用途 provider 代替官方请求中不存在的 `taskKind`，把预启动治理放进每个 provider 的 `start()`；证明不依赖私有核心后才能宣布零补丁。 |
 | PLUG-03 / P0 | Host 扩展独立打包 | Provider、Manifest、读取路由、Schema 合入外部包；去除 `workspace:*` 发布依赖与错误的官方仓库元数据；在干净安装上通过只读、写入、失败、取消及证据缺失测试。 |
 | PLUG-04 / P0 | Web 抽屉独立打包 | 将 `dsh-runtime-row`、CSS、翻译迁到外部 `dsh.client` 模块，以公开槽位注册；不再编辑官方 `ui-tool`、`ui-conversation`。真实页面三页签与鉴权读取通过。 |
 | MODEL-01 / P0 | 角色配置与默认兼容 | 冻结 schema、解析/预检、每次调用冻结与安全记录；无配置时现有 CodeBuddy→Codex 与只读检查行为不变；错误配置在模型/文件调用前失败。 |

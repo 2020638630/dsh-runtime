@@ -1,8 +1,22 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { NO_START_CAPABILITIES } from '@deepseek-ai/dsh-subagent'
 
-export const inject = ['tools', 'connection']
+export const inject = ['tools', 'connection', 'subagents']
+
+const PROVIDERS = Object.freeze({
+  repository_inspection: 'dsh-runtime-inspection-probe',
+  repository_change: 'dsh-runtime-change-probe',
+})
 
 export function apply(ctx) {
+  for (const name of Object.values(PROVIDERS)) {
+    ctx.subagents.registerProvider({
+      name,
+      capabilities: NO_START_CAPABILITIES,
+      inheritsParentContext: false,
+      start: () => { throw new Error('dsh runtime probe: governance is not installed') },
+    })
+  }
   const tool = defineTool({
     name: 'dsh_runtime_admission_probe',
     description: 'Test the external Runtime tool admission contract without starting a task.',
@@ -18,15 +32,16 @@ export function apply(ctx) {
         type: 'object',
         additionalProperties: false,
         properties: {
-          admitted: { type: 'boolean', required: true },
+          selectedProvider: { type: 'string', required: true },
+          started: { type: 'boolean', required: true },
         },
       },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
     },
-    execute: async (_args, exec) => {
+    execute: async (args, exec) => {
       exec.signal.throwIfAborted()
       if (!exec.agent) throw new Error('dsh runtime probe: trusted calling agent required')
-      return { admitted: true }
+      return { selectedProvider: PROVIDERS[args.task_kind], started: false }
     },
   })
   ctx.tools.register(tool)
@@ -59,6 +74,8 @@ export function apply(ctx) {
       return Response.json({
         registered: schema !== undefined,
         hasTaskKind: schema?.properties?.task_kind !== undefined,
+        inspectionProviderRegistered: ctx.subagents.getProvider(PROVIDERS.repository_inspection)?.name === PROVIDERS.repository_inspection,
+        changeProviderRegistered: ctx.subagents.getProvider(PROVIDERS.repository_change)?.name === PROVIDERS.repository_change,
         noAgentRejected: result.isError === true && JSON.stringify(result).includes('trusted calling agent required'),
         invalidTaskKindRejected: invalid.isError === true,
         preAbortedRejected: aborted.isError === true,
