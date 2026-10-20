@@ -1,10 +1,10 @@
 # DSH Runtime for official DeepSeekHarness (private preview)
 
-This package is an independently installable Host bundle for the unmodified public `@deepseek-ai/dsh@0.2.1-rc.2`. It is still a private preview. The authenticated terminal Evidence Manifest route is implemented and has passed an isolated real Host read-only task. The Web drawer has not been ported. Keep the private RC4 Harness as the parallel daily fallback.
+This package is an independently installable Host and Web bundle for the unmodified public `@deepseek-ai/dsh@0.2.1-rc.2`. It is still a private preview. The authenticated terminal Evidence Manifest route and three-tab Web drawer passed an isolated real Host read-only task. Keep the private RC4 Harness as the parallel daily fallback.
 
 ## Build and install in an isolated Profile
 
-Run `pnpm build` and `pnpm pack`. The tarball contains `lib/` and `cordis.patch.yml`; its `dsh.bundle.patch` inserts the external plugin. Install the tarball in an isolated consumer/Profile. The plugin requires a complete Profile config before activation:
+Run `pnpm build` and `pnpm pack`. The tarball contains the Host entry, `lib/client.js`, and `cordis.patch.yml`; its `dsh.bundle.patch` inserts the external plugin and `dsh.client` declares the Web entry. Install the tarball in an isolated consumer/Profile. The plugin requires a complete Profile config before activation:
 
 ```yaml
 - id: dsh-runtime-standalone
@@ -29,4 +29,6 @@ The isolated official Host acceptance Profile is `D:/DeepSeekHarness/vis-stable-
 
 The first isolated trial exposed an official Host incompatibility: a private, required `subagent/governance-policy-pin` Session event prevented replay after restart. That test Session remains as failure evidence. This adapter now stores the immutable policy pin in its own Host directory before pre-start evaluation and writes no private Session event. The second fresh trial and post-restart evidence read passed. Existing Sessions already containing that private event still need a copy-only migration study.
 
-Next: port the Web drawer, then test write, failure, cancellation, missing evidence, uninstall, and old Home copy migration. Do not enable this Profile as the daily entry until those gates pass.
+The private preview `0.1.0-rc.4` loaded in the unmodified official Web Host. A browser reopened the completed read-only Session, expanded its process group, opened the external drawer, and verified the execution, observed changes, and audit tabs. No model call was needed for this replay. The screenshot is in the isolated acceptance consumer's `runtime-profile/official-rc4-evidence-drawer.png`.
+
+Next: test write, failure, cancellation, missing evidence, uninstall, and old Home copy migration. Do not enable this Profile as the daily entry until those gates pass.

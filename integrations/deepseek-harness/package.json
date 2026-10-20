@@ -1,12 +1,13 @@
 {
   "name": "@dsh-runtime/harness-plugin",
-  "version": "0.1.0-rc.2",
+  "version": "0.1.0-rc.4",
   "private": true,
   "type": "module",
   "description": "In-progress standalone DeepSeekHarness host adapter for DSH Runtime",
   "main": "./lib/index.js",
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -16,10 +17,13 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
     }
   },
   "scripts": {
-    "build": "node ./scripts/clean-lib.mjs && tsc -p tsconfig.build.json",
+    "build": "node ./scripts/clean-lib.mjs && tsc -p tsconfig.build.json && node ./scripts/build-client.mjs",
     "prepack": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test:admission": "tsc -p tsconfig.test.json && node .build/test/admission.test.js",

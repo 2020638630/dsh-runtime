@@ -1,0 +1,143 @@
+/** Browser half of the standalone Runtime plugin. Uses only the official module table. */
+window.__ModuleLoader__.load({
+  id: '@dsh-runtime/harness-plugin',
+  factory(require) {
+    const React = require('react')
+    const { createPortal } = require('react-dom')
+    const h = React.createElement
+    const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
+    const labels = { trajectory: '执行轨迹', changes: '实际变动', audit: '审计' }
+
+    function startedChild(props) {
+      if (props.phase !== 'result') return null
+      const text = (props.block?.content ?? []).filter(item => item.type === 'text')
+        .map(item => item.text).join('\n').trim()
+      const match = /^(?:started subagent |started governed DSH Runtime task )([0-9a-f-]+)$/.exec(text)
+      return match && UUID.test(match[1]) ? match[1] : null
+    }
+
+    function validEvidence(value) {
+      const manifest = value?.manifest
+      return manifest && typeof manifest.status === 'string'
+        && manifest.execution_trajectory && manifest.workspace_changes
+        && manifest.audit && manifest.verification && typeof value.diff === 'string'
+    }
+
+    const panel = { padding: '16px 20px', overflow: 'auto', overflowWrap: 'anywhere' }
+    const button = { border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', padding: '6px 9px' }
+    const pre = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 }
+    const line = (label, value) => h('p', { key: label }, `${label}：${value ?? '未知'}`)
+
+    function EvidenceRow(props) {
+      const id = startedChild(props)
+      const [state, setState] = React.useState('waiting')
+      const [open, setOpen] = React.useState(false)
+      const [tab, setTab] = React.useState('trajectory')
+      const [now, setNow] = React.useState(Date.now())
+      const start = props.phase === 'result' ? props.block.callTime ?? props.block.time : props.block.time
+
+      React.useEffect(() => {
+        if (!id) return
+        const lifetime = new AbortController()
+        let pending = false
+        let done = false
+        let missing = 0
+        async function load() {
+          if (pending || done || lifetime.signal.aborted) return
+          pending = true
+          try {
+            const query = new URLSearchParams({ sessionId: props.sessionId, childId: id })
+            const response = await fetch(`api/dsh-runtime.evidence?${query}`, { signal: lifetime.signal })
+            if (response.status === 404) {
+              if (++missing >= 10) { done = true; setState('unavailable') }
+              return
+            }
+            if (!response.ok && response.status !== 202) {
+              done = true
+              setState('unavailable')
+              return
+            }
+            const value = await response.json()
+            if (validEvidence(value)) {
+              done = true
+              setState(value)
+            } else if (value?.state?.phase === 'settled') {
+              done = true
+              setState(value.state.stopReason === 'aborted' ? 'aborted' : 'unavailable')
+            }
+          } catch {
+            if (!lifetime.signal.aborted) { done = true; setState('unavailable') }
+          } finally { pending = false }
+        }
+        void load()
+        const timer = setInterval(() => { void load() }, 3000)
+        return () => { lifetime.abort(); clearInterval(timer) }
+      }, [id, props.sessionId])
+
+      React.useEffect(() => {
+        if (state !== 'waiting') return
+        const timer = setInterval(() => setNow(Date.now()), 1000)
+        return () => clearInterval(timer)
+      }, [state])
+      React.useEffect(() => {
+        if (!open) return
+        const close = event => { if (event.key === 'Escape') setOpen(false) }
+        window.addEventListener('keydown', close)
+        return () => window.removeEventListener('keydown', close)
+      }, [open])
+
+      const ready = typeof state === 'object' ? state : null
+      const manifest = ready?.manifest
+      const changes = manifest?.workspace_changes
+      const count = changes ? changes.added_files.length + changes.modified_files.length + changes.deleted_files.length : 0
+      const summary = ready ? `${manifest.status} · ${Math.round(manifest.duration_ms / 1000)} 秒`
+        : state === 'waiting' ? (id ? `等待证据 ${Math.max(0, Math.round((now - start) / 1000))} 秒` : '正在启动')
+          : state === 'aborted' ? '已取消' : '终态证据不可用'
+      let body = null
+      if (ready && tab === 'trajectory') {
+        const trajectory = manifest.execution_trajectory
+        body = [line('轨迹状态', trajectory.status), line('轮次', trajectory.turns_used ?? '未记录'),
+          h('ul', { key: 'tools' }, Object.entries(trajectory.tool_operations_summary ?? {})
+            .map(([name, count]) => h('li', { key: name }, `${name}：${count}`)))]
+      } else if (ready && tab === 'changes') {
+        body = [line('运行窗口观察到的变化', count === 0 ? '无' : `${count} 项`),
+          line('新增', changes.added_files.join('、') || '无'),
+          line('修改', changes.modified_files.join('、') || '无'),
+          line('删除', changes.deleted_files.join('、') || '无'),
+          count ? line('补丁', changes.patch_applicable ? '可应用' : '仅供查看') : null,
+          ready.diff ? h('pre', { key: 'diff', style: pre }, ready.diff.slice(0, 200000)) : null]
+      } else if (ready) {
+        body = [line('审计状态', manifest.audit.status), line('调用 ID', manifest.audit.call_id),
+          line('输出摘要', manifest.audit.stdout_sha256), line('审查判决', manifest.verification.verdict),
+          h('pre', { key: 'basis', style: pre }, manifest.verification.evidence_text ?? '未知')]
+      }
+      return h('div', { 'data-tool': 'dsh_runtime', style: { minWidth: 0 } },
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, minHeight: 30 } },
+          h('strong', null, 'DSH Runtime'),
+          h('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, summary),
+          ready && h('button', { type: 'button', style: button, onClick: () => setOpen(true) }, '查看证据')),
+        open && ready && createPortal(h('div', {
+          style: { position: 'fixed', inset: 0, zIndex: 1000, background: 'rgb(0 0 0 / 42%)', display: 'flex', justifyContent: 'flex-end' },
+          onMouseDown: event => { if (event.target === event.currentTarget) setOpen(false) },
+        }, h('section', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'DSH Runtime',
+          style: { width: 'min(560px, 100vw)', height: '100%', background: 'var(--dsw-alias-bg-base, white)', display: 'flex', flexDirection: 'column' } },
+        h('header', { style: { ...panel, display: 'flex', justifyContent: 'space-between' } },
+          h('strong', null, 'DSH Runtime'), h('button', { type: 'button', 'aria-label': '关闭', style: button, onClick: () => setOpen(false) }, '×')),
+        h('div', { style: panel }, `任务状态：${manifest.status}　审查判决：${manifest.verification.verdict}`),
+        h('nav', { 'aria-label': 'DSH Runtime', style: { display: 'flex', padding: '0 16px' } },
+          Object.entries(labels).map(([name, label]) => h('button', { key: name, type: 'button',
+            'aria-current': tab === name ? 'page' : undefined,
+            style: { ...button, borderBottom: tab === name ? '2px solid currentColor' : 'none' },
+            onClick: () => setTab(name) }, label))),
+        h('div', { style: { ...panel, flex: 1 } }, body))), document.body))
+    }
+
+    return {
+      inject: ['slots'],
+      apply(ctx) {
+        ctx.slots.inject('tool.call.toolview', () => ctx.slots.register(
+          { name: 'tool.call.toolview', key: 'dsh_runtime', locale: 'conversation' }, EvidenceRow))
+      },
+    }
+  },
+})
