@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-runtime-tool-probe
+      name: '@local/dsh-runtime-tool-probe'

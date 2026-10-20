@@ -50,3 +50,7 @@
 首个实现门槛：用官方包的公开 Host tool API 证明工具注册、会话身份及取消信号可达；针对 `repository_inspection`、`repository_change`、拒绝/超时/worker 异常做启动前阻断测试，再与原治理审计逐项对照。若公开 API 不提供可信会话或取消信号，应提交最小通用上游接口提案并等待公开发行，不能以私有宿主补丁假装插件独立。之后才迁移现有 provider、Manifest 和 Web 抽屉，并做官方安装包真实读写/失败/取消及卸载回退验收。D2 ExecuteGate 保持 `NOT_CLAIMED`。
 
 已核对官方 `@deepseek-ai/dsh-tools@0.2.1-rc.2` 的发行类型：`ToolRunContext` 有由宿主设置的 `agent?: Agent` 与 `signal: AbortSignal`；因此外部专属工具可从 `exec.agent` 获取调用者并按 `exec.signal` 取消，而不让模型提供身份。仍须在真实官方 Host 运行时验证 agent 与会话的可信绑定。官方 `@deepseek-ai/dsh-subagent@0.2.1-rc.2` 暴露 `startActivation`，但缺少上述治理注册接口；不能仅靠类型强转传递 `taskKind` 后声称预启动治理已成立。
+
+### 专属 Host 工具负向探针（同日）
+
+隔离消费者将 `tests/fixtures/official_harness_tool_probe` 打包为 `@local/dsh-runtime-tool-probe@0.0.2`，通过官方 `dsh plugin` 安装到全新 Home。未调用模型和 Runtime。官方 Web 认证页为 200，鉴权诊断路由返回 200，并报告 `registered=true`、`hasTaskKind=true`、`noAgentRejected=true`、`invalidTaskKindRejected=true`、`preAbortedRejected=true`。这是真实官方 Host 的工具注册和负向执行结果；它**尚未**证明真实父 Agent/Session 绑定、治理 worker 决策或 Runtime 启动。停止服务、卸载包后，Profile 配置与基线无行差异。探针代码作为可复验夹具入库，详细说明见夹具 README。
