@@ -7,12 +7,14 @@ test('failed governance worker startup exposes no provider and unregisters the p
   let pinRegistered = 0
   let pinDisposed = 0
   let providerRegistrations = 0
+  let toolRegistrations = 0
   const ctx = {
     sessionProjections: {
       register: () => { pinRegistered++; return () => { pinDisposed++ } },
     },
     subprocess: { spawn: () => { throw new Error('isolated worker unavailable') } },
     subagents: { registerProvider: () => { providerRegistrations++; return () => undefined } },
+    tools: { register: () => { toolRegistrations++; return () => undefined } },
   } as unknown as Context
   await assert.rejects(mountHostCore(ctx, {
     governance: {
@@ -25,4 +27,5 @@ test('failed governance worker startup exposes no provider and unregisters the p
   assert.equal(pinRegistered, 1)
   assert.equal(pinDisposed, 1)
   assert.equal(providerRegistrations, 0)
+  assert.equal(toolRegistrations, 0)
 })

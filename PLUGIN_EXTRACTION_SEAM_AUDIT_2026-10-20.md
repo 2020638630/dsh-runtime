@@ -68,3 +68,5 @@
 现已将原有 `run.ts` 和其终态 Evidence Manifest、工作区快照、Safe Trace、调用轨迹、终态读取模块复制到独立骨架；公开 `@deepseek-ai/*@0.2.1-rc.2` 下类型检查通过。`createRuntimeLauncher` 将双 provider 的固定工作类型接给原有 one-shot transport，只使用父 Session 的 `header.cwd` 作为目标工作区，缺失时在 product entrypoint 前失败。两项无模型测试通过。这证明迁移代码的类型与工作区选择，**尚未**验证官方 Host 中真实 Runtime 子进程、终态 Manifest 或证据抽屉。
 
 `mountHostCore` 将策略 pin、Python worker、Runtime launcher、双 provider 组合在一起；只有 worker READY 后才注册 provider。启动失败时逐项撤销注册并释放 worker/pin，卸载函数可重复调用。类型检查与一项 worker 启动失败回滚测试通过。它目前是库入口，尚无可安装 Host bundle 或模型工具；正式安装之前必须补真实 Host 会话、工具、证据路由和生命周期验收。
+
+现又将专属 `dsh_runtime` 工具纳入 READY 之后的注册顺序：模型只能提交枚举 `task_kind`、提示与描述，工具使用宿主 `exec.agent`，检查类型固定选择 inspection provider，写入类型固定选择 change provider；任务请求不含私有 `taskKind` 字段。无 Agent 拒绝和检查路由两项测试通过。启动 worker 失败测试确认工具与 provider 均未注册。此时仍未构建可安装 Bundle，也未在官方 Host 中调用真实 Runtime。

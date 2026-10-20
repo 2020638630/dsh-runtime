@@ -3,7 +3,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-subprocess'
+import type {} from '@deepseek-ai/dsh-tools'
 import { createGovernedProvider } from './provider.ts'
+import { createRuntimeTool } from './tool.ts'
 import { createRuntimeLauncher, type RuntimeLauncherConfig } from './runtime-launcher.ts'
 import { GovernanceBridge, type BridgeProcessConfig } from './governance/bridge.ts'
 import { governancePolicyPinProjectionDefinition } from './governance/session-pin.ts'
@@ -36,6 +38,7 @@ export async function mountHostCore(ctx: Context, config: HostCoreConfig): Promi
     const launch = createRuntimeLauncher({ ...config.runtime, spawn: spec => ctx.subprocess.spawn(spec) })
     providerDisposers.push(ctx.subagents.registerProvider(createGovernedProvider('repository_inspection', bridge, launch)))
     providerDisposers.push(ctx.subagents.registerProvider(createGovernedProvider('repository_change', bridge, launch)))
+    providerDisposers.push(ctx.tools.register(createRuntimeTool(ctx.subagents)))
     return dispose
   } catch (error) {
     try { await dispose() } catch (cleanupError) {

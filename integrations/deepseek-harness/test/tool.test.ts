@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import type { SubagentRuntime } from '@deepseek-ai/dsh-subagent'
+import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { createRuntimeTool } from '../src/tool.ts'
+
+test('dedicated tool refuses calls without a trusted Host agent', async () => {
+  let starts = 0
+  const subagents = { startActivation: async () => { starts++; return { childId: 'child' } } } as unknown as Pick<SubagentRuntime, 'startActivation'>
+  const tool = createRuntimeTool(subagents)
+  await assert.rejects(tool.execute({ task_kind: 'repository_inspection', prompt: 'inspect', description: 'inspect' }, {
+    signal: new AbortController().signal,
+  } as ToolRunContext), /trusted calling agent/)
+  assert.equal(starts, 0)
+})
+
+test('dedicated tool chooses the fixed inspection provider', async () => {
+  let selected = ''
+  const parent = { id: 'parent', session: { id: 'session' } }
+  const subagents = { startActivation: async (spec: { provider: string, request: { parent: unknown } }) => {
+    selected = spec.provider
+    assert.equal(spec.request.parent, parent)
+    return { childId: 'child' }
+  } } as unknown as Pick<SubagentRuntime, 'startActivation'>
+  const tool = createRuntimeTool(subagents)
+  const result = await tool.execute({ task_kind: 'repository_inspection', prompt: 'inspect', description: 'inspect' }, {
+    agent: parent, signal: new AbortController().signal,
+  } as ToolRunContext)
+  assert.equal(selected, 'dsh-runtime-inspection')
+  assert.deepEqual(result, { subagentId: 'child' })
+})
