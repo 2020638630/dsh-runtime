@@ -1,11 +1,12 @@
 /** FIFO process transport and lazy session-pin orchestration. */
 import { randomUUID } from 'node:crypto'
+import { realpathSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { Session } from '@deepseek-ai/dsh-session'
-import type SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { bridgeFailure, encodeWorkerRequest, GOVERNANCE_PROTOCOL_VERSION, parseWorkerResponse, type BindSessionRequest, type EvaluatePreStartRequest, type GovernanceDecision, type GovernanceFailure, type GovernedReasonCode, type GovernedTaskKind, type InitializeRequest, type OperationalResponse, type ReadyResponse } from './protocol.ts'
-import { governancePolicyPin, recordGovernancePolicyPin } from './session-pin.ts'
+import { GovernancePinStore } from './pin-store.ts'
 
 /** Configuration for the managed Python governance worker and its audit inputs. */
 export interface BridgeProcessConfig {
@@ -16,6 +17,7 @@ export interface BridgeProcessConfig {
   readonly expectedPolicyHash: string
   readonly enabledWorkloads: readonly string[]
   readonly auditPath: string
+  readonly pinRoot: string
   readonly disposeGraceMs: number
   /** Maximum time in milliseconds to wait for one worker response. */
   readonly responseTimeoutMs: number
@@ -151,10 +153,12 @@ export function isSupportedGovernedStartPair(
 /** Bridge-owned FIFO: one whole bind-plus-evaluate transaction at a time. */
 export class GovernanceBridge {
   private readonly connection: GovernanceWorkerConnection
+  private readonly pins: GovernancePinStore
   private readonly ready: Promise<ReadyResponse>
   private tail: Promise<void> = Promise.resolve()
   private disposed = false
-  constructor(spawn: Spawn, private readonly projections: Pick<SessionProjectionRegistry, 'stateOf'>, config: BridgeProcessConfig) {
+  constructor(spawn: Spawn, private readonly config: BridgeProcessConfig) {
+    this.pins = new GovernancePinStore(config.pinRoot)
     this.connection = new GovernanceWorkerConnection(spawn, config)
     this.ready = this.connection.initialize(config)
     void this.ready.catch(() => undefined)
@@ -175,13 +179,28 @@ export class GovernanceBridge {
     const governedRoute = route
     if (this.disposed)
       return Promise.resolve(bridgeFailure(null))
+    try {
+      const workspacePath = session.header.cwd
+      if (workspacePath === undefined || !isAbsolute(workspacePath)) throw new Error('parent Session has no absolute workspace')
+      const workspace = realpathSync(workspacePath)
+      const auditPath = join(realpathSync(dirname(this.config.auditPath)), basename(this.config.auditPath))
+      const controls = [realpathSync(this.config.runtimeRoot), this.pins.root, auditPath]
+      const within = (root: string, path: string) => {
+        const rel = relative(root, path)
+        return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+      }
+      if (controls.some(control => within(workspace, control) || within(control, workspace))) throw new Error('workspace overlaps Runtime control state')
+    } catch {
+      return Promise.resolve({ ...bridgeFailure(null), diagnostic: 'Runtime workspace is unavailable or overlaps Host control state' })
+    }
     const result = this.tail.then(async () => {
       if (this.disposed)
         return bridgeFailure(null)
       let evaluationId: string | null = null
       try {
         await this.ready
-        let pin = governancePolicyPin(this.projections, session)
+        const sessionId = String(session.id)
+        let pin = await this.pins.read(sessionId)
         const bindId = randomUUID()
         const bind: BindSessionRequest = pin === undefined ? { kind: 'BIND_SESSION', request_id: bindId, session_id: session.id, mode: 'create' } : { kind: 'BIND_SESSION', request_id: bindId, session_id: session.id, mode: 'resume', pinned_policy_identity: pin }
         const bound = await this.connection.request(bind)
@@ -189,10 +208,7 @@ export class GovernanceBridge {
           return bound
         if (bound.kind !== 'SESSION_BOUND' || bound.session_id !== session.id)
           return bridgeFailure(bindId)
-        if (pin === undefined) {
-          recordGovernancePolicyPin(this.projections, session, bound.policy_identity)
-          pin = bound.policy_identity
-        }
+        pin = await this.pins.pin(sessionId, bound.policy_identity)
         evaluationId = randomUUID()
         const response = await this.connection.request({
           kind: 'EVALUATE_PRE_START',

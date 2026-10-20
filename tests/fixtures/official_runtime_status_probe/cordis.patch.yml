@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-runtime-status-probe
+      name: '@local/dsh-runtime-status-probe'

@@ -18,7 +18,7 @@ function fixture(): Config {
   return {
     runtimeRoot, python: 'python', policySource,
     expectedPolicyHash: 'a'.repeat(64), enabledWorkloads: ['repository_inspection'],
-    auditPath: join(auditRoot, 'governance.jsonl'), evidenceRoot,
+    auditPath: join(auditRoot, 'governance.jsonl'), pinRoot: auditRoot, evidenceRoot,
   }
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@dsh-runtime/harness-plugin",
-  "version": "0.1.0-rc.0",
+  "version": "0.1.0-rc.2",
   "private": true,
   "type": "module",
   "description": "In-progress standalone DeepSeekHarness host adapter for DSH Runtime",
@@ -9,14 +9,22 @@
     ".": "./lib/index.js",
     "./package.json": "./package.json"
   },
-  "files": ["lib", "cordis.patch.yml"],
-  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node ./scripts/clean-lib.mjs && tsc -p tsconfig.build.json",
     "prepack": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test:admission": "tsc -p tsconfig.test.json && node .build/test/admission.test.js",
     "test:worker": "tsc -p tsconfig.test.json && node .build/test/worker.test.js",
+    "test:pin-store": "tsc -p tsconfig.test.json && node .build/test/pin-store.test.js",
     "test:provider": "tsc -p tsconfig.test.json && node .build/test/provider.test.js",
     "test:launcher": "tsc -p tsconfig.test.json && node .build/test/runtime-launcher.test.js",
     "test:host-core": "tsc -p tsconfig.test.json && node .build/test/host-core.test.js",
@@ -26,9 +34,10 @@
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.5",
     "@deepseek-ai/dsh-brand": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-connection": "0.2.1-rc.2",
     "@deepseek-ai/dsh-llm": "0.2.1-rc.2",
     "@deepseek-ai/dsh-session": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-session-projection": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-session-query": "0.2.1-rc.2",
     "@deepseek-ai/dsh-subagent": "0.2.1-rc.2",
     "@deepseek-ai/dsh-subprocess": "0.2.1-rc.2",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.2",
