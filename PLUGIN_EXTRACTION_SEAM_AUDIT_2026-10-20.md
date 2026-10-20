@@ -27,3 +27,11 @@
 从一个未编辑、固定版本的**官方安装产物**开始，安装仅包含最小 Host 和 Web client 的外部包；启动隔离 Profile 后，Web 页面能加载外部工具卡，Host 的独立认证路由可访问，禁用/卸载后槽位与路由消失且官方页面仍可用。探针只用假证据和临时仓库，不调用模型，不使用 D2。失败时保存版本、错误与最小复现，不把私有候选的已构建页面当作官方兼容证据。
 
 若工具入口无法在公开 Subagent API 上准确传递 `repository_inspection` / `repository_change`，本轮先记录需要的最小上游接口提案，再决定是否创建专属工具包；不得提前宣布“官方零补丁”。
+
+## 官方发行包最小外部插件探针（同日追加）
+
+- 在 `D:\DeepSeekHarness\vis-stable-release-artifacts\official-plugin-probe-20261020` 用公开 npm registry 安装官方 `@deepseek-ai/dsh@0.2.1-rc.2`；CLI 用独立 Node 24 运行，`--version` 返回 `0.2.1-rc.2`。此消费者不引用私有 Harness 候选包。
+- 建立全新 `DSH_HOME`，首次 `--profile web --dump-config` 成功。最小包 `@local/dsh-runtime-probe@0.0.1` 只含空 Host `apply` 和一个注册 `dsh_runtime_probe` 键的 Web client bundle，打包为本地 tarball；没有模型、Runtime 任务或证据内容。
+- `dsh plugin --profile web add <tarball>` 成功，Profile 配置中出现插件。官方 `dsh web --no-open --port 0` 启动后，本地认证入口 HTTP 200、HTML 包含该插件的客户端 bundle 引用；插件所在 `/plugins/??...client.js` 资源 HTTP 200，响应含 `@local/dsh-runtime-probe` 的客户端工厂。
+- 停止本次探针服务后，`dsh plugin --profile web remove @local/dsh-runtime-probe` 成功；再次转储配置不含探针，内容与安装前转储完全一致。
+- 这证明**外部包安装、官方 Web 加载图与配置卸载**可行；尚未用浏览器执行该客户端模块，也未注册或调用 Host 认证 API，更未证明真实 Runtime provider / `task_kind` 能零补丁工作。PLUG-01 仍为进行中。全部产物及不含用户凭据的输出留在上述独立探针目录。
