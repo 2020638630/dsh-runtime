@@ -21,6 +21,21 @@ Run `pnpm build` and `pnpm pack`. The tarball contains the Host entry, `lib/clie
 
 The Runtime root and policy file must exist. The audit parent, pin directory and evidence directory must exist. The worker confirms policy identity before either provider or the tool is registered. The Host-owned pin store writes one immutable policy identity per Session before evaluating a Runtime start; the official Session log receives no private event type. The caller's parent Session supplies the target workspace. Workspaces overlapping Runtime control state are rejected. Profile paths never redirect a task into either source checkout. No D2 ExecuteGate claim is made.
 
+## Role and model selection (preview)
+
+The optional `roleConfig` belongs in the plugin's Profile config, alongside `runtimeRoot`. It is frozen into one Runtime child invocation. Omit it to keep the existing CodeBuddy write stage and Codex review/inspection stages:
+
+```yaml
+    roleConfig:
+      schema_version: 1
+      roles:
+        worker: { adapter: codebuddy, model: null }
+        reviewer: { adapter: codex, model: null }  # replace null with a supported model ID
+        inspector: { adapter: codex, model: null } # may use a different model ID
+```
+
+The three roles are required when the config is present. A `codex` worker is also accepted and receives workspace write authority only for the existing write stage; reviewer and inspector remain read-only and currently require `codex`. Codex model IDs are passed to its app-server `thread/start` request; model availability still depends on the installed Codex account. CodeBuddy model overrides are rejected until its CLI model-selection contract and observed result can be verified; leaving its `model` as `null` preserves its own default. Reasoning overrides are not part of this schema. This configuration cannot add stages, raise read-only authority, or enable D2. Do not put credentials in `roleConfig`.
+
 The isolated official Host acceptance Profile is `D:/DeepSeekHarness/vis-stable-release-artifacts/official-plugin-probe-20261020/home/profiles/runtime-official`; the tarball is beside the consumer. This Profile enables inspection only. Its full config is local acceptance state, not a production template. In a fresh temporary Git repository, a real official Host model task called `dsh_runtime` for `repository_inspection`: the child completed, the governance audit recorded one `ALLOW`, the terminal Manifest reported no file changes, and the repository stayed clean. After a Host restart, the authenticated evidence route still returned HTTP 200 for that Session; anonymous, malformed and other-Session requests returned 401, 400 and 404 respectively.
 
 ## Verified gates

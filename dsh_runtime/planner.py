@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from .role_config import RoleConfig, RoleSelection
 from .state import TaskKind, TaskState
 
 
@@ -20,29 +21,32 @@ class Decision:
 
 
 class SimplePlanner:
+    def __init__(self, roles: RoleConfig | None = None) -> None:
+        self.roles = roles or RoleConfig.defaults()
+
+    @staticmethod
+    def _role_decision(role: RoleSelection, prompt: str, *, allow_write: bool) -> Decision:
+        return Decision(
+            plugin=role.adapter,
+            params=role.params(prompt),
+            allow_workspace_write=allow_write,
+        )
+
     def next_action(self, task: TaskState) -> Decision:
         if task.task_kind is TaskKind.REPOSITORY_CHANGE:
             if task.iteration == 0:
-                return Decision(
-                    plugin="codebuddy",
-                    params={"prompt": task.goal},
-                    allow_workspace_write=True,
-                )
+                return self._role_decision(self.roles.worker, task.goal, allow_write=True)
             if task.iteration == 1:
-                return Decision(
-                    plugin="codex",
-                    params={"prompt": _verification_prompt(task)},
-                    allow_workspace_write=False,
+                return self._role_decision(
+                    self.roles.reviewer, _verification_prompt(task), allow_write=False
                 )
             return _verification_decision(task.last_invocation_result)
         if (
             task.task_kind is TaskKind.REPOSITORY_INSPECTION
             and task.iteration == 0
         ):
-            return Decision(
-                plugin="codex",
-                params={"prompt": _inspection_prompt(task)},
-                allow_workspace_write=False,
+            return self._role_decision(
+                self.roles.inspector, _inspection_prompt(task), allow_write=False
             )
         if task.iteration > 0:
             return Decision(plugin=None)

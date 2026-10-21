@@ -8,6 +8,7 @@ from pathlib import Path
 from dsh_runtime.codex_runtime_home import CodexRuntimeHome, ManagedCodexPlugin
 from dsh_runtime.controller import DSHController
 from dsh_runtime.planner import SimplePlanner
+from dsh_runtime.role_config import RoleConfig
 from dsh_runtime.plugins.codebuddy import (
     CodeBuddyPlugin,
     MAX_STREAM_CHARS_ENV,
@@ -59,9 +60,11 @@ def build_controller(
     *,
     workspace_manager: WorkspaceManager | None = None,
     codex_runtime_home: CodexRuntimeHome | None = None,
+    role_config: RoleConfig | None = None,
 ) -> DSHController:
     """Assemble Runtime owners and the opt-in qualification trace capability."""
 
+    roles = role_config or RoleConfig.from_environment()
     runtime_home = codex_runtime_home or CodexRuntimeHome.from_environment()
     registry = PluginRegistry()
     registry.register(EchoPlugin())
@@ -83,7 +86,7 @@ def build_controller(
     )
     return DSHController(
         registry,
-        planner=SimplePlanner(),
+        planner=SimplePlanner(roles),
         workspace_manager=workspace_manager or WorkspaceManager(),
     )
 

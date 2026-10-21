@@ -78,3 +78,9 @@ roles:
 截至 2026-10-20：R9 首期终态证据已在私有 Harness 与 Runtime 组合中验证；0.2.1 私有 Windows 版已并行试用。PLUG-01 最小外部 Host/Web 插件已在官方公开 `@deepseek-ai/dsh@0.2.1-rc.2` 实际安装、加载、浏览器激活、认证读取及卸载通过，详见同目录的 `PLUGIN_EXTRACTION_SEAM_AUDIT_2026-10-20.md`。**真实 Runtime provider 仍依赖私有治理预启动钩子及 `task_kind` 传输**；模型角色可配置、官方版真实读写及 Manifest 抽屉、全功能无私有核心补丁均未通过，不作为当前已交付声明。
 
 PLUG-02 进展：官方 Host 专属工具与双固定用途 provider 的安装/注册和三项负向执行已通过；独立治理桥骨架在公开依赖上通过类型检查，启动门六项失败关闭测试通过；真实 Python governance worker 的允许/拒绝、审计、会话 pin、审计失败及超时三项集成测试也已通过；双 provider 的 `start()` 已接入启动门并通过三项直接调用测试；原有 Runtime one-shot transport 与终态证据模块已迁入独立骨架，工作区选择两项测试通过；`mountHostCore` 的 worker READY 后注册和启动失败回滚测试通过；专属 `dsh_runtime` 工具已接入 Host 核心且完成两项身份/路由测试。下一项直接工作是构建可安装的官方 Host Bundle 和 Profile 适配，并在真实父会话、取消与终态证据上验收；接着迁移 Web 抽屉。以上探针不调用模型，不碰两个原工作树和用户 ZCode 的凭据文件。私有 Harness 分支暂作为可回退的已验收实现保留；只有 REL-01 官方安装端到端通过后，才从日常路径移除并审查分支归档。
+
+## 7. 2026-10-21 进展与下一门槛
+
+第 6 节是 10 月 20 日的历史截面。当前独立 Host/Web 插件在未修改的官方 `@deepseek-ai/dsh@0.2.1-rc.2` 中，已完成真实非 D2 只读、写入、失败、取消、终态抽屉、认证读取和卸载回退验收。打包迁移 CLI 对旧 Home 独立副本完成 33/33 SessionQuery 读回；实际是五个旧工作区，均已做无模型页面抽样。负责人从并行入口打开旧会话，确认内容和输入框正常。现有私有 RC4 仍保留为回退入口，原日常 Home 不切换。
+
+MODEL-01 的候选实现开始引入 `schema_version: 1` 的三角色配置：缺省仍为 CodeBuddy 工作、Codex 审查和检查；`worker` 可选择 Codex，`reviewer` / `inspector` 暂只接受 Codex。Codex 的角色模型 ID 送入已有 app-server `thread/start` 模型字段；CodeBuddy 模型覆盖在正式 CLI 契约核验前明确拒绝。配置只含执行器和模型 ID，不含凭据；角色对象在 Host 校验并复制，Runtime 构建控制器时冻结。审查/检查的只读权限和现有阶段数不变。Python 81 项相关测试、Host 类型检查和 3 项 entry 测试通过。`rc.13` 打包后安装于独立 Home 的官方 Host，角色配置 Profile 加载、页面 200、stderr 为空；测试明确验证角色配置只送 Runtime 子进程，不送治理进程。这是无模型加载验收，尚未证明可用模型的实际请求与观测。下一步在全新隔离仓库验收一个真实 Codex 模型，并补非法 Profile 的 Host 失败关闭；CodeBuddy 自定义模型另按 MODEL-03 核实，不能提前宣称支持。
