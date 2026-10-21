@@ -168,3 +168,36 @@ def test_no_real_user_codex_home_is_referenced_by_default_contract(tmp_path: Pat
 
     assert home.codex_home != Path(os.environ.get("USERPROFILE", "")) / ".codex"
     assert ".codex" not in str(home.codex_home)
+
+
+def test_codex_added_project_trust_does_not_invalidate_managed_config(tmp_path: Path) -> None:
+    home = CodexRuntimeHome(tmp_path / "state")
+    home.prepare()
+    augmented = MANAGED_CONFIG_TEXT + (
+        "\n[projects.'d:\\deepseekharness\\vis-codex-worker-20261021']\n"
+        'trust_level = "trusted"\n'
+    )
+    home.config_path.write_text(augmented, encoding="utf-8")
+
+    home.prepare()
+
+    assert home.config_path.read_text(encoding="utf-8") == augmented
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "\n[projects.'relative-repo']\ntrust_level = \"trusted\"\n",
+        "\n[projects.'d:\\repo']\ntrust_level = \"untrusted\"\n",
+        "\n[projects.'d:\\repo']\ntrust_level = \"trusted\"\nmodel = \"other\"\n",
+        "\n[arbitrary]\nenabled = true\n",
+        "\n[projects.'d:\\repo']\ntrust_level = invalid\n",
+    ],
+)
+def test_managed_config_rejects_other_appended_settings(tmp_path: Path, extra: str) -> None:
+    home = CodexRuntimeHome(tmp_path / "state")
+    home.codex_home.mkdir(parents=True)
+    home.config_path.write_text(MANAGED_CONFIG_TEXT + extra, encoding="utf-8")
+
+    with pytest.raises(CodexRuntimeHomeError, match="incompatible"):
+        home.prepare()

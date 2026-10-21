@@ -9,8 +9,9 @@ as a pre-spawn readiness failure.
 from __future__ import annotations
 
 import os
+import tomllib
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Mapping
 
 from .plugins.codex import CodexPlugin
@@ -37,6 +38,28 @@ MANAGED_CONFIG_TEXT = (
 
 class CodexRuntimeHomeError(RuntimeError):
     """Stable configuration/readiness failure for a DSH-owned Codex Home."""
+
+
+def _compatible_managed_config(current: str) -> bool:
+    """Allow only Codex-added project trust records after the pinned settings."""
+
+    if not current.startswith(MANAGED_CONFIG_TEXT):
+        return False
+    try:
+        document = tomllib.loads(current)
+        expected = tomllib.loads(MANAGED_CONFIG_TEXT)
+    except tomllib.TOMLDecodeError:
+        return False
+    if {key: value for key, value in document.items() if key != "projects"} != expected:
+        return False
+    projects = document.get("projects", {})
+    return isinstance(projects, dict) and all(
+        isinstance(path, str)
+        and (Path(path).is_absolute() or PureWindowsPath(path).is_absolute())
+        and isinstance(config, dict)
+        and config == {"trust_level": "trusted"}
+        for path, config in projects.items()
+    )
 
 
 def _absolute_path(raw: str | os.PathLike[str], *, label: str) -> Path:
@@ -164,7 +187,7 @@ class CodexRuntimeHome:
                 raise CodexRuntimeHomeError(
                     "managed CODEX_HOME config.toml cannot be read"
                 ) from exc
-            if current != MANAGED_CONFIG_TEXT:
+            if not _compatible_managed_config(current):
                 raise CodexRuntimeHomeError(
                     "managed CODEX_HOME config.toml is incompatible"
                 )

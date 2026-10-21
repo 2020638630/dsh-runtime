@@ -100,3 +100,9 @@ MODEL-03 仅完成本机 CLI 能力探测：已安装的 `codebuddy --help` 明�
 这说明三角色 schema 的 inspector、CodeBuddy worker 和 Codex reviewer 各有一份现场样本；**Codex 作为 worker 的写入路径、不同账户/其他模型和长期日常使用尚未验收**。下一步优先做 Codex worker 的隔离写入样本，再审查并行日常 Profile 的模型配置与回退，最后才考虑私有 Harness 分支收敛。D2 ExecuteGate 保持 `NOT_CLAIMED`。
 
 补充：Codex worker 已在第三个隔离临时 Git 仓库完成**直接 Runtime 插件**的非 D2 写入试验，请求/观测均为 `gpt-5.6-luna`、写权限 true、任务成功，仅新增精确 21 字节的目标文件。它证明当前 Codex worker 插件的模型传递和写入能力；仍需在未修改的官方 Host 上把 Codex worker 与只读 reviewer 联动验收，才能作为并行日常 Profile 的候选配置。首次沙箱运行在访问受管 Codex Home 时失败，获准访问后重试成功，失败未触及临时仓库文件。
+
+## 9. 2026-10-22 官方 Host 双 Codex 角色验收
+
+Codex worker 与 reviewer 的真实官方宿主联动现已取得一份完整通过样本：独立 Profile 的三角色均指定 `gpt-5.6-luna`；全新 Git 仓库中 worker 可写、reviewer 只读，两份轨迹的请求/观测模型一致。Manifest 为 `completed`、退出码 0、审查 `PASS`；仅新增精确 24 字节且无 BOM/换行的文件。验收前两次试验分别暴露受管 Codex 配置追加项目信任记录导致的预检失败，以及提示词未明确换行时产生 25 字节文件。两份失败证据保持独立，不计入通过样本。候选的配置兼容修复只放行 Codex 追加的绝对路径项目信任记录，仍要求原模型与沙箱配置完整一致。
+
+MODEL-01 至 MODEL-03 的本机单模型路径已有 inspector、CodeBuddy worker、Codex reviewer 和 Codex worker 现场样本。下一阶段需要形成可回退的并行日常角色 Profile，并就用户选择的其他模型分别验证账户可用性与 requested/observed 一致性；不得因单次 `gpt-5.6-luna` 通过而宣称任意模型可用。D2 ExecuteGate 仍为 `NOT_CLAIMED`，旧日常 Home 与两个原源码工作树继续保留。
