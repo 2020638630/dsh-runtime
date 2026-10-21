@@ -93,6 +93,4 @@ def _selection(role: str, value: Any) -> RoleSelection:
     model = value["model"]
     if model is not None and (not isinstance(model, str) or not _MODEL_ID.fullmatch(model)):
         raise ValueError(f"{role} model must be a bounded model ID or null")
-    if adapter == "codebuddy" and model is not None:
-        raise ValueError("CodeBuddy model overrides are not yet verified")
     return RoleSelection(adapter=adapter, model=model)

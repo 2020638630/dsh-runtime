@@ -88,3 +88,13 @@ MODEL-01 的候选实现开始引入 `schema_version: 1` 的三角色配置：�
 MODEL-02 的 inspector 路径已取得**一份真实官方 Host 现场样本**：独立 `runtime-roles-live` Profile 把 inspector 指定为 `gpt-5.6-luna`，在第二个全新临时 Git 仓库进行非 D2 的只读 `repository_inspection`。Codex qualification trace 记录 requested/observed model 均为 `gpt-5.6-luna`、只读且成功；Runtime Manifest 为 `completed` / exit 0，未发现文件变动，临时仓库 Git 干净。先前对 `gpt-6-luna` 的直接只读诊断，当前本机 ChatGPT 账户的 Codex app-server 明确返回模型不支持；它不代表所有账户的可用模型列表。reviewer 的不同模型、工作阶段切到 Codex、CodeBuddy 自定义模型、日常 Profile 推广仍待后续验收。官方模型现场样本和隔离 Profile 留在 `D:\DeepSeekHarness\vis-stable-release-artifacts\official-plugin-probe-20261020\role-config-trial-20261021`，原 Home 未启动。
 
 MODEL-03 仅完成本机 CLI 能力探测：已安装的 `codebuddy --help` 明示 `--model <model>` 和当前支持的模型 ID。下一步应把角色选择接到 CodeBuddy 的两条运行路径，并用 CLI 参数捕获与独立临时仓库的模型观测验收；当前插件仍明确拒绝 CodeBuddy 模型覆盖。
+
+## 8. 2026-10-21 角色模型现场验收更新
+
+第 7 节记录的是接线前的阶段截面。当前本机 CodeBuddy CLI 为 `2.164.0`；Runtime 未指定模型时，由 CLI 的设置层决定。本机用户设置中的 `model` 为 `glm-5.3-flash`，未发现相关模型环境变量，但旧现场样本没有最终模型字段，不能把该设置推断为已观测结果。Harness 父会话显示的 `DeepSeek-V4.1-Flash` 属于宿主对话，不是 Runtime 的 CodeBuddy worker。
+
+已在候选中开放 CodeBuddy worker 的有界模型 ID，经 `--model` 传给普通 JSON 与安全流 JSON 两条运行路径；不填时命令参数保持原样。独立临时 Git 仓库中的 CodeBuddy 直接现场样本请求并观测到 `deepseek-v4.1-flash`，执行成功、仓库干净。相关 Python 169 项测试、Host typecheck 和 entry 3/3 通过，私有安装包升级为 `0.1.0-rc.14`。
+
+在另一个全新临时 Git 仓库，未修改的官方 Host 通过 rc.14 Profile 执行一次非 D2 `repository_change`：worker 设为 CodeBuddy `deepseek-v4.1-flash`，reviewer 设为 Codex `gpt-5.6-luna`。两份独立 qualification trace 的 requested/observed model 均对应各自配置；worker 具有工作区写入权限，reviewer 为只读。终态 Manifest 为 `completed` / exit 0、审查 `PASS`，仓库仅新增 `MODEL_ROLE_OK.txt`，精确 24 字节 `WORKER_REVIEWER_MODEL_OK`，页面无脚本错误。测试 Host 已停止，两个原工作树未作为任务目标。
+
+这说明三角色 schema 的 inspector、CodeBuddy worker 和 Codex reviewer 各有一份现场样本；**Codex 作为 worker 的写入路径、不同账户/其他模型和长期日常使用尚未验收**。下一步优先做 Codex worker 的隔离写入样本，再审查并行日常 Profile 的模型配置与回退，最后才考虑私有 Harness 分支收敛。D2 ExecuteGate 保持 `NOT_CLAIMED`。

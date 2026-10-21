@@ -613,6 +613,33 @@ def test_exact_bounded_argv_cwd_and_private_settings(tmp_path: Path) -> None:
         assert popen.call_args.kwargs["shell"] is False
 
 
+def test_explicit_model_uses_cli_flag_and_records_requested_model(tmp_path: Path) -> None:
+    capture = tmp_path / "capture.json"
+    trace_dir = tmp_path / "trace"
+    result = run(
+        plugin(tmp_path, mode="trace-events", capture=capture, trace_dir=trace_dir),
+        context(tmp_path),
+        {"prompt": "bounded prompt", "model": "glm-5.3-flash"},
+    )
+    assert result.success is True
+    argv = json.loads(capture.read_text(encoding="utf-8"))["argv"]
+    assert argv[argv.index("--model") + 1] == "glm-5.3-flash"
+    assert argv[-1] == "bounded prompt"
+    trace = json.loads(next(trace_dir.glob("codebuddy-worker-*.json")).read_text())
+    assert trace["requested_model"] == "glm-5.3-flash"
+    assert trace["observed_models"] == ["fake-trace-model"]
+
+
+def test_invalid_model_fails_before_codebuddy_spawn(tmp_path: Path) -> None:
+    with patch("dsh_runtime.plugins.codebuddy.subprocess.Popen") as popen:
+        result = asyncio.run(
+            plugin(tmp_path).execute(context(tmp_path), {"prompt": "work", "model": "bad model"})
+        )
+    assert result.success is False
+    assert result.error == "CodeBuddy model must be a bounded model ID"
+    popen.assert_not_called()
+
+
 def test_explicit_max_turns_override_is_preserved(tmp_path: Path) -> None:
     capture = tmp_path / "capture.json"
     cb = CodeBuddyPlugin(
@@ -1773,6 +1800,7 @@ if capture_path:
         "tools": argv[argv.index("--tools") + 1],
         "permission_mode": argv[argv.index("--permission-mode") + 1],
         "allowed_tools": next(value for value in argv if value.startswith("--allowedTools=")),
+        "model": argv[argv.index("--model") + 1] if "--model" in argv else None,
         "stream_opt_in_visible": "DSH_CODEBUDDY_SAFE_STREAM_JSON" in os.environ,
         "safe_trace_dir_visible": "DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR" in os.environ,
     }
@@ -1856,6 +1884,19 @@ def _stream_success_event(output: str = "stream result") -> dict:
         "is_error": False,
         "result": output,
     }
+
+
+def test_stream_json_model_uses_same_cli_flag(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv(codebuddy_module.SAFE_STREAM_JSON_ENV, "1")
+    capture = tmp_path / "stream-capture.json"
+    cb = _stream_json_plugin(
+        tmp_path,
+        chunks=[_stream_json_line(_stream_success_event())],
+        capture=capture,
+    )
+    result = run(cb, context(tmp_path), {"prompt": "work", "model": "glm-5.3-flash"})
+    assert result.success is True
+    assert json.loads(capture.read_text(encoding="utf-8"))["model"] == "glm-5.3-flash"
 
 
 def test_safe_stream_json_opt_in_preserves_invocation_and_discards_raw_stream(
@@ -1944,6 +1985,7 @@ def test_safe_stream_json_opt_in_preserves_invocation_and_discards_raw_stream(
         "tools": "Read,Edit,Write,Bash",
         "permission_mode": "dontAsk",
         "allowed_tools": "--allowedTools=Bash(python:*)",
+        "model": None,
         "stream_opt_in_visible": False,
         "safe_trace_dir_visible": False,
         "settings_default_mode": "dontAsk",

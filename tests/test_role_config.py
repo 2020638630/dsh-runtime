@@ -62,7 +62,6 @@ def test_default_roles_preserve_existing_worker_and_read_only_stages() -> None:
         (lambda doc: doc.update(schema_version=True), "schema_version"),
         (lambda doc: doc["roles"].pop("inspector"), "requires worker"),
         (lambda doc: doc["roles"]["reviewer"].update(adapter="codebuddy"), "reviewer adapter"),
-        (lambda doc: doc["roles"]["worker"].update(adapter="codebuddy", model="model-x"), "not yet verified"),
         (lambda doc: doc["roles"]["worker"].update(model="bad model"), "bounded model ID"),
         (lambda doc: doc["roles"]["worker"].update(model="gpt-worker", extra="x"), "requires adapter and model"),
         (lambda doc: doc["roles"]["reviewer"].update(reasoning="high"), "requires adapter and model"),
@@ -79,6 +78,22 @@ def test_duplicate_json_field_is_rejected() -> None:
     raw = json.dumps(_document()).replace('"schema_version": 1', '"schema_version": 1, "schema_version": 1')
     with pytest.raises(ValueError, match="duplicate role config field"):
         RoleConfig.from_environment({ROLE_CONFIG_ENV: raw})
+
+
+def test_codebuddy_worker_model_is_selected_without_changing_write_authority() -> None:
+    document = _document()
+    document["roles"]["worker"] = {"adapter": "codebuddy", "model": "glm-5.3-flash"}
+    decision = SimplePlanner(RoleConfig.from_document(document)).next_action(
+        TaskState(
+            goal="make a change",
+            task_kind=TaskKind.REPOSITORY_CHANGE,
+            allow_workspace_write=True,
+            max_iterations=2,
+        )
+    )
+    assert decision.plugin == "codebuddy"
+    assert decision.params == {"prompt": "make a change", "model": "glm-5.3-flash"}
+    assert decision.allow_workspace_write is True
 
 
 def test_controller_freezes_roles_at_construction(monkeypatch) -> None:

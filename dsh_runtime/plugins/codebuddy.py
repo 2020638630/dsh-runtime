@@ -36,6 +36,7 @@ _SETTINGS = {
 _DEFAULT_MAX_TURNS = 12
 _DEFAULT_MAX_OUTPUT_CHARS = 100_000
 _DEFAULT_MAX_DIAGNOSTIC_CHARS = 1_000
+_MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+-]{0,127}\Z")
 MAX_STREAM_CHARS_ENV = "DSH_CODEBUDDY_MAX_STREAM_CHARS"
 MAX_STREAM_CHARS_HARD_LIMIT = 1_000_000
 _QUALIFICATION_OBSERVABILITY_FAILURE = "QUALIFICATION OBSERVABILITY FAILURE"
@@ -1789,6 +1790,7 @@ class CodeBuddyPlugin:
         settings_path: Path,
         *,
         stream_json: bool = False,
+        model: str | None = None,
     ) -> list[str]:
         return [
             *self._command,
@@ -1807,6 +1809,7 @@ class CodeBuddyPlugin:
             "--permission-mode",
             "dontAsk",
             "--allowedTools=Bash(python:*)",
+            *(["--model", model] if model is not None else []),
             prompt,
         ]
 
@@ -1814,6 +1817,7 @@ class CodeBuddyPlugin:
         self,
         cwd: Path,
         prompt: str,
+        model: str | None,
     ) -> PluginResult:
         """Run the qualification-only stream-json path without raw disk capture."""
 
@@ -1861,7 +1865,7 @@ class CodeBuddyPlugin:
             )
 
             process = subprocess.Popen(
-                self._argv(prompt, settings_path, stream_json=True),
+                self._argv(prompt, settings_path, stream_json=True, model=model),
                 cwd=str(cwd),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
@@ -2017,8 +2021,11 @@ class CodeBuddyPlugin:
         prompt = self._prompt(ctx, params)
         if prompt is None:
             return PluginResult(success=False, error="CodeBuddy prompt must be non-empty text")
+        model = params.get("model")
+        if model is not None and (not isinstance(model, str) or not _MODEL_ID.fullmatch(model)):
+            return PluginResult(success=False, error="CodeBuddy model must be a bounded model ID")
         if self.safe_stream_json:
-            return await self._execute_stream_json(cwd, prompt)
+            return await self._execute_stream_json(cwd, prompt, model)
 
         settings_path: Path | None = None
         stdout_path: Path | None = None
@@ -2082,7 +2089,7 @@ class CodeBuddyPlugin:
             stdout_file = stdout_path.open("wb")
             stderr_file = stderr_path.open("wb")
             process = subprocess.Popen(
-                self._argv(prompt, settings_path),
+                self._argv(prompt, settings_path, model=model),
                 cwd=str(cwd),
                 stdin=subprocess.DEVNULL,
                 stdout=stdout_file,
@@ -2227,6 +2234,7 @@ class CodeBuddyPlugin:
                     "settled_at": _utc_timestamp(),
                     "pid": process.pid if process is not None else None,
                     "model": observed_models[0] if observed_models else None,
+                    "requested_model": model,
                     "observed_models": observed_models,
                     "task_id": ctx.task_id,
                     "workspace_id": ctx.workspace_id,
@@ -2234,7 +2242,7 @@ class CodeBuddyPlugin:
                     "goal": ctx.goal,
                     "effective_prompt": prompt,
                     "allow_workspace_write": ctx.allow_workspace_write,
-                    "argv": self._argv(prompt, settings_path)
+                    "argv": self._argv(prompt, settings_path, model=model)
                     if settings_path is not None
                     else None,
                     "settings": _SETTINGS,

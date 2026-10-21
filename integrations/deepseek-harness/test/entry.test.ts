@@ -37,7 +37,7 @@ test('entry rejects missing governance identity, unsupported workload and missin
   assert.throws(() => validateConfig({ ...base, env: { PYTHONPATH: 'override' } }))
 })
 
-test('entry freezes distinct Codex role models and refuses unsupported overrides', () => {
+test('entry freezes role models and refuses unsupported adapters or fields', () => {
   const base = fixture()
   const roleConfig = {
     schema_version: 1 as const,
@@ -57,14 +57,15 @@ test('entry freezes distinct Codex role models and refuses unsupported overrides
   assert.equal(JSON.parse(processes.runtime.env.DSH_RUNTIME_ROLE_CONFIG_JSON).roles.reviewer.model, 'gpt-reviewer')
 
   assert.throws(() => validateConfig({ ...base, env: { DSH_RUNTIME_ROLE_CONFIG_JSON: '{}' } }))
-  assert.throws(() => validateConfig({ ...base, roleConfig: {
+  const codeBuddy = validateConfig({ ...base, roleConfig: {
     schema_version: 1,
     roles: {
-      worker: { adapter: 'codebuddy', model: 'unverified-model' },
+      worker: { adapter: 'codebuddy', model: 'glm-5.3-flash' },
       reviewer: { adapter: 'codex', model: null },
       inspector: { adapter: 'codex', model: null },
     },
-  } }), /not yet verified/)
+  } })
+  assert.equal(codeBuddy.roleConfig?.roles.worker.model, 'glm-5.3-flash')
   assert.throws(() => validateConfig({ ...base, roleConfig: {
     schema_version: 1,
     roles: {

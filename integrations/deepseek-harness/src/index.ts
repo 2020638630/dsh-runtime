@@ -61,9 +61,6 @@ function roleSelection(value: unknown, role: 'worker' | 'reviewer' | 'inspector'
   if (model !== null && (typeof model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,127}$/.test(model))) {
     throw new TypeError(`${role} model must be a bounded model ID or null`)
   }
-  if (adapter === 'codebuddy' && model !== null) {
-    throw new TypeError('CodeBuddy model overrides are not yet verified')
-  }
   return { adapter, model: model as string | null }
 }
 
