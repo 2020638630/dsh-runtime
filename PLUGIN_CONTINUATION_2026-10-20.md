@@ -20,11 +20,13 @@
 14. 2026-10-21 续跑已定位早退原因：前述失败试验的 Host 生成 Call Trace 目标路径长 260/261 字符，Windows Python 在 261 字符目标上 `Path.write_text()` 返回 `FileNotFoundError`，同目录短目标可写；因此 Runtime 在写 `call_started` 时以 transport error 退出，未调用模型。旧失败 Profile 的“无效最大轮数”也被长路径先行遮蔽，不能把旧样本单独归因为轮数。新的 `c5` 试验改用 241 字符路径后，真实 CodeBuddy 替身启动并持续运行；验收专用中断接口首次因把 `session-UUID` 误判为 UUID 返回 400，该次没有取消，Host 随后被停止且子进程退出。上述诊断仅在隔离消费者和独立临时仓库进行。
 15. 现场取消门槛已通过：验收探针 `0.0.6` 接受官方 `session-UUID` 父会话标识；新隔离 Profile `runtime-official-cancel6`、临时仓库 `trial-repository-20261021-cancel6` 中，官方 Host 真实 `repository_change` 任务的治理审计 `ALLOW`，等待型本地 CodeBuddy 替身确实启动。通过官方 `ctx.subagents.interrupt` 发起一次用户取消，HTTP 200/accepted；`run-state.json` 为 settled/aborted、`manifest_available=false`，替身进程退出，临时 Git 仓库保持干净。官方 Web 重新打开真实会话显示“已取消”，页面错误为空；截图在消费者 `runtime-profile\\c6\\aborted-field-ui-rc7.png`。这里的终态证据为运行状态，因主动取消并无完整 Manifest，不能声称有已完成任务的三页完整证据。
 16. 独立插件 `0.1.0-rc.8` 将 Host 传给 Python 的 Call Trace 与 Safe Trace 环境路径转为 Windows 扩展路径，Host 自身用于校验和读取的路径保持普通绝对路径。`pnpm typecheck`、`test:entry` 2/2、`test:host-core` 1/1、打包均通过。无模型 263 字符路径诊断：Python entrypoint 对无效 JSON 写出 `call_started` 和 `call_terminal`（exit 2），Host 的 Call Trace 读取器对此返回 settled。再在未修改的官方 `@deepseek-ai/dsh@0.2.1-rc.2` 中安装 rc.8，独立 `runtime-official-longpath7` Profile 使用 267 字符证据目标与无效 `DSH_CODEBUDDY_MAX_TURNS`，真实子进程记录 `call_started`、`call_terminal`（ValueError、exit 2），run-state settled/error、无 Manifest，临时仓库干净。此现场父会话调用了模型以启动工具，Runtime 子任务在模型调用前失败；证据在消费者 `runtime-profile\\long-failure-20261021`。隔离 Host 已停止。
+17. `rc.8` 成功终态回归已通过：全新隔离 `runtime-official-success8` Profile 与临时 Git 仓库 `trial-repository-20261021-success8` 中，官方 Host 真正运行一次非 D2 `repository_change`；只新增 `runtime-success8-acceptance.txt`，UTF-8 内容 `PLUGIN_RC8_SUCCESS_OK` 加 LF，共 22 字节。Runtime 的 run-state 最终 settled/completed、Manifest completed、Call Trace 两条闭合、Safe Trace `.closed` 一项、验证 PASS；Manifest 的实际变动只有该文件，补丁可应用。官方 Web 原生工具行的“查看证据”打开三页“执行轨迹 / 实际变动 / 审计”，页面错误为空；截图在消费者 `runtime-profile\\c8\\rc8-write-evidence-drawer.png`。父会话页面约 45 秒时已答复而 Runtime run-state 尚处 running，约 20 秒后才 settled；验收以最终磁盘证据为准。隔离 Host 已停止。
+18. 旧日常 Home 副本六个工作区已逐一做无模型页面回放：每个工作区可见旧会话列表，各打开其中一个旧会话，输入区均可见，浏览器页面错误为空；记录为消费者 `home-migration-20261021\\check-copied-home-audit.cjs`。这是每个工作区一个会话的抽样，不是全部旧会话逐一迁移。副本最终有 37 个会话相关文件：与原 Home 当前文件 SHA256 相同 32 个、副本已迁移变化 1 个、副本新增且原 Home 不存在 4 个；未写原 Home。隔离 Host 已停止。
 
 ## 未完成与下次顺序
 
-1. 当前私有可安装包为 `@dsh-runtime/harness-plugin@0.1.0-rc.8`；`runtime-official` 仅启用 `repository_inspection`，不作日常入口。真实写入只在专用临时仓库和 Profile 验收过，尚未推广至日常 Home。`rc.8` 的长路径现场只验证错误终态的 Call Trace 持久化，尚需至少一次完成态重回归。
-2. 下一步检查旧 Home 副本其余工作区及含旧私有事件的会话、补充 rc.8 的成功终态回归，随后评估官方应用的并行日常入口。取消的浏览器回放与官方 Host 现场取消均已通过，但主动取消无完整 Manifest；旧事件失败样本与新样本分开核验。检查窄窗口和键盘操作；旧 Home 不应直接切换。
+1. 当前私有可安装包为 `@dsh-runtime/harness-plugin@0.1.0-rc.8`；`runtime-official` 仅启用 `repository_inspection`，不作日常入口。`rc.8` 的长路径失败终态、正常完成写入和三页证据抽屉均在隔离官方 Host 通过，尚未推广至日常 Home。
+2. 下一步对含旧私有事件的早期插件测试会话做副本迁移或明确隔离策略，检查窄窗口和键盘操作，再评估官方应用的并行日常入口。旧日常 Home 六个工作区各抽样一个会话已通过，但其余旧会话尚未逐一验证；旧 Home 不应直接切换。取消的浏览器回放与官方 Host 现场取消均已通过，但主动取消无完整 Manifest。
 3. 完成上述门槛后评估官方应用并行日常入口，最后再考虑简化私有 Harness 分支。不得因本次只读成功就删除或覆盖私有分支及旧 Home；归档、删除另审。
 
 ## 保护事项
@@ -36,3 +38,5 @@
 2026-10-21 五小时额度剩 9%、周额度剩 56%，已达到用户设定的 10% 停止阈值；五小时窗口预计北京时间 13:51:10 恢复。昨晚因关机错过的旧定时已删除；另建本线程一次性 `dsh-runtime` 续跑，目标为北京时间 13:56，仅在 Codex 本机可运行时生效，续跑后停用。候选 `rc.7` Web 修复已提交为 `4a4a330`，副本迁移与卸载记录为 `e356dd2`，取消探针及前三次诊断为 `ee2ad2c`，第四次对照记录为 `05bbabd`。独立消费者中的 tarball、Profile、临时仓库、浏览器脚本与截图是验收材料，不在源码提交范围。所有隔离 Host 已停止，测试端口无监听；候选工作树干净、本地提交未推送。两个原工作树分别保留 16 项和 106 项 Git 可见改动，未清理、重置或覆盖。D2 仍为 `NOT_CLAIMED`。续跑先用无模型方法取得 Runtime 子进程的安全退出诊断，不重复提交已完成或失败的模型任务。
 
 2026-10-21 13:56 之后一次性续跑已执行：先核对额度恢复至五小时 100%、周额度 55%，两原工作树改动仍分别为 16/106 项。已完成长路径根因、`rc.8` 修复、真实取消和新长路径错误终态现场；上述第 14-16 条给出可复核证据。后续按“未完成与下次顺序”继续。此时已停所有隔离 Host，测试端口 3080 无监听，两个原仓库未被用作任务工作区，D2 仍为 `NOT_CLAIMED`。
+
+同次续跑继续完成 `rc.8` 的成功写入、真实三页抽屉与旧 Home 副本六工作区抽样，见第 17-18 条。所有隔离 Host 已停、3080 无监听，候选提交仍在本地，未推送；D2 保持 `NOT_CLAIMED`。
