@@ -13,7 +13,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { rename, writeFile } from 'node:fs/promises'
-import { isAbsolute, join, relative, sep } from 'node:path'
+import { isAbsolute, join, relative, sep, toNamespacedPath } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -358,14 +358,17 @@ async function createDshRuntimeRun(
     mkdirSync(runDir)
     const safeTraceDir = join(runDir, `safe-trace-${runId}`)
     mkdirSync(safeTraceDir)
+    const callTracePath = join(runDir, `${runId}-runtime-call-trace.jsonl`)
     evidenceEnv = {
       DSH_RUNTIME_RUN_ID: runId,
-      DSH_RUNTIME_CALL_TRACE_PATH: join(runDir, `${runId}-runtime-call-trace.jsonl`),
-      DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR: safeTraceDir,
+      // Python's Windows file APIs need the extended path form once the
+      // Host-generated evidence filename crosses the legacy MAX_PATH limit.
+      DSH_RUNTIME_CALL_TRACE_PATH: toNamespacedPath(callTracePath),
+      DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR: toNamespacedPath(safeTraceDir),
     }
     evidencePaths = {
       runId, runDir, safeTraceDir,
-      callTracePath: join(runDir, `${runId}-runtime-call-trace.jsonl`),
+      callTracePath,
     }
     try {
       writeFileSync(join(runDir, 'run-state.json'), `${JSON.stringify({

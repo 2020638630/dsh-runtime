@@ -73,7 +73,8 @@ export function apply(ctx, config = {}) {
     fetch: async request => {
       const body = await request.json().catch(() => null)
       const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
-      if (!uuid.test(body?.parentId ?? '') || !uuid.test(body?.childId ?? ''))
+      if (!/^session-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(body?.parentId ?? '')
+        || !uuid.test(body?.childId ?? ''))
         return Response.json({ error: 'invalid parent or child id' }, { status: 400 })
       ctx.subagents.interrupt(body.childId, { kind: 'user', parentSessionId: body.parentId })
       return Response.json({ accepted: true })
