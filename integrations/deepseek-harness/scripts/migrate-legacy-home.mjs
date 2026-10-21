@@ -7,7 +7,7 @@
  */
 import { createHash } from 'node:crypto'
 import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { zstdCompressSync, zstdDecompressSync } from 'node:zlib'
 
 const PRIVATE_EVENT = 'subagent/governance-policy-pin'
@@ -32,11 +32,14 @@ function argumentsFrom(argv) {
   if (!sourceHome || !destinationHome || !isAbsolute(sourceHome) || !isAbsolute(destinationHome))
     throw new Error('both Home paths must be absolute')
   const source = realpathSync(sourceHome)
-  const destination = resolve(destinationHome)
-  if (source === destination || destination.startsWith(`${source}${sep}`))
+  const requestedDestination = resolve(destinationHome)
+  const parent = realpathSync(dirname(requestedDestination))
+  if (!lstatSync(parent).isDirectory()) throw new Error('destination parent must exist')
+  const destination = join(parent, basename(requestedDestination))
+  const relation = relative(source, destination)
+  if (relation === '' || (relation !== '..' && !relation.startsWith(`..${sep}`) && !isAbsolute(relation)))
     throw new Error('destination must be outside the source Home')
   if (existsSync(destination)) throw new Error('destination already exists')
-  if (!lstatSync(dirname(destination)).isDirectory()) throw new Error('destination parent must exist')
   return { source, destination, apply }
 }
 
