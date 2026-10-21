@@ -98,3 +98,5 @@ MODEL-03 仅完成本机 CLI 能力探测：已安装的 `codebuddy --help` 明�
 在另一个全新临时 Git 仓库，未修改的官方 Host 通过 rc.14 Profile 执行一次非 D2 `repository_change`：worker 设为 CodeBuddy `deepseek-v4.1-flash`，reviewer 设为 Codex `gpt-5.6-luna`。两份独立 qualification trace 的 requested/observed model 均对应各自配置；worker 具有工作区写入权限，reviewer 为只读。终态 Manifest 为 `completed` / exit 0、审查 `PASS`，仓库仅新增 `MODEL_ROLE_OK.txt`，精确 24 字节 `WORKER_REVIEWER_MODEL_OK`，页面无脚本错误。测试 Host 已停止，两个原工作树未作为任务目标。
 
 这说明三角色 schema 的 inspector、CodeBuddy worker 和 Codex reviewer 各有一份现场样本；**Codex 作为 worker 的写入路径、不同账户/其他模型和长期日常使用尚未验收**。下一步优先做 Codex worker 的隔离写入样本，再审查并行日常 Profile 的模型配置与回退，最后才考虑私有 Harness 分支收敛。D2 ExecuteGate 保持 `NOT_CLAIMED`。
+
+补充：Codex worker 已在第三个隔离临时 Git 仓库完成**直接 Runtime 插件**的非 D2 写入试验，请求/观测均为 `gpt-5.6-luna`、写权限 true、任务成功，仅新增精确 21 字节的目标文件。它证明当前 Codex worker 插件的模型传递和写入能力；仍需在未修改的官方 Host 上把 Codex worker 与只读 reviewer 联动验收，才能作为并行日常 Profile 的候选配置。首次沙箱运行在访问受管 Codex Home 时失败，获准访问后重试成功，失败未触及临时仓库文件。
