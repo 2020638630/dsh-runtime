@@ -14,11 +14,13 @@
 8. `rc.7` Web 异常态验收：202→真实 Manifest 可转 completed；404 连续十次、500、损坏的 200 Manifest 均显示“终态证据不可用”且页面不崩溃；settled/aborted 显示“已取消”。损坏 Manifest 首次回放暴露组件渲染异常，随后暴露无限等待，已在客户端修复。回放脚本在独立消费者的 `runtime-profile\check-drawer-states.cjs`；测试响应仅由浏览器拦截，不是现场 Runtime 调用。
 9. 新隔离写入 Profile `runtime-official-write` 在全新临时 Git 仓库进行一次非 D2 `repository_change`：会话 `session-d555895f-815c-43b8-8038-1e2aa1af3a59`，子任务 `e634df2a-b1dc-4288-839d-fc3c95b33638`；仅新增 25 字节无换行的 `runtime-write-acceptance.txt`，内容为 `OFFICIAL_RUNTIME_WRITE_OK`。审计 ALLOW、Manifest completed、Safe Trace `.closed`、验证 PASS、认证路由 200；官方 Web 实际变动页显示该文件和补丁，重启后仍能读回。脚本和截图在消费者 `runtime-profile\write-trial-20261021`。两个源码仓库均未作为任务目标。
 10. 新隔离失败 Profile `runtime-official-failure` 用无效 `DSH_CODEBUDDY_MAX_TURNS` 触发真实 Runtime 子进程在模型调用前退出：会话 `session-10ab6ca7-cbf9-4032-a94b-6237f3a15da7`，子任务 `2bdd93a7-0b33-48ff-945d-2922954de787`。临时 Git 仓库保持干净，审计只有一次记录；`run-state.json` 为 settled/error、`manifest_available=false`，认证路由返回同等状态。`rc.7` 官方 Web 重启后显示“运行失败”，无页面脚本错误，截图为消费者 `runtime-profile\failure-trial-20261021\failure-ui-rc7.png`。这个样本没有终态 Manifest，不能宣称有完整证据抽屉。
+11. 旧日常 Home 的 `sessions`（33 个文件，约 4.8 MB）被单向复制到隔离的 `home-migration-20261021`，未复制凭据；官方 Host 从副本启动，六个工作区在 Web 中可列出，已打开其中一个旧会话，页面无脚本错误且输入区可见。打开会话使副本的 `session-1b348fe1-71c1-4ee3-85a7-d57906f41345/session.v4.jsonl.zstd` 从 379 字节变为 459 字节；其余 32 个复制文件与原件 SHA256 相同。原 Home 不是启动目录。这里只证明一个旧会话的原地副本迁移，尚未逐一验证其余工作区和私有事件旧样本；记录和无模型浏览器脚本在独立消费者 `home-migration-20261021`。
+12. 插件卸载回退：在同一独立消费者新建只含官方 base/Web 两个 bundle 的 `runtime-official-removed` Profile，未装 Runtime 插件。重启后首页 200、原认证证据路由 404；浏览器重新打开此前的失败测试会话，输入区可见、插件工具行数为 0、页面脚本错误为空。日志与无模型脚本在消费者 `runtime-profile\removed-trial-20261021`。这是隔离 Profile 的卸载模拟，尚未更改日常入口。
 
 ## 未完成与下次顺序
 
 1. 当前私有可安装包为 `@dsh-runtime/harness-plugin@0.1.0-rc.7`；`runtime-official` 仅启用 `repository_inspection`，不作日常入口。真实写入只在专用临时仓库和 Profile 验收过，尚未推广至日常 Home。
-2. 下一步继续验收真实取消路径、证据缺失、卸载回退与旧 Home 副本迁移。取消的浏览器回放已通过，但尚缺现场取消一个正在运行的官方 Host 子进程；应将两者明确区分。旧事件失败样本与新样本分开核验。检查窄窗口和键盘操作；旧 Home 不应直接切换。
+2. 下一步继续验收真实取消路径、证据缺失与旧 Home 副本的其余工作区。取消的浏览器回放已通过，但尚缺现场取消一个正在运行的官方 Host 子进程；应将两者明确区分。旧事件失败样本与新样本分开核验。检查窄窗口和键盘操作；旧 Home 不应直接切换。
 3. 完成上述门槛后评估官方应用并行日常入口，最后再考虑简化私有 Harness 分支。不得因本次只读成功就删除或覆盖私有分支及旧 Home；归档、删除另审。
 
 ## 保护事项
