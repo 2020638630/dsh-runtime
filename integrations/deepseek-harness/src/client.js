@@ -18,9 +18,20 @@ window.__ModuleLoader__.load({
 
     function validEvidence(value) {
       const manifest = value?.manifest
-      return manifest && typeof manifest.status === 'string'
-        && manifest.execution_trajectory && manifest.workspace_changes
-        && manifest.audit && manifest.verification && typeof value.diff === 'string'
+      const changes = manifest?.workspace_changes
+      const trajectory = manifest?.execution_trajectory
+      const audit = manifest?.audit
+      const verification = manifest?.verification
+      return typeof manifest?.status === 'string'
+        && Number.isFinite(manifest.duration_ms) && manifest.duration_ms >= 0
+        && Array.isArray(changes?.added_files) && changes.added_files.every(file => typeof file === 'string')
+        && Array.isArray(changes?.modified_files) && changes.modified_files.every(file => typeof file === 'string')
+        && Array.isArray(changes?.deleted_files) && changes.deleted_files.every(file => typeof file === 'string')
+        && typeof trajectory?.status === 'string'
+        && (trajectory.turns_used === null || Number.isSafeInteger(trajectory.turns_used))
+        && typeof audit?.status === 'string'
+        && typeof verification?.verdict === 'string'
+        && typeof value.diff === 'string'
     }
 
     const panel = { padding: '16px 20px', overflow: 'auto', overflowWrap: 'anywhere' }
@@ -63,7 +74,11 @@ window.__ModuleLoader__.load({
               setState(value)
             } else if (value?.state?.phase === 'settled') {
               done = true
-              setState(value.state.stopReason === 'aborted' ? 'aborted' : 'unavailable')
+              setState(value.state.stopReason === 'aborted' ? 'aborted'
+                : value.state.stopReason === 'error' ? 'error' : 'unavailable')
+            } else if (response.status === 200 || value?.state?.phase !== 'running') {
+              done = true
+              setState('unavailable')
             }
           } catch {
             if (!lifetime.signal.aborted) { done = true; setState('unavailable') }
@@ -92,7 +107,8 @@ window.__ModuleLoader__.load({
       const count = changes ? changes.added_files.length + changes.modified_files.length + changes.deleted_files.length : 0
       const summary = ready ? `${manifest.status} · ${Math.round(manifest.duration_ms / 1000)} 秒`
         : state === 'waiting' ? (id ? `等待证据 ${Math.max(0, Math.round((now - start) / 1000))} 秒` : '正在启动')
-          : state === 'aborted' ? '已取消' : '终态证据不可用'
+          : state === 'aborted' ? '已取消'
+            : state === 'error' ? '运行失败' : '终态证据不可用'
       let body = null
       if (ready && tab === 'trajectory') {
         const trajectory = manifest.execution_trajectory
