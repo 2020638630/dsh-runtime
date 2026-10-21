@@ -1,9 +1,10 @@
 {
   "name": "@dsh-runtime/harness-plugin",
-  "version": "0.1.0-rc.9",
+  "version": "0.1.0-rc.10",
   "private": true,
   "type": "module",
   "description": "In-progress standalone DeepSeekHarness host adapter for DSH Runtime",
+  "engines": { "node": ">=24.19.0" },
   "main": "./lib/index.js",
   "bin": { "dsh-runtime-migrate-home": "./scripts/migrate-legacy-home.mjs" },
   "exports": {
