@@ -66,4 +66,17 @@ export function apply(ctx, config = {}) {
       }
     },
   })
+  if (config.allowInterrupt === true) ctx.connection.fetch.register({
+    path: '/api/dsh-runtime-status-probe/interrupt',
+    methods: ['POST'],
+    requestBody: 'buffered',
+    fetch: async request => {
+      const body = await request.json().catch(() => null)
+      const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
+      if (!uuid.test(body?.parentId ?? '') || !uuid.test(body?.childId ?? ''))
+        return Response.json({ error: 'invalid parent or child id' }, { status: 400 })
+      ctx.subagents.interrupt(body.childId, { kind: 'user', parentSessionId: body.parentId })
+      return Response.json({ accepted: true })
+    },
+  })
 }

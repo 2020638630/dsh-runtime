@@ -16,11 +16,12 @@
 10. 新隔离失败 Profile `runtime-official-failure` 用无效 `DSH_CODEBUDDY_MAX_TURNS` 触发真实 Runtime 子进程在模型调用前退出：会话 `session-10ab6ca7-cbf9-4032-a94b-6237f3a15da7`，子任务 `2bdd93a7-0b33-48ff-945d-2922954de787`。临时 Git 仓库保持干净，审计只有一次记录；`run-state.json` 为 settled/error、`manifest_available=false`，认证路由返回同等状态。`rc.7` 官方 Web 重启后显示“运行失败”，无页面脚本错误，截图为消费者 `runtime-profile\failure-trial-20261021\failure-ui-rc7.png`。这个样本没有终态 Manifest，不能宣称有完整证据抽屉。
 11. 旧日常 Home 的 `sessions`（33 个文件，约 4.8 MB）被单向复制到隔离的 `home-migration-20261021`，未复制凭据；官方 Host 从副本启动，六个工作区在 Web 中可列出，已打开其中一个旧会话，页面无脚本错误且输入区可见。打开会话使副本的 `session-1b348fe1-71c1-4ee3-85a7-d57906f41345/session.v4.jsonl.zstd` 从 379 字节变为 459 字节；其余 32 个复制文件与原件 SHA256 相同。原 Home 不是启动目录。这里只证明一个旧会话的原地副本迁移，尚未逐一验证其余工作区和私有事件旧样本；记录和无模型浏览器脚本在独立消费者 `home-migration-20261021`。
 12. 插件卸载回退：在同一独立消费者新建只含官方 base/Web 两个 bundle 的 `runtime-official-removed` Profile，未装 Runtime 插件。重启后首页 200、原认证证据路由 404；浏览器重新打开此前的失败测试会话，输入区可见、插件工具行数为 0、页面脚本错误为空。日志与无模型脚本在消费者 `runtime-profile\removed-trial-20261021`。这是隔离 Profile 的卸载模拟，尚未更改日常入口。
+13. 现场取消仍未过门槛：三次独立临时仓库尝试留在消费者的 `cancel-trial-20261021`、`cancel2-trial-20261021`、`cancel3-trial-20261021`。第一次 `repository_inspection` 实际选择 Codex，直接诊断显示 Codex app-server 启动失败；后两次 `repository_change` 的治理审计为 ALLOW，但官方 Host 的 Runtime run-state 很快变为 settled/error、无 Manifest，本地等待型 CodeBuddy 替身未留下启动标记，因此并未执行取消。三个临时仓库均保持干净。直接 Python 诊断曾验证替身可启动，但不能替代官方 Host 现场调用。验收专用状态探针 `0.0.5` 增加了仅在 `allowInterrupt: true` 的隔离 Profile 中注册的中断路由；无模型的不存在目标调用返回 200/accepted。下次应先在隔离包中取得 Runtime 子进程退出原因，再考虑新的模型现场尝试，避免重复消耗。以上均非 D2。
 
 ## 未完成与下次顺序
 
 1. 当前私有可安装包为 `@dsh-runtime/harness-plugin@0.1.0-rc.7`；`runtime-official` 仅启用 `repository_inspection`，不作日常入口。真实写入只在专用临时仓库和 Profile 验收过，尚未推广至日常 Home。
-2. 下一步继续验收真实取消路径、证据缺失与旧 Home 副本的其余工作区。取消的浏览器回放已通过，但尚缺现场取消一个正在运行的官方 Host 子进程；应将两者明确区分。旧事件失败样本与新样本分开核验。检查窄窗口和键盘操作；旧 Home 不应直接切换。
+2. 下一步先用无模型诊断定位上述 Runtime 子进程早退，再验收真实取消路径、证据缺失与旧 Home 副本的其余工作区。取消的浏览器回放已通过，但尚缺现场取消一个正在运行的官方 Host 子进程；应将两者明确区分。旧事件失败样本与新样本分开核验。检查窄窗口和键盘操作；旧 Home 不应直接切换。
 3. 完成上述门槛后评估官方应用并行日常入口，最后再考虑简化私有 Harness 分支。不得因本次只读成功就删除或覆盖私有分支及旧 Home；归档、删除另审。
 
 ## 保护事项
@@ -29,4 +30,4 @@
 
 ## 额度交接
 
-2026-10-21 额度已恢复。旧一次性定时因关机未执行，已删除，避免迟到重复启动。最后查询五小时额度剩 67%、周额度剩 65%。候选中的 `rc.7` Web 修复和本交接更新待提交；独立消费者中的 tarball、Profile、临时仓库、浏览器脚本与截图是验收材料，不在源码提交范围。失败 Profile 的 Host PID 以消费者 `runtime-profile\failure-trial-20261021\host.pid` 为准，任务完成后应停止。两个原工作树未修改，候选未推送，D2 仍为 `NOT_CLAIMED`。续跑不重复提交已完成的模型任务。
+2026-10-21 额度已恢复。旧一次性定时因关机未执行，已删除，避免迟到重复启动。最近查询五小时额度剩 17%、周额度剩 57%；接近用户设定的 10%/2% 停止阈值。候选 `rc.7` Web 修复已提交为 `4a4a330`，副本迁移与卸载记录已提交为 `e356dd2`；本次取消诊断与探针代码待提交。独立消费者中的 tarball、Profile、临时仓库、浏览器脚本与截图是验收材料，不在源码提交范围。所有隔离 Host 已停止。两个原工作树未修改，候选未推送，D2 仍为 `NOT_CLAIMED`。续跑不重复提交已完成或失败的模型任务。
