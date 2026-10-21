@@ -22,11 +22,14 @@
 16. 独立插件 `0.1.0-rc.8` 将 Host 传给 Python 的 Call Trace 与 Safe Trace 环境路径转为 Windows 扩展路径，Host 自身用于校验和读取的路径保持普通绝对路径。`pnpm typecheck`、`test:entry` 2/2、`test:host-core` 1/1、打包均通过。无模型 263 字符路径诊断：Python entrypoint 对无效 JSON 写出 `call_started` 和 `call_terminal`（exit 2），Host 的 Call Trace 读取器对此返回 settled。再在未修改的官方 `@deepseek-ai/dsh@0.2.1-rc.2` 中安装 rc.8，独立 `runtime-official-longpath7` Profile 使用 267 字符证据目标与无效 `DSH_CODEBUDDY_MAX_TURNS`，真实子进程记录 `call_started`、`call_terminal`（ValueError、exit 2），run-state settled/error、无 Manifest，临时仓库干净。此现场父会话调用了模型以启动工具，Runtime 子任务在模型调用前失败；证据在消费者 `runtime-profile\\long-failure-20261021`。隔离 Host 已停止。
 17. `rc.8` 成功终态回归已通过：全新隔离 `runtime-official-success8` Profile 与临时 Git 仓库 `trial-repository-20261021-success8` 中，官方 Host 真正运行一次非 D2 `repository_change`；只新增 `runtime-success8-acceptance.txt`，UTF-8 内容 `PLUGIN_RC8_SUCCESS_OK` 加 LF，共 22 字节。Runtime 的 run-state 最终 settled/completed、Manifest completed、Call Trace 两条闭合、Safe Trace `.closed` 一项、验证 PASS；Manifest 的实际变动只有该文件，补丁可应用。官方 Web 原生工具行的“查看证据”打开三页“执行轨迹 / 实际变动 / 审计”，页面错误为空；截图在消费者 `runtime-profile\\c8\\rc8-write-evidence-drawer.png`。父会话页面约 45 秒时已答复而 Runtime run-state 尚处 running，约 20 秒后才 settled；验收以最终磁盘证据为准。隔离 Host 已停止。
 18. 旧日常 Home 副本六个工作区已逐一做无模型页面回放：每个工作区可见旧会话列表，各打开其中一个旧会话，输入区均可见，浏览器页面错误为空；记录为消费者 `home-migration-20261021\\check-copied-home-audit.cjs`。这是每个工作区一个会话的抽样，不是全部旧会话逐一迁移。副本最终有 37 个会话相关文件：与原 Home 当前文件 SHA256 相同 32 个、副本已迁移变化 1 个、副本新增且原 Home 不存在 4 个；未写原 Home。隔离 Host 已停止。
+19. 进一步扫描旧日常 Home 副本的 37 个 V4 压缩文件、4541 帧、6693 条原始记录，发现 3 条私有 `subagent/governance-policy-pin` 事件，分别落在三个历史临时 smoke/write 工作区会话。官方 Host 的只读 SessionQuery 对这三条均报 `SESSION_QUERY_PERSISTENCE_FAILED` / `SessionFormatUnsupportedError`，而对正常对照会话可读；因此第 18 条的六工作区抽样不能代表这三条兼容。测试专用元数据接口不返回会话正文。简单删除事件而保留序号间隙会使样本变成 `SESSION_QUERY_CORRUPT_SESSION`，不可采用。
+20. 在第二份全新隔离 Home `home-legacy-renumber-20261021` 上，逐条归档原压缩文件，再将三条私有事件的 policy identity 写入插件自管 pin sidecar，并从**副本**记录流移除私有事件、修正后续 `seq` 及已发现的 `messageSeqs` / `sourceEventSeqs` / `throughSeq` 引用。三个原文件归档 SHA256 与迁移源一致，三份新文件除私有事件和序号引用外的语义记录与原件一致；三份 pin 与当前策略哈希相符。官方未修改的 Host 重启后对全部 33 条会话的 SessionQuery 读取为 33/33、失败 0，合计投影事件 4288；Web 对六个工作区各打开一条旧会话，输入区均可见，页面错误为空。副本 37 个压缩文件中 33 个与迁移源逐字节相同、3 个是有归档的迁移文件、另 1 个由隔离 Host 自身重新写入。迁移/校验脚本与只读探针均在消费者的 `home-legacy-renumber-20261021`，未作用于原日常 Home。此为**隔离副本验收**，尚未将迁移脚本产品化，也未切换日常入口或正式声明旧 Home 全面兼容。
+21. 已将上述副本步骤收束为插件包内的 `dsh-runtime-migrate-home` CLI，版本 `0.1.0-rc.9`。默认只做 plan；`--apply` 必须使用全新且不存在的目标 Home，仅复制 `sessions/`，把旧压缩文件归档、policy identity 写入插件 pin sidecar，再删除副本中的私有事件并修正已知序号引用。出现未知序号字段或不连贯序号时拒绝迁移。第三份全新隔离副本 `home-tool-trial-20261021` 中，plan 未创建目标目录，apply 复制 37 文件/33 会话，迁移 3 会话；独立校验确认 34 文件未变、3 文件语义等价且归档与源逐字节一致。`node --check`、`pnpm typecheck`、`test:entry` 2/2、`test:host-core` 1/1、`pnpm pack` 均通过，rc.9 tarball 已包含 CLI。README 写明原 Home 保持不动、隔离 Profile 与回退。**rc.9 打包后的 CLI 尚未单独在官方 Host 上重演 33/33**；前一条 33/33 是相同算法的手工脚本副本现场验收。
 
 ## 未完成与下次顺序
 
-1. 当前私有可安装包为 `@dsh-runtime/harness-plugin@0.1.0-rc.8`；`runtime-official` 仅启用 `repository_inspection`，不作日常入口。`rc.8` 的长路径失败终态、正常完成写入和三页证据抽屉均在隔离官方 Host 通过，尚未推广至日常 Home。
-2. 下一步对含旧私有事件的早期插件测试会话做副本迁移或明确隔离策略，检查窄窗口和键盘操作，再评估官方应用的并行日常入口。旧日常 Home 六个工作区各抽样一个会话已通过，但其余旧会话尚未逐一验证；旧 Home 不应直接切换。取消的浏览器回放与官方 Host 现场取消均已通过，但主动取消无完整 Manifest。
+1. 当前本地私有可安装包为 `@dsh-runtime/harness-plugin@0.1.0-rc.9`；`runtime-official` 仅启用 `repository_inspection`，不作日常入口。`rc.8` 的长路径失败终态、正常完成写入和三页证据抽屉均在隔离官方 Host 通过；rc.9 只增加旧 Home 副本迁移 CLI，尚未推广至日常 Home。
+2. 旧 Home 的三条私有事件已在第二份隔离副本上迁移并达成 33/33 只读；rc.9 的副本迁移工具已通过第三份副本的 plan/apply/独立逐文件验证。下一门槛是用**打包后的 rc.9 CLI**生成第四份全新副本并在未修改的官方 Host 重演 33/33 SessionQuery 与六工作区抽样，然后再评估官方应用并行日常入口。`rc.8` 的证据抽屉在 900×700 视口内完整显示，三页可用键盘 Enter 切换，Escape 关闭，浏览器错误为空；截图在消费者 `runtime-profile\\c8\\rc8-narrow-drawer.png`。旧 Home 不应直接切换。取消的浏览器回放与官方 Host 现场取消均已通过，但主动取消无完整 Manifest。
 3. 完成上述门槛后评估官方应用并行日常入口，最后再考虑简化私有 Harness 分支。不得因本次只读成功就删除或覆盖私有分支及旧 Home；归档、删除另审。
 
 ## 保护事项
@@ -40,3 +43,5 @@
 2026-10-21 13:56 之后一次性续跑已执行：先核对额度恢复至五小时 100%、周额度 55%，两原工作树改动仍分别为 16/106 项。已完成长路径根因、`rc.8` 修复、真实取消和新长路径错误终态现场；上述第 14-16 条给出可复核证据。后续按“未完成与下次顺序”继续。此时已停所有隔离 Host，测试端口 3080 无监听，两个原仓库未被用作任务工作区，D2 仍为 `NOT_CLAIMED`。
 
 同次续跑继续完成 `rc.8` 的成功写入、真实三页抽屉与旧 Home 副本六工作区抽样，见第 17-18 条。所有隔离 Host 已停、3080 无监听，候选提交仍在本地，未推送；D2 保持 `NOT_CLAIMED`。
+
+同次续跑又完成旧 Home 私有事件清点和第二份副本迁移、33/33 官方 SessionQuery 读取，见第 19-20 条。五小时额度此时剩约 24%、周额度约 43%，仍高于用户设定的 10% / 2% 停止阈值。下一步优先把已验证的迁移步骤收束为安全、可审查、只写副本的工具及回滚说明；所有隔离 Host 已停，3080 无监听。

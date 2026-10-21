@@ -80,4 +80,28 @@ export function apply(ctx, config = {}) {
       return Response.json({ accepted: true })
     },
   })
+  if (Array.isArray(config.legacySessionIds) && config.legacySessionIds.length <= 64) ctx.connection.fetch.register({
+    path: '/api/dsh-runtime-status-probe/legacy-sessions',
+    methods: ['GET'],
+    requestBody: 'buffered',
+    fetch: async () => {
+      const ids = config.legacySessionIds
+      if (!ids.every(id => /^session-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)))
+        return Response.json({ error: 'invalid legacy session ids' }, { status: 400 })
+      const results = []
+      for (const sessionId of ids) {
+        try {
+          const session = await ctx.sessionQuery.readSession(sessionId)
+          results.push({ sessionId, readable: true, eventCount: session.events.length })
+        } catch (error) {
+          results.push({ sessionId, readable: false,
+            errorName: error instanceof Error ? error.name : 'UnknownError',
+            errorCode: typeof error?.code === 'string' ? error.code : null,
+            causeName: error?.cause instanceof Error ? error.cause.name : null,
+            causeCode: typeof error?.cause?.code === 'string' ? error.cause.code : null })
+        }
+      }
+      return Response.json({ results })
+    },
+  })
 }

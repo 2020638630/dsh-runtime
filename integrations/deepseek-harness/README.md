@@ -1,10 +1,10 @@
 # DSH Runtime for official DeepSeekHarness (private preview)
 
-This package is an independently installable Host and Web bundle for the unmodified public `@deepseek-ai/dsh@0.2.1-rc.2`. It is still a private preview. The authenticated terminal Evidence Manifest route and three-tab Web drawer passed an isolated real Host read-only task. Keep the private RC4 Harness as the parallel daily fallback.
+This package is an independently installable Host and Web bundle for the unmodified public `@deepseek-ai/dsh@0.2.1-rc.2`. It is still a private preview. The authenticated terminal Evidence Manifest route and three-tab Web drawer passed isolated real Host read-only and write tasks. Keep the private RC4 Harness as the parallel daily fallback.
 
 ## Build and install in an isolated Profile
 
-Run `pnpm build` and `pnpm pack`. The tarball contains the Host entry, `lib/client.js`, and `cordis.patch.yml`; its `dsh.bundle.patch` inserts the external plugin and `dsh.client` declares the Web entry. Install the tarball in an isolated consumer/Profile. The plugin requires a complete Profile config before activation:
+Run `pnpm build` and `pnpm pack`. The tarball contains the Host entry, `lib/client.js`, `cordis.patch.yml`, and the copy-only Home migration CLI; its `dsh.bundle.patch` inserts the external plugin and `dsh.client` declares the Web entry. Install the tarball in an isolated consumer/Profile. The plugin requires a complete Profile config before activation:
 
 ```yaml
 - id: dsh-runtime-standalone
@@ -27,8 +27,14 @@ The isolated official Host acceptance Profile is `D:/DeepSeekHarness/vis-stable-
 
 `pnpm typecheck`, `pnpm build`, `pnpm test:entry`, `pnpm test:pin-store`, `pnpm test:worker`, and `pnpm test:host-core` pass. Earlier focused tests also cover fail-closed admission, both fixed provider routes, parent Session cwd, Host startup rollback, and dedicated tool route. The worker tests use isolated audit paths; the provider and tool tests use Host doubles.
 
-The first isolated trial exposed an official Host incompatibility: a private, required `subagent/governance-policy-pin` Session event prevented replay after restart. That test Session remains as failure evidence. This adapter now stores the immutable policy pin in its own Host directory before pre-start evaluation and writes no private Session event. The second fresh trial and post-restart evidence read passed. Existing Sessions already containing that private event still need a copy-only migration study.
+The first isolated trial exposed an official Host incompatibility: a private, required `subagent/governance-policy-pin` Session event prevented replay after restart. That test Session remains as failure evidence. This adapter now stores the immutable policy pin in its own Host directory before pre-start evaluation and writes no private Session event. The second fresh trial and post-restart evidence read passed.
 
 The private preview `0.1.0-rc.4` loaded in the unmodified official Web Host. A browser reopened the completed read-only Session, expanded its process group, opened the external drawer, and verified the execution, observed changes, and audit tabs. No model call was needed for this replay. The screenshot is in the isolated acceptance consumer's `runtime-profile/official-rc4-evidence-drawer.png`.
 
-Next: test write, failure, cancellation, missing evidence, uninstall, and old Home copy migration. Do not enable this Profile as the daily entry until those gates pass.
+Write, failure, cancellation, missing evidence, uninstall, and old Home copy replay have passed in isolated Profiles. The copied Home contained three old Sessions with private pin events; after copy-only migration and sequence repair, the unmodified official Host read all 33 Sessions. This does not switch the daily entry.
+
+## Copy an old Home for official Host replay
+
+Use `dsh-runtime-migrate-home --source-home ABS --destination-home ABS` to inspect the migration plan without writing anything. Add `--apply` only after reviewing the plan. The destination must be a **new, nonexistent directory** outside the source Home. The tool copies only `sessions/`; it does not copy credentials, settings, or Profiles. For each Session containing the retired private event, it archives the original compressed file under `archive/`, writes the policy identity under `pins/`, removes the event from the destination copy, and repairs known sequence references. It rejects unknown sequence fields and leaves the source Home unchanged. The destination also contains `migration-report.json`. If migration fails, discard the partial destination and start with a fresh destination; never point the official Host at a partial copy.
+
+Create a separate official Host Profile with `pinRoot` set to the new Home's `pins/`, and provide its other required paths independently. Verify SessionQuery and Web replay in the copied Home before considering it for daily use. Rollback is to stop that isolated Host and launch the existing daily entry with the untouched original Home. Do not run two Hosts against one Home concurrently.
