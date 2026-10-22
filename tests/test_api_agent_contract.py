@@ -95,18 +95,27 @@ def run(role_name, transport, broker, *, write=False):
 def test_read_only_tool_loop_keeps_requested_and_observed_separate() -> None:
     transport = FakeTransport(
         ModelReply(tool_calls=(ToolCall("c1", "list_files", "{}"),),
-                   observed_model="actual/model", output_tokens=5),
-        ModelReply(text="One file", observed_model="actual/model", output_tokens=3),
+                   observed_model="vendor/model:free", output_tokens=5),
+        ModelReply(text="One file", observed_model="vendor/model:free", output_tokens=3),
     )
     broker = FakeBroker()
     result = run("inspector", transport, broker)
     assert result.success and result.text == "One file"
     assert (result.requested_model, result.observed_model) == (
-        "vendor/model:free", "actual/model"
+        "vendor/model:free", "vendor/model:free"
     )
     assert result.requests == 2 and result.tool_calls == 1
     assert broker.calls == [("list_files", {})]
     assert "apply_patch" not in transport.seen[0]["allowed_tools"]
+
+
+def test_response_model_mismatch_is_recorded_and_rejected() -> None:
+    result = run("inspector", FakeTransport(ModelReply(
+        text="answer", observed_model="other/model", output_tokens=2
+    )), FakeBroker())
+    assert result.error_code == "model_mismatch"
+    assert result.requested_model == "vendor/model:free"
+    assert result.observed_model == "other/model"
 
 
 def test_entire_batch_is_validated_before_first_write() -> None:

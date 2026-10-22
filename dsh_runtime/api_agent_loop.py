@@ -16,6 +16,14 @@ MAX_TOOL_RESULT_CHARS = 32_768
 MAX_FINAL_CHARS = 100_000
 
 
+class TransportFailure(Exception):
+    """Safe, predetermined provider failure category without response contents."""
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
+
 @dataclass(frozen=True)
 class ToolCall:
     call_id: str
@@ -81,6 +89,8 @@ async def run_api_agent(
                 model=role.model, messages=tuple(messages), allowed_tools=allowed,
                 max_output_tokens=role.max_output_tokens - output_tokens_used,
             )
+        except TransportFailure as exc:
+            return outcome(exc.code, None, request_number)
         except Exception:
             # Transport exceptions can contain URLs, headers, or provider payloads.
             return outcome("provider_error", None, request_number)
@@ -92,6 +102,8 @@ async def run_api_agent(
             if observed is not None and observed != reply.observed_model:
                 return outcome("model_changed", None, request_number)
             observed = reply.observed_model
+            if observed != role.model:
+                return outcome("model_mismatch", None, request_number)
         if type(reply.output_tokens) is not int or reply.output_tokens < 0:
             return outcome("missing_or_invalid_token_count", None, request_number)
         output_tokens_used += reply.output_tokens
