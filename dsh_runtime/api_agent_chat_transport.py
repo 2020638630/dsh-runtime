@@ -50,15 +50,21 @@ def _wire_messages(messages: tuple[dict[str, Any], ...]) -> list[dict[str, Any]]
 class ChatCompletionsTransport:
     """One HTTP request per complete() call; retries and redirects are disabled."""
 
-    def __init__(self, connection: Connection, *, client: Any = None) -> None:
+    def __init__(
+        self, connection: Connection, *, client: Any = None,
+        timeout_seconds: float = 60.0,
+    ) -> None:
         expected = {
             "openrouter": "https://openrouter.ai/api/v1",
             "siliconflow": "https://api.siliconflow.cn/v1",
         }
         if connection.provider not in expected or connection.base_url != expected[connection.provider]:
             raise ValueError("provider endpoint is not allowlisted")
+        if not isinstance(timeout_seconds, (int, float)) or not 5 <= timeout_seconds <= 120:
+            raise ValueError("provider timeout is out of bounds")
         self.connection = connection
         self.client = client
+        self.timeout_seconds = float(timeout_seconds)
 
     async def complete(
         self, *, model: str, messages: tuple[dict[str, Any], ...],
@@ -89,7 +95,9 @@ class ChatCompletionsTransport:
                    "Content-Type": "application/json"}
         try:
             if self.client is None:
-                async with httpx.AsyncClient(timeout=30, follow_redirects=False, trust_env=False) as client:
+                async with httpx.AsyncClient(
+                    timeout=self.timeout_seconds, follow_redirects=False, trust_env=False,
+                ) as client:
                     response = await client.post(url, headers=headers, json=body)
             else:
                 response = await self.client.post(url, headers=headers, json=body)

@@ -19,10 +19,19 @@
 
 `python -m pytest -q`：564 passed、1 skipped（当前 Windows 权限下无法创建测试符号链接）。Windows junction 检查与全新隔离临时 Git 仓库只读检查通过；假 HTTP 覆盖双供应商请求、认证失败、429、503 和截断响应；假模型完成 Runtime 只读角色路由。所有测试不调用真实模型、不读取真实凭据。
 
+## 首轮真实只读现场（2026-10-22）
+
+用户把两套 key 填在仓库外的 `connections.example.json`；已将该文件**改名**为 `connections.local.json`，再创建纯占位示例。以下报告和 Runtime 事件均未保存 key、提示词或模型全文。
+
+- OpenRouter：先从官方模型 API 核验 `cohere/north-mini-code:free` 的 `tools`、`tool_choice` 与零价字段，再在 `D:\DeepSeekHarness\api-agent-live-trials\readonly-5ux525pr` 的新 Git 仓库运行。任务 `completed`；实际 `read_file` 1 次、模型请求 2 次；请求与观测模型同为该固定 ID；输出包含测试标记；README 与伪 `.env` 哈希不变，Git 状态干净。安全事件在同名 `-evidence` 目录，扫描确认不含两套 key。
+- 硅基流动：官方 `/v1/models` 返回账号可见的 `Qwen/Qwen3-8B`。首次在 `readonly-aiksm8f8` 的请求于 30 秒超时，0 次工具调用；第二次明确将单请求时限调到 60 秒，在 `readonly-6qbhugl5` 收到同一观测模型，但 512 输出 token 预算耗尽，仍为 0 次工具调用。两个仓库原文件哈希不变、Git 状态干净；没有自动重试，也不将该供应商记为通过。此模型的实际工具行为与免费计费状态尚待进一步确认。
+
+这只是独立 Runtime 候选的只读现场；官方 Host 插件、Evidence Manifest/Safe Trace 接线、API worker 写入、桌面安装和第二台设备均未由此验收。
+
 ## 下一步优先级
 
 1. **P0：只读边界**。补并发替换防护；明确工具事件如何进入 Safe Trace 和 Manifest。现有路径逃逸、Windows junction、敏感文件与隔离 Git 仓库的无模型验收已通过。
-2. **P0：供应商传输**。可选 `httpx` 测试版本已固定；下一步核验实际供应商对工具调用、token 用量、响应模型 ID、取消的表现。假 HTTP 已通过，只有端到端边界过门槛后才加载用户本机 key。
+2. **P0：供应商传输**。OpenRouter 首个真实只读工具循环已通过；硅基流动须先查清免费模型的工具与思考 token 选项，再选一个固定模型做一次受控现场。取消和 API 费用数据仍待契约测试。可选 `httpx` 测试版本已固定，打包接线未完成。
 3. **P0：写工具**。设计带预期哈希的文件补丁、冲突拒绝和受控原子写；工作区前后快照仍由 Runtime 外层结算。无模型验收过门槛才向 worker 暴露。
 4. **P1：真实试用**。只读 v2 路由已接入候选 Runtime；在独立 Home、独立仓库中先做真实 inspector，之后再做 worker+独立 reviewer。观测模型不明时标记未知，不能冒称请求模型即实际模型。写入工具未就绪前，API worker 继续拒绝配置。
 5. **跨环境验收**：第二台设备目前不可用，按用户安排推迟到今晚；不作为本机无模型开发阻塞项。
