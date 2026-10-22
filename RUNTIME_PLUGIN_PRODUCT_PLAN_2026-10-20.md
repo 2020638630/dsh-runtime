@@ -106,3 +106,11 @@ MODEL-03 仅完成本机 CLI 能力探测：已安装的 `codebuddy --help` 明�
 Codex worker 与 reviewer 的真实官方宿主联动现已取得一份完整通过样本：独立 Profile 的三角色均指定 `gpt-5.6-luna`；全新 Git 仓库中 worker 可写、reviewer 只读，两份轨迹的请求/观测模型一致。Manifest 为 `completed`、退出码 0、审查 `PASS`；仅新增精确 24 字节且无 BOM/换行的文件。验收前两次试验分别暴露受管 Codex 配置追加项目信任记录导致的预检失败，以及提示词未明确换行时产生 25 字节文件。两份失败证据保持独立，不计入通过样本。候选的配置兼容修复只放行 Codex 追加的绝对路径项目信任记录，仍要求原模型与沙箱配置完整一致。
 
 MODEL-01 至 MODEL-03 的本机单模型路径已有 inspector、CodeBuddy worker、Codex reviewer 和 Codex worker 现场样本。下一阶段需要形成可回退的并行日常角色 Profile，并就用户选择的其他模型分别验证账户可用性与 requested/observed 一致性；不得因单次 `gpt-5.6-luna` 通过而宣称任意模型可用。D2 ExecuteGate 仍为 `NOT_CLAIMED`，旧日常 Home 与两个原源码工作树继续保留。
+
+## 10. 2026-10-22 并行角色 Profile 候选
+
+在已迁移并人工确认旧会话可读的隔离 Home 中，新增 `runtime-roles-parallel` Profile；官方 Host 仍是 `@deepseek-ai/dsh@0.2.1-rc.2`，外部插件为 rc.14。Runtime 固定为提交 `fdaef4b` 的独立源码快照，避免候选分支后续提交改变并行入口。角色选择采用已有现场样本覆盖的 CodeBuddy `deepseek-v4.1-flash` worker、Codex `gpt-5.6-luna` reviewer 与 inspector。新 Profile 的审计、pin、证据目录独立；原日常 Home 未启动或更改。
+
+无模型验收：Profile 激活无错误、首页 200、匿名证据请求 401；五个旧工作区各打开一条会话且输入框可见、页面脚本错误为空。停用 rc.14 后切回同一隔离 Home 的 rc.11 预览 Profile，五个工作区再次通过页面抽样。测试 Host 均已停止。新 Profile 尚未从该 Home 完成真实读写现场，故状态为**可回退的并行候选**，不是已推广的日常版。下一门槛为全新临时 Git 仓库的非 D2 只读与写入现场，以及证据、审计和精确工作区变动核对；通过后再准备 REL-01 的版本发布与 REL-02 的分支收敛。
+
+现场门槛随后已完成：同一固定版并行 Profile 在新临时 Git 仓库完成一次非 D2 只读和一次非 D2 写入；两次治理 `ALLOW`、Manifest `completed`，只读仓库保持干净，写入任务审查 `PASS` 且只新增精确 16 字节的验收文件。官方页面的真实写入工具卡打开三页证据抽屉，页面无脚本错误；隔离 Host 已停止。因此此固定组合可作为**并行日常试用入口**，同时保留旧日常 Home、私有 RC4 和 rc.11 预览回退。REL-01 仍需完成发布包整理、安装与回退说明、版本/哈希清单；REL-02 仍需审查私有 Harness 独有提交并保留可寻址历史后才可收敛分支。其他模型和账户须分别现场验收。
