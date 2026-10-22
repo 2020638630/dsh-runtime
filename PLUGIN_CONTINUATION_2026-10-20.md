@@ -86,3 +86,5 @@ REL-01 私有安装材料已整理在 `D:\DeepSeekHarness\vis-stable-release-art
 REL-02 首轮静态审查已完成，详见 `BRANCH_CONVERGENCE_AUDIT_2026-10-22.md`。现场只读核对远端：Runtime 默认 `master=b57a829`，本地候选 `e03862b` 比其前进 40 提交、比远端候选前进 38 提交；Harness 私有默认 `integration/dsh-runtime-d1-q2-closeout=819dc46`，私有 0.2.1 回退分支 `08d207d` 比它前进 5 提交。Harness 私有远端共 18 分支，原脏工作树还有 106 项 Git 可见内容；D2 另有未进入默认的历史提交。官方包 + 外部插件已摆脱私有 Harness 核心运行依赖，但现在不能安全删减到单一远端分支。下一步是先审查 Runtime 候选发布差异并决定其推送/主干晋升，然后处理私有分支归档与回退保留。
 
 发布审查补跑完整 Python 测试后发现 2 个旧只读工作流测试替身没有调用 `SimplePlanner.__init__`，因此缺少新角色字段；当时结果 530 通过、2 失败。只修复 `tests/test_repository_inspection_workflow.py` 的 `RecordingPlanner` 初始化后，全量 `python -m pytest -q` 为 **532 passed**，未改 Runtime 执行源码。固定试用快照 `fdaef4b` 的执行源码与当前候选一致；本次新增的是测试兼容修正和文档。两个原工作树维持 16/106 项，所有验收 Host 已停止。候选尚未推送，下一步先完成本地候选发布审查与准确远端 SHA 门槛，再决定是否推送/快进；禁止强推与直接删分支。
+
+随后做候选推送前检查：相对远端候选的 56 个文件、4708 行新增/20 行删改经 `git diff --check` 通过；差异文件名无凭据/密钥名称匹配，新增行的常见密钥模式扫描为 0。现场 `ls-remote` 再次确认远端候选 `1916217e5599cc0d0151e834c69dc3c8b2d59eec` 后，普通 `git push` 快进至 `a272f80`，未强推、未触及 `master`。本段记录提交后应再以普通快进推送候选；远端默认晋升仍是独立下一门槛。原两个工作树不变。
