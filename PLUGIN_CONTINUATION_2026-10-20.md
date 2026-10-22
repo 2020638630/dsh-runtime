@@ -88,3 +88,5 @@ REL-02 首轮静态审查已完成，详见 `BRANCH_CONVERGENCE_AUDIT_2026-10-22
 发布审查补跑完整 Python 测试后发现 2 个旧只读工作流测试替身没有调用 `SimplePlanner.__init__`，因此缺少新角色字段；当时结果 530 通过、2 失败。只修复 `tests/test_repository_inspection_workflow.py` 的 `RecordingPlanner` 初始化后，全量 `python -m pytest -q` 为 **532 passed**，未改 Runtime 执行源码。固定试用快照 `fdaef4b` 的执行源码与当前候选一致；本次新增的是测试兼容修正和文档。两个原工作树维持 16/106 项，所有验收 Host 已停止。候选尚未推送，下一步先完成本地候选发布审查与准确远端 SHA 门槛，再决定是否推送/快进；禁止强推与直接删分支。
 
 随后做候选推送前检查：相对远端候选的 56 个文件、4708 行新增/20 行删改经 `git diff --check` 通过；差异文件名无凭据/密钥名称匹配，新增行的常见密钥模式扫描为 0。现场 `ls-remote` 再次确认远端候选 `1916217e5599cc0d0151e834c69dc3c8b2d59eec` 后，普通 `git push` 快进至 `a272f80`，未强推、未触及 `master`。本段记录提交后应再以普通快进推送候选；远端默认晋升仍是独立下一门槛。原两个工作树不变。
+
+2026-10-22 默认分支晋升：负责人确认新并行角色入口页面、旧会话和输入框正常。晋升前候选工作树干净，`HEAD=aa3592c1548e4f555c3a0bf135b70c4da264aec2`，本地祖先检查通过；现场 `ls-remote` 确认远端候选为 `aa3592c`、远端 `master=b57a8294f386c799743405ca29ab16f393e20007`。随后普通 `git push origin HEAD:refs/heads/master` 成功，将私有 Runtime `master` 快进到 `aa3592c`，未强推、未删除分支。Harness 私有默认分支和旧回退分支未改；原两个工作树仍分别有 16/106 项 Git 可见内容。D2 ExecuteGate 保持 `NOT_CLAIMED`。本段文档提交后还应核对两个 Runtime 远端引用，再以普通快进推送该文档提交；它不改变执行源码。
