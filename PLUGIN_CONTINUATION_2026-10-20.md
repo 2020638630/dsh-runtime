@@ -1,6 +1,6 @@
 # 官方 Harness 插件抽离续接单
 
-更新：2026-10-21。候选工作树：`D:\DeepSeekHarness\vis-runtime-candidate`，分支 `codex/vis-manifest-mvp-20261016`；本文件只记录独立候选与探针，不改变两个原工作树。以实时 `git status` 为准，候选提交尚未推送。D2 ExecuteGate 仍为 `NOT_CLAIMED`。
+更新：2026-10-22。候选工作树：`D:\DeepSeekHarness\vis-runtime-candidate`，分支 `codex/vis-manifest-mvp-20261016`；本文件记录独立候选与探针，不改变两个原工作树。Runtime 功能候选和发布记录已普通快进推送至私有候选及 `master`；后续状态以实时远端 SHA 和 `git status` 为准。D2 ExecuteGate 仍为 `NOT_CLAIMED`。
 
 ## 已完成与证据
 
@@ -90,3 +90,7 @@ REL-02 首轮静态审查已完成，详见 `BRANCH_CONVERGENCE_AUDIT_2026-10-22
 随后做候选推送前检查：相对远端候选的 56 个文件、4708 行新增/20 行删改经 `git diff --check` 通过；差异文件名无凭据/密钥名称匹配，新增行的常见密钥模式扫描为 0。现场 `ls-remote` 再次确认远端候选 `1916217e5599cc0d0151e834c69dc3c8b2d59eec` 后，普通 `git push` 快进至 `a272f80`，未强推、未触及 `master`。本段记录提交后应再以普通快进推送候选；远端默认晋升仍是独立下一门槛。原两个工作树不变。
 
 2026-10-22 默认分支晋升：负责人确认新并行角色入口页面、旧会话和输入框正常。晋升前候选工作树干净，`HEAD=aa3592c1548e4f555c3a0bf135b70c4da264aec2`，本地祖先检查通过；现场 `ls-remote` 确认远端候选为 `aa3592c`、远端 `master=b57a8294f386c799743405ca29ab16f393e20007`。随后普通 `git push origin HEAD:refs/heads/master` 成功，将私有 Runtime `master` 快进到 `aa3592c`，未强推、未删除分支。Harness 私有默认分支和旧回退分支未改；原两个工作树仍分别有 16/106 项 Git 可见内容。D2 ExecuteGate 保持 `NOT_CLAIMED`。本段文档提交后还应核对两个 Runtime 远端引用，再以普通快进推送该文档提交；它不改变执行源码。
+
+该发布记录随后以文档提交 `0eeb7ad8b48f512dc96900e5c457f3565e069f74` 原子推送至私有 Runtime 候选与 `master`；远端 `ls-remote` 核对两者均指向该提交。执行源码与固定试用快照 `fdaef4b` 仍一致。
+
+同日可分发包与历史归档：私有预览 ZIP `D:\DeepSeekHarness\vis-stable-release-artifacts\official-runtime-kit-20261022-r2.zip`，SHA256 `A20D0E42479CD36A531390C05C4FD33E219A72AF025D41C0529C7C2CC1FF0AC0`。解包七文件哈希一致，新的无凭据 Home 离线安装成功；官方 Host 在有子进程权限的隔离验收中认证首页 200、插件激活通过，测试进程已停止。包内 `SECOND_MACHINE_ACCEPTANCE.md` 给出其他机器/账户验收步骤；当前仍未跨账户验证。私有 Harness 三条独有历史各建远端注释归档标签，分别固定 0.2.1 回退 `08d207d`、D2 replay-only `2d90962`、upstream-sync `1d4a47e`；旧分支未删，原两个工作树仍保留 16/106 项，D2 `NOT_CLAIMED`。详见 `BRANCH_CONVERGENCE_AUDIT_2026-10-22.md`。
