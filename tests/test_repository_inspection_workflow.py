@@ -44,6 +44,7 @@ class RecordingPlugin:
 
 class RecordingPlanner(SimplePlanner):
     def __init__(self):
+        super().__init__()
         self.calls = []
 
     def next_action(self, task):
