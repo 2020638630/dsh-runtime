@@ -25,20 +25,20 @@ class SimplePlanner:
         self.roles = roles or RoleConfig.defaults()
 
     @staticmethod
-    def _role_decision(role: RoleSelection, prompt: str, *, allow_write: bool) -> Decision:
+    def _role_decision(role: RoleSelection, prompt: str, *, role_name: str, allow_write: bool) -> Decision:
         return Decision(
             plugin=role.adapter,
-            params=role.params(prompt),
+            params=role.params(prompt, role_name=role_name),
             allow_workspace_write=allow_write,
         )
 
     def next_action(self, task: TaskState) -> Decision:
         if task.task_kind is TaskKind.REPOSITORY_CHANGE:
             if task.iteration == 0:
-                return self._role_decision(self.roles.worker, task.goal, allow_write=True)
+                return self._role_decision(self.roles.worker, task.goal, role_name="worker", allow_write=True)
             if task.iteration == 1:
                 return self._role_decision(
-                    self.roles.reviewer, _verification_prompt(task), allow_write=False
+                    self.roles.reviewer, _verification_prompt(task), role_name="reviewer", allow_write=False
                 )
             return _verification_decision(task.last_invocation_result)
         if (
@@ -46,7 +46,7 @@ class SimplePlanner:
             and task.iteration == 0
         ):
             return self._role_decision(
-                self.roles.inspector, _inspection_prompt(task), allow_write=False
+                self.roles.inspector, _inspection_prompt(task), role_name="inspector", allow_write=False
             )
         if task.iteration > 0:
             return Decision(plugin=None)
