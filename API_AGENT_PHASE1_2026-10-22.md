@@ -44,4 +44,10 @@
 
 **剩余边界**：`list_files` 和 `search_text` 的目录枚举仍按路径进行，目录在遍历期间被替换的竞争尚未完全关闭；不得据此宣称只读 Broker 生产级安全。下一步先约束目录枚举，随后把 API Agent 安全事件正式接入 Evidence Manifest / Safe Trace，再开放 API worker 写工具。硅基流动真实工具调用仍未通过；不增加无计划的模型重试。两个原工作树保持原状，D2 ExecuteGate 保持 `NOT_CLAIMED`。
 
+## 2026-10-23 接续：硅基流动固定模型与目录枚举
+
+用户明确允许使用代金券涵盖的非免费模型。本机从硅基流动账户 `/v1/models` 只读查询确认 `Qwen/Qwen3-Coder-30B-A3B-Instruct` 当前可见，再在全新 `D:\DeepSeekHarness\api-agent-live-trials\readonly-rhh_zpc_` Git 仓库执行一次有界 `repository_inspection`。报告和安全事件位于同名 `-evidence` 目录：任务 `completed`，模型请求 2 次，`read_file` 工具 1 次，请求与观测模型 ID 一致，测试标记出现；README 与伪 `.env` 未变，Git 仍干净。扫描证据确认不含两套本机 API key。直接运行脚本路径时 Python 未把仓库根目录加入模块路径，首次执行在导入阶段退出且尚未创建试验仓库；后续从仓库根目录设置 `PYTHONPATH` 后成功。今后可用 `python -m scripts.api_agent_readonly_trial ...` 从仓库根目录运行。此次只证明该模型在此账户和此固定配置下完成一次工具循环；代金券实际抵扣与后续可用性仍由平台账户结算决定。此前 `Qwen/Qwen3-8B` 的失败记录继续保留。
+
+目录枚举增加了进入和退出时的路径与目录标识复核；`search_text` 每个遍历目录均复核，遇到链接目录立即拒绝进入。枚举还在产生结果时执行条目上限，避免先排序整个巨大目录后才拒绝。Windows 受控测试在首次路径检查之后，把目录换成工作区外 junction：`list_files` 和 `search_text` 均不得返回外部数据。**此仍为原型防线**：枚举期间的快速换出换回尚可能绕过两次检查；正式发布前须使用句柄绑定的枚举能力或限制这些工具，并补对抗性验证。下一步优先把 API Agent 事件接入正式 Evidence Manifest / Safe Trace，再评估只读角色试用 Profile。D2 ExecuteGate 仍为 `NOT_CLAIMED`。
+
 硅基流动 [Chat Completions 官方文档](https://docs.siliconflow.cn/docs/api/chat-completions-post) 与 OpenRouter [Chat Completion 官方文档](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request) 都展示工具调用字段，但具体模型能力必须现场验证。免费模型配额和可用性会变化，不在配置中硬编码。

@@ -124,3 +124,54 @@ def test_read_file_assembles_short_os_reads(tmp_path, monkeypatch):
 
     monkeypatch.setattr(os, "read", short_read)
     assert call(broker, "read_file", path="README.md") == "bounded read"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction race probe")
+@pytest.mark.parametrize("tool", ["list_files", "search_text"])
+def test_directory_swapped_after_initial_check_returns_no_outside_data(
+    tmp_path, monkeypatch, tool,
+):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    slot = workspace / "slot"
+    slot.mkdir()
+    (slot / "README.md").write_text("safe", encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "private-marker.txt").write_text("outside-private-marker", encoding="utf-8")
+    broker = WorkspaceReadBroker(workspace)
+    original_path = broker._path
+    swapped = False
+
+    def swap_once(relative, *, directory=None):
+        nonlocal swapped
+        checked = original_path(relative, directory=directory)
+        if not swapped:
+            slot.rename(workspace / "moved-slot")
+            created = subprocess.run(
+                ["cmd", "/c", "mklink", "/J", str(slot), str(outside)],
+                capture_output=True, text=True, check=False,
+            )
+            if created.returncode != 0:
+                pytest.skip("junction creation unavailable")
+            swapped = True
+        return checked
+
+    monkeypatch.setattr(broker, "_path", swap_once)
+    with pytest.raises(ValueError):
+        if tool == "list_files":
+            call(broker, tool, path="slot")
+        else:
+            call(broker, tool, path="slot", query="outside-private-marker")
+
+
+def test_directory_enumeration_stops_at_entry_budget(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    for number in range(501):
+        (workspace / f"empty-{number:03d}").mkdir()
+    broker = WorkspaceReadBroker(workspace)
+    with pytest.raises(ValueError, match="directory listing is too large"):
+        call(broker, "list_files", path=".")
+    with pytest.raises(ValueError, match="search entry budget exhausted"):
+        call(broker, "search_text", path=".", query="absent")

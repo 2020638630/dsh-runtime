@@ -10,6 +10,7 @@ from typing import Any
 
 MAX_READ_BYTES = 32_768
 MAX_SEARCH_FILES = 100
+MAX_SEARCH_ENTRIES = 500
 MAX_SEARCH_MATCHES = 30
 MAX_LIST_ENTRIES = 100
 _BLOCKED_PARTS = frozenset({
@@ -63,15 +64,19 @@ class WorkspaceReadBroker:
             if set(arguments) != {"path"}:
                 raise ValueError("list_files requires path")
             directory = self._path(arguments["path"], directory=True)
-            names = sorted(
-                child.name + ("/" if child.is_dir() else "")
-                for child in directory.iterdir()
-                if not _sensitive(child.name) and not _linked(child)
-                and child.resolve().is_relative_to(self.root)
-            )
-            if len(names) > MAX_LIST_ENTRIES:
-                raise ValueError("directory listing is too large")
-            return "\n".join(names)
+            before = self._directory_identity(directory)
+            names: list[str] = []
+            entries_seen = 0
+            for child in directory.iterdir():
+                entries_seen += 1
+                if entries_seen > MAX_LIST_ENTRIES:
+                    raise ValueError("directory listing is too large")
+                if (_sensitive(child.name) or _linked(child)
+                    or not child.resolve().is_relative_to(self.root)):
+                    continue
+                names.append(child.name + ("/" if child.is_dir() else ""))
+            self._check_directory_unchanged(arguments["path"], before)
+            return "\n".join(sorted(names))
         if name == "read_file":
             if set(arguments) != {"path"}:
                 raise ValueError("read_file requires path")
@@ -85,6 +90,18 @@ class WorkspaceReadBroker:
             directory = self._path(arguments["path"], directory=True)
             return self._search(directory, query)
         raise ValueError("tool is unsupported")
+
+    @staticmethod
+    def _directory_identity(directory: Path) -> tuple[int, int]:
+        current = directory.stat()
+        return current.st_dev, current.st_ino
+
+    def _check_directory_unchanged(
+        self, relative: str, identity: tuple[int, int],
+    ) -> None:
+        checked = self._path(relative, directory=True)
+        if self._directory_identity(checked) != identity:
+            raise ValueError("directory changed during enumeration")
 
     def _read(self, path: Path) -> str:
         # A path checked by _path() can be replaced before open(). Verify the
@@ -132,14 +149,25 @@ class WorkspaceReadBroker:
     def _search(self, directory: Path, query: str) -> str:
         results: list[str] = []
         files_seen = 0
+        entries_seen = 0
         pending = [directory]
         while pending:
             current = pending.pop()
-            for path in sorted(current.iterdir(), reverse=True):
+            relative_current = current.relative_to(self.root).as_posix()
+            checked = self._path(relative_current, directory=True)
+            identity = self._directory_identity(checked)
+            entries: list[Path] = []
+            for path in current.iterdir():
+                entries_seen += 1
+                if entries_seen > MAX_SEARCH_ENTRIES:
+                    raise ValueError("search entry budget exhausted")
+                entries.append(path)
+            for path in sorted(entries, reverse=True):
                 relative = path.relative_to(self.root)
                 if any(_sensitive(part) for part in relative.parts) or _linked(path):
                     continue
                 if path.is_dir():
+                    self._path(relative.as_posix(), directory=True)
                     pending.append(path)
                     continue
                 if not path.is_file():
@@ -157,7 +185,9 @@ class WorkspaceReadBroker:
                     if query in line:
                         results.append(f"{relative.as_posix()}:{number}:{line[:200]}")
                         if len(results) >= MAX_SEARCH_MATCHES:
+                            self._check_directory_unchanged(relative_current, identity)
                             return "\n".join(results)
+            self._check_directory_unchanged(relative_current, identity)
         return "\n".join(results)
 
 
