@@ -114,3 +114,11 @@ Host 安装候选已打成私有 `@dsh-runtime/harness-plugin@0.1.0-rc.15` tarba
 API worker 仍不开放：`apply_patch` 已从模型角色允许集合与供应商工具 schema 撤下，即使直接给循环写权限也只暴露 `read_file`。新增纯函数 `plan_text_patch` 仅在内存中检查原文件完整 SHA-256、旧文本唯一匹配、UTF-8、BOM/NUL 和 32 KiB 上限，返回候选新字节与摘要；它没有打开路径或写文件能力。后续须设计真实文件句柄到工作区的绑定、抗目录替换的原子落盘、取消与前后证据，才可注册写工具。
 
 当前无模型验证：Python 全套 **591 passed、1 skipped**；Host `pnpm typecheck`、`pnpm build`、`pnpm test:entry` 4/4、`pnpm test:host-core` 1/1、`pnpm test:worker` 3/3、`pnpm test:api-agent-trace` 13/13 已通过。默认沙箱对 Git/Python 子进程报 `EPERM`，这些既有测试经窄范围授权在独立临时目录成功。五小时额度最近已用 41%、周已用 21%，未触发停止线。没有调用模型、没有触碰 D2，也没有改动两个原工作树。
+
+### 2026-10-23：rc17 reviewer Profile 无模型官方宿主验收
+
+前述 reviewer 双轨迹与补丁纯计算已本地提交为 `058c22a`，提交后候选工作树干净。将 Host 包版本升至私有 `0.1.0-rc.17`，产物位于 `D:\DeepSeekHarness\api-agent-host-artifacts-20261023\rc17-reviewer-check\dsh-runtime-harness-plugin-0.1.0-rc.17.tgz`，SHA256 为 `F2F6BA98D204FDAA4A9EFFB600CAEFAE4F62C780C7F30748C81DEA785871A919`，共 22 个文件。逐个检查包内文件，未命中本机连接配置中的两项密钥字节；配置文件本身不在包中。
+
+在新的 `rc17-reviewer-check` 下从 `058c22a` Git archive 展开 Runtime，建立独立 Home/Profile，离线安装 rc17。Profile 使用 schema v2 的 CodeBuddy worker、硅基流动 API reviewer 与 inspector，仅引用工作树外连接配置路径，未复制 key。官方 0.2.1-rc.2 CLI 配置合成确认插件与 reviewer 条目存在。首次启动因新 Home 缺审计目录未激活，补齐后沙箱报 `spawn EPERM`；停止各隔离进程后，经窄范围授权重启，插件没有激活告警，认证页面 HTTP 200，随后停止临时宿主。**没有调用模型、执行 Runtime 任务或产生 reviewer Manifest**；此项只证明包安装与官方宿主激活，不把 reviewer 提升为日常可用。
+
+下一步在全新临时 Git 仓库做一次受控 `repository_change`：CLI worker 完成最小写入，API reviewer 只读核验，并检查同一 run 的两条 `.closed` 轨迹、独立权限字段、终态 Manifest、审计和精确文件字节。若父 Agent 误把子代理 ID 当 job ID，单独记录并修工具回执，不把它归为 reviewer 成功。API worker 写工具仍关闭，D2 ExecuteGate 仍为 `NOT_CLAIMED`。最近核对两个原工作树分别为 16 与 106 项 Git 可见状态；本次仅写隔离候选与新 Home。五小时额度已用 51%、周额度已用 23%。
