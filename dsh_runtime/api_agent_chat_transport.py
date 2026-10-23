@@ -10,11 +10,7 @@ from dsh_runtime.api_agent_loop import ModelReply, ToolCall, TransportFailure
 
 
 _TOOL_DESCRIPTIONS = {
-    "list_files": ("List one workspace directory", {"path": {"type": "string"}}),
     "read_file": ("Read a bounded UTF-8 workspace file", {"path": {"type": "string"}}),
-    "search_text": ("Search literal text in bounded workspace files", {
-        "path": {"type": "string"}, "query": {"type": "string"},
-    }),
     "apply_patch": ("Apply a checked workspace patch", {
         "path": {"type": "string"}, "old_text": {"type": "string"},
         "new_text": {"type": "string"}, "expected_sha256": {"type": "string"},

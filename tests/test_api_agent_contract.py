@@ -94,7 +94,7 @@ def run(role_name, transport, broker, *, write=False):
 
 def test_read_only_tool_loop_keeps_requested_and_observed_separate() -> None:
     transport = FakeTransport(
-        ModelReply(tool_calls=(ToolCall("c1", "list_files", "{}"),),
+        ModelReply(tool_calls=(ToolCall("c1", "read_file", '{"path":"README.md"}'),),
                    observed_model="vendor/model:free", output_tokens=5),
         ModelReply(text="One file", observed_model="vendor/model:free", output_tokens=3),
     )
@@ -105,8 +105,19 @@ def test_read_only_tool_loop_keeps_requested_and_observed_separate() -> None:
         "vendor/model:free", "vendor/model:free"
     )
     assert result.requests == 2 and result.tool_calls == 1
-    assert broker.calls == [("list_files", {})]
+    assert broker.calls == [("read_file", {"path": "README.md"})]
     assert "apply_patch" not in transport.seen[0]["allowed_tools"]
+    assert transport.seen[0]["allowed_tools"] == frozenset({"read_file"})
+
+
+@pytest.mark.parametrize("unsafe_tool", ["list_files", "search_text"])
+def test_directory_enumeration_is_rejected_before_broker(unsafe_tool) -> None:
+    broker = FakeBroker()
+    result = run("inspector", FakeTransport(ModelReply(tool_calls=(
+        ToolCall("c1", unsafe_tool, "{}"),
+    ), output_tokens=1)), broker)
+    assert result.error_code == "invalid_tool_call"
+    assert broker.calls == []
 
 
 def test_response_model_mismatch_is_recorded_and_rejected() -> None:

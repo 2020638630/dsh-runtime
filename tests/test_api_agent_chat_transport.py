@@ -22,6 +22,7 @@ def test_provider_request_is_single_bounded_and_uses_pinned_endpoint(provider, u
         assert request.headers["Authorization"] == "Bearer private-test-key"
         assert body["model"] == "vendor/model:free"
         assert body["stream"] is False
+        assert len(body["tools"]) == 1
         assert body["tools"][0]["function"]["name"] == "read_file"
         if provider == "openrouter":
             assert body["provider"] == {
@@ -83,6 +84,18 @@ def test_provider_failures_do_not_expose_response_or_retry(status, code):
 def test_transport_rejects_unapproved_endpoint():
     with pytest.raises(ValueError, match="allowlisted"):
         ChatCompletionsTransport(Connection("openrouter", "https://example.invalid", "key"))
+
+
+@pytest.mark.parametrize("unsafe_tool", ["list_files", "search_text"])
+def test_transport_does_not_advertise_directory_enumeration(unsafe_tool):
+    transport = ChatCompletionsTransport(Connection(
+        "openrouter", "https://openrouter.ai/api/v1", "private-test-key"
+    ))
+    with pytest.raises(TransportFailure, match="unsupported_tool_schema"):
+        asyncio.run(transport.complete(
+            model="vendor/model", messages=({"role": "user", "content": "inspect"},),
+            allowed_tools=frozenset({unsafe_tool}), max_output_tokens=10,
+        ))
 
 
 def test_truncated_completion_is_rejected():

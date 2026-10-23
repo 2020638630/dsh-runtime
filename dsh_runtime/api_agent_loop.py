@@ -9,7 +9,9 @@ from typing import Any, Protocol
 from dsh_runtime.api_agent_contract import ApiRole
 
 
-READ_TOOLS = frozenset({"list_files", "read_file", "search_text"})
+# Directory names cannot be safely enumerated by the current path-based broker
+# under concurrent junction/rename swaps. Keep the API tool surface explicit.
+READ_TOOLS = frozenset({"read_file"})
 WRITE_TOOLS = frozenset({"apply_patch"})
 MAX_TOOL_ARGUMENT_CHARS = 16_384
 MAX_TOOL_RESULT_CHARS = 32_768

@@ -34,7 +34,7 @@ reviewer 与 worker 使用独立模型会话，不继承 worker 的对话链；�
 
 ## 3. 新执行器的最小工具面
 
-首个版本仅提供 `list_files`、`read_file`、`search_text`、`apply_patch` 四个由 Runtime 实现的工具。所有路径先解析到本次绑定工作区，再校验规范路径、符号链接/Windows junction 与目标类型；每次调用记录工具名、结果类别和有界尺寸。`apply_patch` 只在 `worker` 且 `allow_workspace_write=true` 时注册，并在调用时再次检查；reviewer/inspector 根本看不到写工具。外部 shell、网络请求、Git 写操作、任意 Python 执行均不在首个工具面中。若实际编码能力不足，再以单独验收门槛加入受限命令工具。
+当前候选只向模型提供 `read_file`，且 Broker 仅接受显式相对文件路径。目录枚举的路径检查曾存在快速换出换回竞争；`list_files` 与 `search_text` 已从模型 schema、角色允许集合及 Broker 实现中同时撤下。`read_file` 在打开后核对真实文件句柄路径与边界，并拒绝敏感路径。未来若需要目录枚举，须先设计句柄绑定方案并通过对抗性验证，再单独开放。`apply_patch` 仍是待实现的 worker 写工具门槛，当前 Host 不开放 API worker/reviewer。外部 shell、网络请求、Git 写操作、任意 Python 执行均不在工具面中。
 
 每个阶段限制模型请求次数、工具调用次数、单次输出字节、总 token/费用预算和墙钟时长。取消先停止新 API 请求，再取消进行中的本地工具并结算；写工具需记录执行前/后状态。网络错误只能在**未执行任何写工具**或可证明幂等的单次请求边界重试，不能自动重放整个仓库任务。
 
@@ -71,6 +71,6 @@ reviewer 与 worker 使用独立模型会话，不继承 worker 的对话链；�
 
 API reviewer 不能仅靠 Runtime 能调用该角色就对外开放。一次写入任务会同时拥有 CLI worker 轨迹和只读 API reviewer 轨迹；Manifest 必须分别标明两个来源、各自的 `.closed` 与终态，不能把 worker 的 CodeBuddy 轨迹冒充 reviewer 的执行依据。`phase_2_codex_effective_write` 也不能在 reviewer 改用 API Agent 后暗示 Codex 实际参与。Reviewer 的精确终行判决仍由 Runtime 解析，Host 仅展示来源和证据状态；缺失 reviewer 轨迹应为 `unavailable`，不得填充推断值。先用假模型覆盖完成、拒绝、失败、取消和轨迹缺失，再在独立临时仓库做真实写入与异模型审查。
 
-API worker 要另设门槛：先实现带预期哈希与冲突拒绝的受控写工具，明确补丁的原子落盘、变更上限和取消时的结算。只读工具现有目录枚举仍存在快速换出换回竞争；须改为句柄绑定的枚举或先收缩可用工具面，完成对抗性验证后才考虑日常启用。工作区前后快照与 Safe Trace 各自提供观察证据，不以模型最终文本代替。
+API worker 要另设门槛：先实现带预期哈希与冲突拒绝的受控写工具，明确补丁的原子落盘、变更上限和取消时的结算。当前候选已收缩为显式 `read_file`；该收缩只关闭目录枚举暴露，不替代长期并发文件系统攻击评估。工作区前后快照与 Safe Trace 各自提供观察证据，不以模型最终文本代替。
 
-官方宿主的父 Agent 还需要正确理解异步回执：`dsh_runtime` 启动时返回的是子任务 ID，终态通过子任务状态更新到达，不能把 ID 交给通用 job 工具。rc15 现场中父 Agent 曾误用 job 工具；候选源码已补工具描述，下一包应验证该行为，必要时调整宿主工具输出和 Web 行呈现，但不能因提示语改变就声称模型一定遵循。
+官方宿主的父 Agent 还需要正确理解异步回执：`dsh_runtime` 启动时返回的是子任务 ID，终态通过 `delivery: parent` 的子任务状态更新到达，不能把 ID 交给通用 job 工具。rc15 现场中父 Agent 曾误用 job 工具；候选源码的无模型契约测试现已验证固定 provider、可信父 Agent、`delivery: parent`、仅含 ID 的启动回执与工具说明。此测试不证明父模型会遵循说明；rc16 的真实宿主行为仍未现场验收。

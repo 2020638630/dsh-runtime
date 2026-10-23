@@ -92,3 +92,11 @@ Host 安装候选已打成私有 `@dsh-runtime/harness-plugin@0.1.0-rc.15` tarba
 五小时额度已用 **90%**、周额度已用 **14%**，达到用户设定的五小时剩余 10% 停止线。候选分支 HEAD `09d627b` 且工作树干净；两个原工作树的 Git 可见状态仍分别为 16 和 106 项。未推送、未切换日常入口、未执行 D2。隔离官方 Host 仍在端口 31715，内置浏览器保留成功任务证据抽屉；下一次操作先确认该 Host 是否仍在线，不要并发启动同一 Home。
 
 下一步先用**无模型**方法收紧目录枚举竞争边界，并检验父 Agent 对 Runtime 异步子任务回执的契约；随后在新的隔离 Home 安装 rc16 对照包，不覆盖 rc15 的 Home 或证据。API reviewer 的双轨迹 Manifest 和 worker 受控写工具按设计文档分别推进。五小时窗口显示北京时间 **2026-10-23 14:12:20** 重置；已通过本线程 heartbeat 创建一次性续跑 `dsh-runtime`，目标约 14:17，执行后须停用自身。定时依赖本机与 Codex 桌面应用保持运行；若用户手动先续跑，定时执行时应核对状态避免重复。
+
+### 2026-10-23 定时续跑：无模型安全收缩与父 Agent 契约
+
+额度恢复后检查：五小时已用 2%、周已用 15%；候选 `8890473` 起始干净，两个原工作树分别有 16 与 106 项 Git 可见状态，均未清理、重置或覆盖。rc15 隔离 Home 与证据保留，端口 31715 当前不在监听；没有重做模型现场。
+
+**目录枚举**：当前 `list_files` / `search_text` 无法排除目录快速换出换回造成的名称泄漏，因此直接从模型 `READ_TOOLS`、供应商工具 schema 以及 `WorkspaceReadBroker` 实现中撤下。API inspector 当前只能调用显式路径的 `read_file`，仍须经过打开后文件句柄边界核对。旧轨迹读取器继续认识历史工具名以正确显示 rc15 证据，不代表新候选仍可执行这些工具。无模型测试覆盖 Broker 直接拒绝、模型回包在执行前拒绝、供应商传输不公布目录工具、Windows junction 在文件打开前替换。定向测试 24 passed、1 skipped；Python 全套 574 passed、1 skipped。
+
+**异步回执**：`dsh_runtime` 启动只返回子代理 ID，启动参数固定 `delivery: parent`。新增无模型工具契约测试核对可信父 Agent、固定 inspection provider、`delivery: parent`、工具说明中“等待子任务状态更新 / ID 非后台 job”及仅有启动回执的渲染；`pnpm test:tool` 为 3/3。此测试证明接线与文字契约，不证明父模型已经学会等待；rc16 尚未安装，不能声称现场行为修复。下一步在全新隔离 Home 做 rc16 无模型安装与激活，对照不覆盖 rc15；模型现场仅在有明确诊断需要时再安排。API reviewer/worker 均未开放，D2 ExecuteGate 继续 `NOT_CLAIMED`。
