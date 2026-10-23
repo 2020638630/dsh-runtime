@@ -144,3 +144,9 @@ API worker 仍不开放：`apply_patch` 已从模型角色允许集合与供应�
 下一步按优先级：先把 CodeBuddy Safe Trace 观察器的真实文件时序故障定位并修复，再在**全新临时仓库与新 run**中用 rc18 官方 Host 做真实 CLI worker + API reviewer，核对同一 run 的两条 `.closed`、终态 Manifest、审计、文件字节和抽屉显示。API worker 原子落盘与跨第二设备验收继续独立推进。D2 ExecuteGate 保持 `NOT_CLAIMED`；两个原工作树最近分别为 16 与 106 项 Git 可见状态，未清理、重置或覆盖。五小时额度最近已用 78%、周已用 27%，尚未触发 10% / 2% 停止线。
 
 **随后修复进展**：重复运行假 CLI 时，失败样本的观察器在进程已退出但重定向 stdout 末字节尚未可读时提前终结（失败时读到 672 字节、正常为 673 字节）。候选 Runtime 的文件观察器现于进程退出后做最多四次、每次 20 ms 的有界 EOF 复核；若字节仍缺失，仍标记轨迹不完整。新增延迟写入最后一个 `]` 的确定性测试，不放宽原有六事件断言。原失败项与新测试通过，Python 全套 **596 passed、1 skipped**。此修正尚未进入 rc18 Home 内的 Runtime 源副本；未来真实 Host 现场应从修正提交重新归档到**新**隔离位置。此前 rc18 无模型激活结果仍只证明包可加载。
+
+### 2026-10-23：下一次真实 Host 验收已就绪
+
+Safe Trace 修正及 rc18 版本记录已本地提交 `54877d2`，候选工作树干净。为避免覆盖 rc18 的无模型样本，新建 `D:\DeepSeekHarness\api-agent-host-artifacts-20261023\rc18-live-reviewer-ready`：Runtime 源从 `54877d2` Git archive 展开，rc18 包按 SHA256 复制核对，独立 Home/Profile 离线安装，仓库外连接文件仅以路径引用。全新 `trial-repo` 只有固定 README 标记并已提交为干净 Git 基线，README SHA256 `C404ED049DE3BDE4F45252CEB6BF253F0969EFC4F037A1B50BF904E18FD86B36`。官方 0.2.1-rc.2 CLI 配置合成含 API reviewer；隔离 Host 无模型启动无激活告警，认证首页 HTTP 200，随后停止，未调用模型、未写试验仓库。
+
+**下一操作**：先确认额度与隔离 Host 当前未运行，再只在上述 `trial-repo` 做一次非 D2 真实官方 Host `repository_change`，目标为单一新文件；核对 CodeBuddy worker、API reviewer 两条同一 run 的 `.closed`、终态 Manifest 的 `execution_trajectory`/`review_trajectory`、审计、精确字节与抽屉。失败则保留该 run 与仓库，另建隔离仓库修复。API worker 仍关闭，不能把 reviewer 的单独成功误称完整 Host 通过；第二设备继续等待用户可用。原 Runtime 与 Harness 工作树最近分别为 16 与 106 项 Git 可见状态，均未清理、重置或覆盖；D2 ExecuteGate 仍 `NOT_CLAIMED`。五小时额度最近已用 89%，周已用 29%；一旦达到 90% / 98% 停止线，更新本交接并安排本线程一次性续跑，旧 `dsh-runtime` heartbeat 目前为 `PAUSED`，不能直接沿用其过时 prompt。
