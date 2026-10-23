@@ -50,4 +50,8 @@
 
 目录枚举增加了进入和退出时的路径与目录标识复核；`search_text` 每个遍历目录均复核，遇到链接目录立即拒绝进入。枚举还在产生结果时执行条目上限，避免先排序整个巨大目录后才拒绝。Windows 受控测试在首次路径检查之后，把目录换成工作区外 junction：`list_files` 和 `search_text` 均不得返回外部数据。**此仍为原型防线**：枚举期间的快速换出换回尚可能绕过两次检查；正式发布前须使用句柄绑定的枚举能力或限制这些工具，并补对抗性验证。下一步优先把 API Agent 事件接入正式 Evidence Manifest / Safe Trace，再评估只读角色试用 Profile。D2 ExecuteGate 仍为 `NOT_CLAIMED`。
 
+### 正式证据接线的已知约束
+
+当前独立 Host Bundle 的 `run.ts` 只向 Runtime 子进程传 `DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR`；`evidence-manifest.ts` 只识别 `codebuddy-safe-worker-*.jsonl`，并对 `repository_inspection` 固定写 `execution_trajectory.status=not_applicable`。因此本次 `runtime-events.jsonl` 只能算隔离试验日志，**尚不是官方 Host 的终态 Evidence Manifest**。下一任务需新增 API Agent 专属的有界、白名单 Safe Trace 与 `.closed` 标记，Host 用独立来源标记读取，严格按 run ID、文件名、目录和终态绑定；旧 CodeBuddy 轨迹的判断保持原样。只读 inspection 的 API 轨迹要有明确来源，不能因任务种类沿用 `not_applicable`。先用伪模型和临时 Home 测试完成、失败、取消及缺失轨迹，再考虑真实 Host 现场。
+
 硅基流动 [Chat Completions 官方文档](https://docs.siliconflow.cn/docs/api/chat-completions-post) 与 OpenRouter [Chat Completion 官方文档](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request) 都展示工具调用字段，但具体模型能力必须现场验证。免费模型配额和可用性会变化，不在配置中硬编码。
