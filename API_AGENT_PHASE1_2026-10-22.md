@@ -99,4 +99,10 @@ Host 安装候选已打成私有 `@dsh-runtime/harness-plugin@0.1.0-rc.15` tarba
 
 **目录枚举**：当前 `list_files` / `search_text` 无法排除目录快速换出换回造成的名称泄漏，因此直接从模型 `READ_TOOLS`、供应商工具 schema 以及 `WorkspaceReadBroker` 实现中撤下。API inspector 当前只能调用显式路径的 `read_file`，仍须经过打开后文件句柄边界核对。旧轨迹读取器继续认识历史工具名以正确显示 rc15 证据，不代表新候选仍可执行这些工具。无模型测试覆盖 Broker 直接拒绝、模型回包在执行前拒绝、供应商传输不公布目录工具、Windows junction 在文件打开前替换。定向测试 24 passed、1 skipped；Python 全套 574 passed、1 skipped。
 
-**异步回执**：`dsh_runtime` 启动只返回子代理 ID，启动参数固定 `delivery: parent`。新增无模型工具契约测试核对可信父 Agent、固定 inspection provider、`delivery: parent`、工具说明中“等待子任务状态更新 / ID 非后台 job”及仅有启动回执的渲染；`pnpm test:tool` 为 3/3。此测试证明接线与文字契约，不证明父模型已经学会等待；rc16 尚未安装，不能声称现场行为修复。下一步在全新隔离 Home 做 rc16 无模型安装与激活，对照不覆盖 rc15；模型现场仅在有明确诊断需要时再安排。API reviewer/worker 均未开放，D2 ExecuteGate 继续 `NOT_CLAIMED`。
+**异步回执**：`dsh_runtime` 启动只返回子代理 ID，启动参数固定 `delivery: parent`。新增无模型工具契约测试核对可信父 Agent、固定 inspection provider、`delivery: parent`、工具说明中“等待子任务状态更新 / ID 非后台 job”及仅有启动回执的渲染；`pnpm test:tool` 为 3/3。此测试证明接线与文字契约，不证明父模型已经学会等待；当时 rc16 尚未安装，不能声称现场行为修复。API reviewer/worker 均未开放，D2 ExecuteGate 继续 `NOT_CLAIMED`。
+
+候选安全收缩与测试已本地提交为 `88fcb78`，工作树干净。新建 `D:\DeepSeekHarness\api-agent-host-artifacts-20261023\rc16-isolated-check`，从该提交的 Git archive 解出 Runtime 源码，复制已核对 SHA256 为 `2FFA2A3C802070424A7D4EF39D844FFA43D7A852C0C5E80EE759B7A56DE18D04` 的 rc16 包，独立 Home/Profile 仅引用仓库外连接文件路径，不复制 key。`pnpm install --offline --ignore-scripts` 成功，官方 0.2.1-rc.2 CLI 合成配置退出 0、stderr 0，配置含独立插件。首次默认沙箱启动如历史现场一样因治理子进程 `spawn EPERM` 未激活；停止该隔离进程后，窄范围授权重启，插件无激活警告、stderr 0、认证本地首页 HTTP 200，随后停止，端口不再使用。此项没有调用模型、没有 Runtime 任务或新 Manifest，也不证明父 Agent 现场遵循异步回执。rc15 Home 和两条历史 run 未动。
+
+复核时原 Runtime 工作树为 16 项、原 Harness 工作树为 108 项 Git 可见状态；后者较交接时的 106 项增加，原因未在本轮追查。本轮只写独立候选和新隔离 Home，未修改、清理或重置原工作树。rc16 隔离服务已停止且随机端口不再监听；五小时已用 15%、周已用 17%。
+
+下一步：在仍隔离的官方 Host 中仅在必要时做 rc16 父 Agent 行为现场，重点观察是否还误用通用 job 工具；若出现误用，应改工具回执/宿主提示并补无模型契约，再次隔离验收。API reviewer 双轨迹和 API worker 原子写工具仍是独立门槛。当前候选仅可作为私有只读试用，不能提升日常默认。两原工作树与 D2 状态须复核后再推进。
