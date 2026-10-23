@@ -185,6 +185,6 @@ Safe Trace 修正及 rc18 版本记录已本地提交 `54877d2`，候选工作�
 
 正式任务顺序见 `PRODUCT_MILESTONES_AND_NEXT_TASKS_2026-10-23.md`。M0 官方插件/终态抽屉本机隔离验收通过；M1 私有并行包尚需跨设备与回退门槛；M2 API inspector/reviewer 只读角色已各有本机现场；M3 API worker 写入未开放；M4 第二设备待用户可用；M5 稳定版和旧分支收敛须在回退证据后逐条处理；M6 实时流及 Memory/RAG 后置。
 
-从固定功能源码 `5f43570` 与 rc.19 插件制作私有 ZIP `D:\DeepSeekHarness\api-agent-host-artifacts-20261023\rc19-private-preview-kit-20261023.zip`，SHA-256 `C9E99F0E57616AE3DD3B47282BBCC789B41AD89ECBC1430E90891589F39996B4`，5 个条目逐项哈希与原件相符。安装器与说明在候选源码的 `scripts/Install-ApiReviewerPreview.ps1`、`API_REVIEWER_PRIVATE_PREVIEW_README.md`；ZIP 仅含插件包、Runtime 源包、Manifest、安装器、说明。扫描包内及内层归档 232 个文件/条目，对本机两项 API key 字节命中 0。用户的连接文件仍只在包外，Profile 仅引用其路径。
+从固定功能源码 `5f43570` 与 rc.19 插件制作私有 ZIP `D:\DeepSeekHarness\api-agent-host-artifacts-20261023\rc19-private-preview-kit-20261023-r2.zip`，SHA-256 `72F0F7CEE601D7E6A74171E382BA8D47D5181C30893C4A32D48687A083D7E9BC`，5 个条目逐项哈希与原件相符。r2 仅补充官方 Host 版本需人工核对的说明，功能产物未变，首版 ZIP 保留为历史候选。安装器与说明在候选源码的 `scripts/Install-ApiReviewerPreview.ps1`、`API_REVIEWER_PRIVATE_PREVIEW_README.md`；ZIP 仅含插件包、Runtime 源包、Manifest、安装器、说明。扫描包内及内层归档 232 个文件/条目，对本机两项 API key 字节命中 0。用户的连接文件仍只在包外，Profile 仅引用其路径。
 
 全新隔离 Home 两次离线安装成功；最新版安装器在 `rc19-kit-install-check2-20261023` 安装 46 个依赖成功。首次全新 Home 的官方 `0.2.1-rc.2` CLI 配置解析退出 0、stderr 0；官方 Host 无模型首页 HTTP 200、stderr 0，测试进程已停止。重复安装在写入前拒绝，Profile 哈希未变；Home 内嵌 Runtime 目标在写入前拒绝且目标不存在。此处没有调用模型或触及旧日常 Home；包尚未在第二设备安装、未升日常默认、未推送或发布。D2 ExecuteGate 仍为 `NOT_CLAIMED`。

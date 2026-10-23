@@ -30,7 +30,7 @@
 
 ## 本轮推进：rc19 私有试用包
 
-已用固定 Runtime 功能源码 `5f43570` 和插件 rc.19 组装五文件私有预览 ZIP：`D:\DeepSeekHarness\api-agent-host-artifacts-20261023\rc19-private-preview-kit-20261023.zip`，SHA-256 `C9E99F0E57616AE3DD3B47282BBCC789B41AD89ECBC1430E90891589F39996B4`。其中只有插件 TGZ、Runtime ZIP、哈希 Manifest、安装器和说明；ZIP 内 5 个条目与目录原件逐项 SHA-256 一致。包内及两个内层归档的 232 个文件/条目对本机两项 API key 字节扫描均无命中，外部连接 JSON 没有被打包。
+已用固定 Runtime 功能源码 `5f43570` 和插件 rc.19 组装五文件私有预览 ZIP：`D:\DeepSeekHarness\api-agent-host-artifacts-20261023\rc19-private-preview-kit-20261023-r2.zip`，SHA-256 `72F0F7CEE601D7E6A74171E382BA8D47D5181C30893C4A32D48687A083D7E9BC`。r2 仅补充了安装说明中的官方 Host 版本核对限制，功能产物未变；先前 ZIP 保留为历史候选。包内只有插件 TGZ、Runtime ZIP、哈希 Manifest、安装器和说明；ZIP 内 5 个条目与目录原件逐项 SHA-256 一致。包内及两个内层归档的 232 个文件/条目对本机两项 API key 字节扫描均无命中，外部连接 JSON 没有被打包。
 
 新安装器 `scripts/Install-ApiReviewerPreview.ps1` 只接受全新 Home/Runtime 目标，写入前核对归档哈希、目录隔离与现有父级链接；角色为 CodeBuddy CLI worker + API reviewer/inspector，只读 API 工具面。全新隔离 Home `rc19-kit-install-check2-20261023` 离线安装 46 个包成功；首次独立 Home 的官方 `0.2.1-rc.2` CLI 配置合成退出 0、stderr 为空且只指向新 Runtime，官方 Host 首页 HTTP 200、stderr 为空，随后停止，未调用模型。重复安装拒绝且 Profile 哈希未变；嵌套目标拒绝且目标未创建；篡改插件 TGZ 的哈希检查在创建 Home 前拒绝。此为**本机无模型安装/启动验收**，不能替代第二设备、凭据实际调用或日常回退现场。
 
