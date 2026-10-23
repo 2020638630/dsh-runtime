@@ -38,9 +38,9 @@
 
 ## 2026-10-23 接续：打开后路径校验
 
-只读 Broker 的 `read_file` / `search_text` 文件内容读取改为打开后核对真实文件句柄路径，验证其仍在绑定工作区内、路径仍非敏感名称，并把读取限制为 `MAX_READ_BYTES + 1`。Windows 使用 `GetFinalPathNameByHandleW`，支持 `/proc/self/fd` 的系统使用打开文件描述符指向的路径；无法取得真实路径时拒绝读取。新增 Windows 受控测试：在原路径校验后把目录换成指向工作区外的 junction，文件读取必须失败且工作区外文件不变。没有调用模型或读取本机 API key。
+只读 Broker 的 `read_file` / `search_text` 文件内容读取改为打开后核对真实文件句柄路径，验证其仍在绑定工作区内、路径仍非敏感名称，并把读取限制为 `MAX_READ_BYTES + 1`。读取循环处理短 `os.read`，前后比较文件标识、大小和修改时间，检测到变动即拒绝。Windows 使用 `GetFinalPathNameByHandleW`，支持 `/proc/self/fd` 的系统使用打开文件描述符指向的路径；无法取得真实路径时拒绝读取。新增 Windows 受控测试：在原路径校验后把目录换成指向工作区外的 junction，文件读取必须失败且工作区外文件不变。另有短读取测试。没有调用模型或读取本机 API key。
 
-本次 `python -m pytest -q` 最终为 **565 passed、1 skipped**；第一次全套运行时，既有 Safe Trace 时序测试只收到 3 条而非 6 条记录，单项重跑和第二次全套运行通过。此偶发问题需在 Safe Trace 独立工作中诊断；不把它算作 API Agent 文件边界失败。
+最终 `python -m pytest -q` 为 **566 passed、1 skipped**。第一次全套运行时，既有 Safe Trace 时序测试只收到 3 条而非 6 条记录，单项重跑和后续两次全套运行通过。此偶发问题需在 Safe Trace 独立工作中诊断；不把它算作 API Agent 文件边界失败。
 
 **剩余边界**：`list_files` 和 `search_text` 的目录枚举仍按路径进行，目录在遍历期间被替换的竞争尚未完全关闭；不得据此宣称只读 Broker 生产级安全。下一步先约束目录枚举，随后把 API Agent 安全事件正式接入 Evidence Manifest / Safe Trace，再开放 API worker 写工具。硅基流动真实工具调用仍未通过；不增加无计划的模型重试。两个原工作树保持原状，D2 ExecuteGate 保持 `NOT_CLAIMED`。
 

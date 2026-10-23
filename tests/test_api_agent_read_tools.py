@@ -110,3 +110,17 @@ def test_file_replaced_by_junction_after_path_check_is_rejected(tmp_path, monkey
     with pytest.raises(ValueError, match="opened file leaves workspace"):
         call(broker, "read_file", path="slot/README.md")
     assert (outside / "README.md").read_text(encoding="utf-8") == "outside-private-marker"
+
+
+def test_read_file_assembles_short_os_reads(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "README.md").write_text("bounded read", encoding="utf-8")
+    broker = WorkspaceReadBroker(workspace)
+    original_read = os.read
+
+    def short_read(fd, count):
+        return original_read(fd, min(count, 2))
+
+    monkeypatch.setattr(os, "read", short_read)
+    assert call(broker, "read_file", path="README.md") == "bounded read"

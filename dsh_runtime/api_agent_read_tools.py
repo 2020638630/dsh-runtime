@@ -95,16 +95,30 @@ class WorkspaceReadBroker:
         except OSError:
             raise ValueError("file could not be opened safely") from None
         try:
-            if not stat.S_ISREG(os.fstat(fd).st_mode):
+            before = os.fstat(fd)
+            if not stat.S_ISREG(before.st_mode):
                 raise ValueError("path must be a regular file")
             opened_path = _opened_file_path(fd)
             if not opened_path.is_relative_to(self.root):
                 raise ValueError("opened file leaves workspace")
             if any(_sensitive(part) for part in opened_path.relative_to(self.root).parts):
                 raise ValueError("opened file is outside allowed scope")
-            if os.fstat(fd).st_size > MAX_READ_BYTES:
+            if before.st_size > MAX_READ_BYTES:
                 raise ValueError("file is too large")
-            content = os.read(fd, MAX_READ_BYTES + 1)
+            chunks: list[bytes] = []
+            remaining = MAX_READ_BYTES + 1
+            while remaining:
+                chunk = os.read(fd, remaining)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            after = os.fstat(fd)
+            if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+                after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns
+            ):
+                raise ValueError("file changed during read")
+            content = b"".join(chunks)
         finally:
             os.close(fd)
         if len(content) > MAX_READ_BYTES or b"\x00" in content:
