@@ -133,6 +133,30 @@ def test_reviewer_receives_verified_file_bytes_from_real_broker(tmp_path) -> Non
     assert "verified byte_length" in transport.seen[0]["messages"][0]["content"]
 
 
+def test_reviewer_can_retry_one_rejected_read_without_leaking_path(tmp_path) -> None:
+    (tmp_path / "review.txt").write_text("allowed\n", encoding="utf-8")
+    transport = FakeTransport(
+        ModelReply(tool_calls=(ToolCall("c1", "read_file", '{"path":".env"}'),), output_tokens=2),
+        ModelReply(tool_calls=(ToolCall("c2", "read_file", '{"path":"review.txt"}'),), output_tokens=2),
+        ModelReply(text="DSH_VERIFICATION: PASS", output_tokens=2),
+    )
+    result = run("reviewer", transport, WorkspaceReadBroker(tmp_path))
+    assert result.success and result.tool_calls == 2 and result.requests == 3
+    failed_result = transport.seen[1]["messages"][-1]["content"]
+    assert failed_result == "read_file unavailable for that path"
+    assert ".env" not in failed_result
+
+
+def test_reviewer_cannot_pass_after_only_a_rejected_read(tmp_path) -> None:
+    transport = FakeTransport(
+        ModelReply(tool_calls=(ToolCall("c1", "read_file", '{"path":".env"}'),), output_tokens=2),
+        ModelReply(text="DSH_VERIFICATION: PASS", output_tokens=2),
+    )
+    result = run("reviewer", transport, WorkspaceReadBroker(tmp_path))
+    assert result.error_code == "reviewer_no_file_read"
+    assert result.tool_calls == 1
+
+
 @pytest.mark.parametrize("unsafe_tool", ["list_files", "search_text"])
 def test_directory_enumeration_is_rejected_before_broker(unsafe_tool) -> None:
     broker = FakeBroker()

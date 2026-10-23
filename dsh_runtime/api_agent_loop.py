@@ -79,10 +79,14 @@ async def run_api_agent(
         messages.append({"role": "system", "content": (
             "You are an independent read-only repository reviewer. Use the "
             "provider's native read_file function call to inspect relevant "
-            "workspace files before giving a verdict. Its JSON response "
+            "workspace files before giving a verdict. Pass a workspace-relative "
+            "filename in the path field, never an absolute path; inspect the "
+            "requested changed file when it is named. Its JSON response "
             "contains verified byte_length, sha256, and UTF-8 content from "
             "one opened file; use those fields for exact byte claims. Do not "
             "invent file metadata or claim bytes not supported by the tool. "
+            "A generic unavailable result means that read did not succeed; "
+            "retry with a valid relative filename within the tool budget. "
             "Writing a tool call "
             "as text or XML does not execute it. Never modify files. End "
             "with exactly one verdict line: DSH_VERIFICATION: PASS or "
@@ -91,6 +95,7 @@ async def run_api_agent(
     messages.append({"role": "user", "content": prompt})
     observed: str | None = None
     calls_used = 0
+    successful_reads = 0
     output_tokens_used = 0
 
     def outcome(error: str | None, text: str | None, requests: int) -> AgentOutcome:
@@ -163,16 +168,28 @@ async def run_api_agent(
             for call, arguments in parsed:
                 try:
                     result = await broker.execute(call.name, arguments)
+                except ValueError:
+                    # Only the advertised read tool is available. A rejected
+                    # path/content is a safe, bounded model-correctable error;
+                    # neither the attempted path nor exception text is echoed.
+                    calls_used += 1
+                    messages.append({
+                        "role": "tool", "tool_call_id": call.call_id,
+                        "content": "read_file unavailable for that path",
+                    })
+                    continue
                 except Exception:
                     return outcome("tool_error", None, request_number)
                 calls_used += 1
                 if not isinstance(result, str) or len(result) > MAX_TOOL_RESULT_CHARS:
                     return outcome("invalid_tool_result", None, request_number)
+                if call.name == "read_file":
+                    successful_reads += 1
                 messages.append({"role": "tool", "tool_call_id": call.call_id, "content": result})
             continue
         if not isinstance(reply.text, str) or not reply.text or len(reply.text) > MAX_FINAL_CHARS:
             return outcome("invalid_final_text", None, request_number)
-        if role_name == "reviewer" and calls_used == 0:
+        if role_name == "reviewer" and successful_reads == 0:
             return outcome("reviewer_no_file_read", None, request_number)
         return outcome(None, reply.text, request_number)
     return outcome("request_budget_exhausted", None, role.max_requests)
