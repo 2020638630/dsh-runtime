@@ -1,6 +1,6 @@
 # DSH Runtime 模型 API Agent 设计草案
 
-> 状态：供负责人评审的方案草案，未实施、未做 API 现场调用；不改变现有 CLI 并行入口，也不改变 D2 ExecuteGate `NOT_CLAIMED`。
+> 状态：持续更新的设计草案。API inspector 已在独立 Runtime 与未修改的官方 Harness + rc15 插件中完成一次真实只读现场；API reviewer/worker 尚未开放。现有 CLI 并行入口不变，D2 ExecuteGate 仍为 `NOT_CLAIMED`。现场证据见 `API_AGENT_PHASE1_2026-10-22.md`。
 
 ## 1. 建议结论
 
@@ -66,3 +66,11 @@ reviewer 与 worker 使用独立模型会话，不继承 worker 的对话链；�
 4. **API-04 第二供应商与安装**：至少一种非同协议供应商重复契约与真实现场；安装包可选装 API 依赖，全新 Home、旧会话、回退和无凭据分发复验。未覆盖的模型仍显示“未经验证”。
 
 是否把 API Agent 升为默认角色，应在 API-03/04 的独立现场、长期错误样本和费用上限均过门槛后单独决定；当前官方 Harness 插件交付不以此为阻塞项。
+
+## 7. 下一阶段的证据与权限门槛
+
+API reviewer 不能仅靠 Runtime 能调用该角色就对外开放。一次写入任务会同时拥有 CLI worker 轨迹和只读 API reviewer 轨迹；Manifest 必须分别标明两个来源、各自的 `.closed` 与终态，不能把 worker 的 CodeBuddy 轨迹冒充 reviewer 的执行依据。`phase_2_codex_effective_write` 也不能在 reviewer 改用 API Agent 后暗示 Codex 实际参与。Reviewer 的精确终行判决仍由 Runtime 解析，Host 仅展示来源和证据状态；缺失 reviewer 轨迹应为 `unavailable`，不得填充推断值。先用假模型覆盖完成、拒绝、失败、取消和轨迹缺失，再在独立临时仓库做真实写入与异模型审查。
+
+API worker 要另设门槛：先实现带预期哈希与冲突拒绝的受控写工具，明确补丁的原子落盘、变更上限和取消时的结算。只读工具现有目录枚举仍存在快速换出换回竞争；须改为句柄绑定的枚举或先收缩可用工具面，完成对抗性验证后才考虑日常启用。工作区前后快照与 Safe Trace 各自提供观察证据，不以模型最终文本代替。
+
+官方宿主的父 Agent 还需要正确理解异步回执：`dsh_runtime` 启动时返回的是子任务 ID，终态通过子任务状态更新到达，不能把 ID 交给通用 job 工具。rc15 现场中父 Agent 曾误用 job 工具；候选源码已补工具描述，下一包应验证该行为，必要时调整宿主工具输出和 Web 行呈现，但不能因提示语改变就声称模型一定遵循。
