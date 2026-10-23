@@ -80,3 +80,33 @@ def test_read_tools_on_fresh_isolated_git_repository(tmp_path):
     assert call(broker, "read_file", path="README.md") == "isolated trial\n"
     with pytest.raises(ValueError):
         call(broker, "read_file", path=".git/config")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction race probe")
+def test_file_replaced_by_junction_after_path_check_is_rejected(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    slot = workspace / "slot"
+    slot.mkdir()
+    (slot / "README.md").write_text("safe", encoding="utf-8")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "README.md").write_text("outside-private-marker", encoding="utf-8")
+    broker = WorkspaceReadBroker(workspace)
+    original_path = broker._path
+
+    def swap_after_check(relative, *, directory=None):
+        checked = original_path(relative, directory=directory)
+        slot.rename(workspace / "moved-slot")
+        created = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(slot), str(outside)],
+            capture_output=True, text=True, check=False,
+        )
+        if created.returncode != 0:
+            pytest.skip("junction creation unavailable")
+        return checked
+
+    monkeypatch.setattr(broker, "_path", swap_after_check)
+    with pytest.raises(ValueError, match="opened file leaves workspace"):
+        call(broker, "read_file", path="slot/README.md")
+    assert (outside / "README.md").read_text(encoding="utf-8") == "outside-private-marker"

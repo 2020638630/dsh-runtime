@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import stat
 from typing import Any
 
 
@@ -84,17 +86,34 @@ class WorkspaceReadBroker:
             return self._search(directory, query)
         raise ValueError("tool is unsupported")
 
-    @staticmethod
-    def _read(path: Path) -> str:
-        if path.stat().st_size > MAX_READ_BYTES:
-            raise ValueError("file is too large")
-        content = path.read_bytes()
+    def _read(self, path: Path) -> str:
+        # A path checked by _path() can be replaced before open(). Verify the
+        # opened handle itself before reading any bytes into the model context.
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            fd = os.open(path, flags)
+        except OSError:
+            raise ValueError("file could not be opened safely") from None
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise ValueError("path must be a regular file")
+            opened_path = _opened_file_path(fd)
+            if not opened_path.is_relative_to(self.root):
+                raise ValueError("opened file leaves workspace")
+            if any(_sensitive(part) for part in opened_path.relative_to(self.root).parts):
+                raise ValueError("opened file is outside allowed scope")
+            if os.fstat(fd).st_size > MAX_READ_BYTES:
+                raise ValueError("file is too large")
+            content = os.read(fd, MAX_READ_BYTES + 1)
+        finally:
+            os.close(fd)
         if len(content) > MAX_READ_BYTES or b"\x00" in content:
             raise ValueError("file is too large or binary")
         try:
             return content.decode("utf-8")
         except UnicodeError:
             raise ValueError("file is not UTF-8") from None
+
 
     def _search(self, directory: Path, query: str) -> str:
         results: list[str] = []
@@ -126,3 +145,31 @@ class WorkspaceReadBroker:
                         if len(results) >= MAX_SEARCH_MATCHES:
                             return "\n".join(results)
         return "\n".join(results)
+
+
+def _opened_file_path(fd: int) -> Path:
+    """Resolve the actual opened object; fail closed on unsupported platforms."""
+    if os.name == "nt":
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        get_path = ctypes.windll.kernel32.GetFinalPathNameByHandleW
+        get_path.argtypes = [wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD]
+        get_path.restype = wintypes.DWORD
+        handle = msvcrt.get_osfhandle(fd)
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = get_path(handle, buffer, len(buffer), 0)
+        if not length or length >= len(buffer):
+            raise ValueError("opened file path is unavailable")
+        raw = buffer.value
+        if raw.startswith("\\\\?\\UNC\\"):
+            raw = "\\\\" + raw[8:]
+        elif raw.startswith("\\\\?\\"):
+            raw = raw[4:]
+        else:
+            raise ValueError("opened file path is unavailable")
+        return Path(raw)
+    if Path("/proc/self/fd").is_dir():
+        return Path(os.readlink(f"/proc/self/fd/{fd}"))
+    raise ValueError("opened file path is unavailable")
