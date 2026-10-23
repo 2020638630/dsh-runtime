@@ -3,11 +3,13 @@
 import { readdir, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { inspectCallTrace } from './call-trace-evidence.ts'
+import { inspectApiAgentTrace } from './api-agent-trace-evidence.ts'
 import { inspectSafeTrace } from './safe-trace-evidence.ts'
 import { captureWorkspace, compareWorkspace, type WorkspaceSnapshot } from './workspace-evidence.ts'
 import type { DshRuntimeTaskKind, RuntimeTaskState } from './run.ts'
 
 const TRACE_NAME = /^codebuddy-safe-worker-[0-9a-f]{32}\.jsonl$/u
+const API_TRACE_NAME = /^api-agent-safe-role-[0-9a-f]{32}\.jsonl$/u
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u
 
 function verification(task: RuntimeTaskState, taskKind: DshRuntimeTaskKind) {
@@ -49,6 +51,7 @@ export async function writeTerminalEvidence(input: {
   readonly durationMs: number
   readonly stdout: string
   readonly maxTurnsConfig: number | null
+  readonly expectedApiInspector?: boolean
 }): Promise<void> {
   const { task, runId, runDir } = input
   if (!UUID.test(task.task_id) || task.task_kind !== input.taskKind
@@ -57,11 +60,25 @@ export async function writeTerminalEvidence(input: {
   }
   const after = await captureWorkspace(input.workspace)
   const changes = compareWorkspace(input.before, after)
-  const traceNames = (await readdir(input.safeTraceDir)).filter(name => TRACE_NAME.test(name))
+  const safeTraceNames = await readdir(input.safeTraceDir)
+  const traceNames = safeTraceNames.filter(name => TRACE_NAME.test(name))
+  const apiTraceNames = safeTraceNames.filter(name => API_TRACE_NAME.test(name))
   const traceName = traceNames.length === 1 ? traceNames[0] : undefined
-  const traceFile = traceName === undefined ? null : join(input.safeTraceDir, traceName)
-  const trajectory = input.taskKind === 'repository_inspection'
-    ? { status: 'not_applicable' as const, traceComplete: false, turnsUsed: null, toolOperationsSummary: null }
+  const apiTraceName = apiTraceNames.length === 1 ? apiTraceNames[0] : undefined
+  const apiInspection = input.taskKind === 'repository_inspection'
+    && (input.expectedApiInspector === true || apiTraceNames.length > 0)
+  const traceFile = apiInspection
+    ? apiTraceName === undefined ? null : join(input.safeTraceDir, apiTraceName)
+    : traceName === undefined ? null : join(input.safeTraceDir, traceName)
+  const trajectory = apiInspection
+    ? traceFile === null
+      ? { status: apiTraceNames.length === 0 ? 'unavailable' as const : 'unknown' as const,
+        traceComplete: false, toolOperationsSummary: null }
+      : await inspectApiAgentTrace({
+        runId, traceDir: input.safeTraceDir, tracePath: traceFile, processExited: true,
+      })
+    : input.taskKind === 'repository_inspection'
+      ? { status: 'not_applicable' as const, traceComplete: false, toolOperationsSummary: null }
     : traceFile === null
       ? { status: traceNames.length === 0 ? 'unavailable' as const : 'unknown' as const,
         traceComplete: false, turnsUsed: null, toolOperationsSummary: null }
@@ -80,17 +97,19 @@ export async function writeTerminalEvidence(input: {
     authority_phases: {
       task_ceiling_allow_write: input.taskKind === 'repository_change',
       phase_1_codebuddy_effective_write: input.taskKind === 'repository_change' && task.iteration > 0 ? true : null,
-      phase_2_codex_effective_write: task.iteration >= (input.taskKind === 'repository_change' ? 2 : 1) ? false : null,
+      phase_2_codex_effective_write: apiInspection ? null
+        : task.iteration >= (input.taskKind === 'repository_change' ? 2 : 1) ? false : null,
     },
     workspace_changes: { ...changes, diff: undefined, diff_content_ref: diffPath },
     execution_trajectory: {
-      source: 'safe_event_trace', status: trajectory.status,
+      source: apiInspection ? 'api_agent_safe_event_trace' : 'safe_event_trace',
+      status: trajectory.status,
       trace_complete: trajectory.traceComplete,
       trace_scope: 'observed_stream_complete', trace_file: traceFile,
       turns_used: null, turns_metrics_status: input.taskKind === 'repository_inspection'
         ? 'not_applicable' : trajectory.status === 'available' ? 'unverified_base' : 'unavailable',
       max_observed_turn_index: null, turn_index_source: 'unavailable',
-      max_turns_config: input.maxTurnsConfig,
+      max_turns_config: apiInspection ? null : input.maxTurnsConfig,
       tool_operations_summary: trajectory.toolOperationsSummary,
     },
     verification: verification(task, input.taskKind),

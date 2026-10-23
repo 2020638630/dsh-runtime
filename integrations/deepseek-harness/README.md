@@ -34,7 +34,28 @@ The optional `roleConfig` belongs in the plugin's Profile config, alongside `run
         inspector: { adapter: codex, model: null } # may use a different model ID
 ```
 
-The three roles are required when the config is present. A `codex` worker is also accepted and receives workspace write authority only for the existing write stage; reviewer and inspector remain read-only and currently require `codex`. Codex model IDs are passed to its app-server `thread/start` request; model availability still depends on the installed Codex account. A CodeBuddy worker model ID is passed as `--model` to the installed CLI in both JSON and stream JSON modes. The current local CLI (`2.164.0`) advertises this flag, and one isolated direct worker trial observed the requested `deepseek-v4.1-flash` model. A model ID unsupported by the installed CLI or account can still fail at invocation time. Leaving `model` as `null` preserves each adapter's own default. Reasoning overrides are not part of this schema. This configuration cannot add stages, raise read-only authority, or enable D2. Do not put credentials in `roleConfig`.
+The three roles are required when the config is present. Under schema v1, a `codex` worker is also accepted and receives workspace write authority only for the existing write stage; reviewer and inspector remain read-only and require `codex`. Codex model IDs are passed to its app-server `thread/start` request; model availability still depends on the installed Codex account. A CodeBuddy worker model ID is passed as `--model` to the installed CLI in both JSON and stream JSON modes. The current local CLI (`2.164.0`) advertises this flag, and one isolated direct worker trial observed the requested `deepseek-v4.1-flash` model. A model ID unsupported by the installed CLI or account can still fail at invocation time. Leaving `model` as `null` preserves each adapter's own default. Reasoning overrides are not part of this schema. This configuration cannot add stages, raise read-only authority, or enable D2. Do not put credentials in `roleConfig`.
+
+The API Agent candidate adds an explicit schema v2 **inspection-only** route. The connection file is outside every Git worktree and contains the provider key; the Profile contains only its absolute path and a connection reference. This candidate does not enable an API worker or API reviewer in the official Host:
+
+```yaml
+    apiAgentConnectionsPath: D:/isolated-config/connections.local.json
+    roleConfig:
+      schema_version: 2
+      roles:
+        worker: { adapter: codebuddy, model: null }
+        reviewer: { adapter: codex, model: null }
+        inspector:
+          adapter: api_agent
+          provider: siliconflow
+          model: Qwen/Qwen3-Coder-30B-A3B-Instruct
+          connection_ref: trial_siliconflow
+          max_requests: 3
+          max_tool_calls: 3
+          max_output_tokens: 512
+```
+
+The Runtime accepts only the configured provider, endpoint and model, with no automatic retries or model fallback. A completed API inspection writes a metadata-only Safe Trace and a run-bound `.closed` marker. The Host labels that source `api_agent_safe_event_trace`; a missing expected trace is `unavailable`. This code has passed fake-model Host tests and a separate direct Runtime provider trial. It has not yet passed an installed official Host API inspection, so keep it in an isolated Profile.
 
 The isolated official Host acceptance Profile is `D:/DeepSeekHarness/vis-stable-release-artifacts/official-plugin-probe-20261020/home/profiles/runtime-official`; the tarball is beside the consumer. This Profile enables inspection only. Its full config is local acceptance state, not a production template. In a fresh temporary Git repository, a real official Host model task called `dsh_runtime` for `repository_inspection`: the child completed, the governance audit recorded one `ALLOW`, the terminal Manifest reported no file changes, and the repository stayed clean. After a Host restart, the authenticated evidence route still returned HTTP 200 for that Session; anonymous, malformed and other-Session requests returned 401, 400 and 404 respectively.
 

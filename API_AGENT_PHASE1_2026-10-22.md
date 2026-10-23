@@ -56,4 +56,6 @@
 
 Runtime 侧已先实现**默认关闭**的 `DSH_API_AGENT_SAFE_EVENT_TRACE_DIR`：启用时要求合法 `DSH_RUNTIME_RUN_ID` 和工作区外绝对目录，只写角色、工具名、结果类别、序号、终态及 `.closed` 的大小绑定，不写 key、提示词、工具参数或模型文本；完成、失败和取消均有终态路径。直接伪模型测试已覆盖完成与取消。Host 尚未设置这个变量，也未读取 `api-agent-safe-role-*.jsonl`；因此不能将独立 Runtime 轨迹称为正式 Manifest 或抽屉验收。
 
+**同日后续实现（覆盖上句的 Host 尚未接线状态）**：候选 Host 现在把同一 run 专用 Safe Trace 目录通过新的 `DSH_API_AGENT_SAFE_EVENT_TRACE_DIR` 传给 Runtime，并只在子进程退出后读取 `api-agent-safe-role-*.jsonl` 与 `.closed`。读取器验证 run ID、目录、文件名、大小、序号、白名单字段、角色、工具名和终态；inspection Manifest 可用独立来源 `api_agent_safe_event_trace`，配置预期为 API inspector 却没有轨迹时标记 `unavailable`，旧 CLI inspection 仍为 `not_applicable`。Profile 校验显式接受 schema v2 的 **inspector API 角色**，连接文件仅通过 `apiAgentConnectionsPath` 传给 Runtime；API worker 和 reviewer 暂时在 Host 拒绝，待各自证据路径完成。TypeScript 类型检查、打包构建、5 项伪轨迹/Manifest 测试、入口配置测试和旧启动测试通过；Python 全套为 **575 passed、1 skipped**。这些是候选源码和无模型测试，**尚未打包安装或在真实官方 Host 中做 API inspector 现场**。下一步在隔离 Home 与仓库中安装候选包并验收；实际账户抵扣仍需平台结算确认。
+
 硅基流动 [Chat Completions 官方文档](https://docs.siliconflow.cn/docs/api/chat-completions-post) 与 OpenRouter [Chat Completion 官方文档](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request) 都展示工具调用字段，但具体模型能力必须现场验证。免费模型配额和可用性会变化，不在配置中硬编码。

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { hostCoreConfig, validateConfig, type Config } from '../src/index.ts'
 
@@ -82,4 +82,42 @@ test('entry freezes role models and refuses unsupported adapters or fields', () 
       inspector: { adapter: 'codex', model: null },
     },
   } as unknown as Config['roleConfig'] }), /requires only adapter and model/)
+})
+
+test('entry accepts bounded API inspector only with an external connection path', () => {
+  const base = fixture()
+  const apiAgentConnectionsPath = join(dirname(base.runtimeRoot), 'connections.local.json')
+  writeFileSync(apiAgentConnectionsPath, '{}')
+  const roleConfig = {
+    schema_version: 2 as const,
+    roles: {
+      worker: { adapter: 'codebuddy' as const, model: null },
+      reviewer: { adapter: 'codex' as const, model: null },
+      inspector: {
+        adapter: 'api_agent' as const, provider: 'siliconflow' as const,
+        model: 'Qwen/Qwen3-Coder-30B-A3B-Instruct', connection_ref: 'trial_siliconflow',
+        max_requests: 3, max_tool_calls: 3, max_output_tokens: 512,
+      },
+    },
+  }
+  const resolved = validateConfig({ ...base, roleConfig, apiAgentConnectionsPath })
+  const processes = hostCoreConfig(resolved)
+  assert.equal(processes.runtime.env.DSH_API_AGENT_CONNECTIONS_PATH, apiAgentConnectionsPath)
+  assert.equal('DSH_API_AGENT_CONNECTIONS_PATH' in processes.governance.env, false)
+  assert.equal(JSON.parse(processes.runtime.env.DSH_RUNTIME_ROLE_CONFIG_JSON).schema_version, 2)
+  assert.throws(() => validateConfig({ ...base, roleConfig }), /apiAgentConnectionsPath/)
+  assert.throws(() => validateConfig({ ...base, env: {
+    DSH_API_AGENT_CONNECTIONS_PATH: apiAgentConnectionsPath,
+  }, roleConfig, apiAgentConnectionsPath }), /owned by apiAgentConnectionsPath/)
+  assert.throws(() => validateConfig({ ...base, roleConfig: {
+    ...roleConfig, roles: { ...roleConfig.roles, worker: roleConfig.roles.inspector },
+  } as unknown as Config['roleConfig'], apiAgentConnectionsPath }), /worker is not qualified/)
+  assert.throws(() => validateConfig({ ...base, roleConfig: {
+    ...roleConfig, roles: { ...roleConfig.roles, reviewer: roleConfig.roles.inspector },
+  } as unknown as Config['roleConfig'], apiAgentConnectionsPath }), /reviewer is not qualified/)
+  assert.throws(() => validateConfig({ ...base, roleConfig: {
+    ...roleConfig, roles: { ...roleConfig.roles, inspector: {
+      ...roleConfig.roles.inspector, max_requests: 13,
+    } },
+  }, apiAgentConnectionsPath }), /max_requests/)
 })

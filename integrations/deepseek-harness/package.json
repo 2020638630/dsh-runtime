@@ -36,7 +36,8 @@
     "test:launcher": "tsc -p tsconfig.test.json && node .build/test/runtime-launcher.test.js",
     "test:host-core": "tsc -p tsconfig.test.json && node .build/test/host-core.test.js",
     "test:tool": "tsc -p tsconfig.test.json && node .build/test/tool.test.js",
-    "test:entry": "tsc -p tsconfig.test.json && node .build/test/entry.test.js"
+    "test:entry": "tsc -p tsconfig.test.json && node .build/test/entry.test.js",
+    "test:api-agent-trace": "tsc -p tsconfig.test.json && node .build/test/api-agent-trace.test.js"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.5",
