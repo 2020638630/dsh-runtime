@@ -9,7 +9,19 @@ const MAX_TRACE_BYTES = 65_536
 const MAX_MARKER_BYTES = 4_096
 const MAX_EVENTS = 128
 const TOOLS = ['list_files', 'read_file', 'search_text'] as const
+const FAILURE_CODES = [
+  'execution_error', 'http_client_unavailable', 'unsupported_tool_schema',
+  'provider_timeout', 'provider_network_error', 'provider_auth_error',
+  'provider_rate_limited', 'provider_http_error', 'provider_response_too_large',
+  'provider_response_invalid', 'provider_error', 'invalid_role', 'invalid_prompt',
+  'token_budget_exhausted', 'invalid_model_reply', 'invalid_observed_model',
+  'model_changed', 'model_mismatch', 'missing_or_invalid_token_count',
+  'invalid_tool_companion_text', 'tool_budget_exhausted', 'invalid_tool_call',
+  'invalid_tool_arguments', 'tool_error', 'invalid_tool_result',
+  'invalid_final_text', 'reviewer_no_file_read', 'request_budget_exhausted',
+] as const
 type ToolName = (typeof TOOLS)[number]
+type FailureCode = (typeof FAILURE_CODES)[number]
 type Status = 'available' | 'unavailable' | 'unknown' | 'incomplete'
 
 export interface ApiAgentTraceEvidence {
@@ -18,12 +30,13 @@ export interface ApiAgentTraceEvidence {
   readonly traceId: string | null
   readonly roleName: 'inspector' | 'reviewer' | null
   readonly terminalReason: 'completed' | 'failed' | 'cancelled' | null
+  readonly failureCode: FailureCode | null
   readonly toolOperationsSummary: Readonly<Record<ToolName, number>> | null
 }
 
 function empty(status: Status, traceId: string | null): ApiAgentTraceEvidence {
   return { status, traceComplete: false, traceId, roleName: null,
-    terminalReason: null, toolOperationsSummary: null }
+    terminalReason: null, failureCode: null, toolOperationsSummary: null }
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -137,6 +150,13 @@ export async function inspectApiAgentTrace(input: {
       counts[event.tool_name as ToolName] += 1
     }
   }
+  const failureCode = marker.failure_code
+  if (failureCode !== undefined && (terminalReason !== 'failed'
+    || !FAILURE_CODES.includes(failureCode as FailureCode))) {
+    return empty('incomplete', traceId)
+  }
   return { status: 'available', traceComplete: true, traceId,
-    roleName: role, terminalReason, toolOperationsSummary: counts }
+    roleName: role, terminalReason,
+    failureCode: failureCode === undefined ? null : failureCode as FailureCode,
+    toolOperationsSummary: counts }
 }

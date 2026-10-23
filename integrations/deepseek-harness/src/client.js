@@ -130,6 +130,8 @@ window.__ModuleLoader__.load({
             ? line('API 审查轨迹', review.status) : null,
           review?.source === 'api_agent_safe_event_trace' && review.terminal_reason
             ? line('API 审查终态', review.terminal_reason) : null,
+          review?.source === 'api_agent_safe_event_trace' && review.failure_code
+            ? line('API 审查失败类别', review.failure_code) : null,
           review?.source === 'api_agent_safe_event_trace' && review.status === 'available'
             ? h('ul', { key: 'review-tools' }, Object.entries(review.tool_operations_summary ?? {})
               .map(([name, count]) => h('li', { key: name }, `${name}：${count}`))) : null,

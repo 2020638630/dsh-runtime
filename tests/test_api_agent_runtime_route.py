@@ -286,4 +286,5 @@ def test_api_reviewer_provider_failure_closes_failed_trace(tmp_path, monkeypatch
     trace = next(trace_dir.glob("api-agent-safe-role-*.jsonl"))
     events = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
     assert events[-1]["terminal_reason"] == "failed"
-    assert (trace_dir / (trace.name + ".closed")).is_file()
+    marker = json.loads((trace_dir / (trace.name + ".closed")).read_text(encoding="utf-8"))
+    assert marker["failure_code"] == "provider_timeout"

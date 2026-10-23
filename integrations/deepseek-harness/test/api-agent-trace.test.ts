@@ -49,8 +49,29 @@ test('API Agent trace reader returns only bounded metadata after closure', async
   assert.deepEqual(evidence, {
     status: 'available', traceComplete: true, traceId: TRACE_ID,
     roleName: 'inspector', terminalReason: 'completed',
+    failureCode: null,
     toolOperationsSummary: { list_files: 0, read_file: 1, search_text: 0 },
   })
+})
+
+test('API Agent closure exposes only a known failure category', async () => {
+  const { traceDir, tracePath } = fixture('reviewer', 'failed')
+  const markerPath = `${tracePath}.closed`
+  const marker = JSON.parse(readFileSync(markerPath, 'utf8'))
+  writeFileSync(markerPath, JSON.stringify({ ...marker, failure_code: 'request_budget_exhausted' }) + '\n')
+  const evidence = await inspectApiAgentTrace({
+    runId: RUN_ID, traceDir, tracePath, processExited: true,
+  })
+  assert.equal(evidence.status, 'available')
+  assert.equal(evidence.failureCode, 'request_budget_exhausted')
+  const manifest = await changeManifest(traceDir)
+  assert.equal(manifest.review_trajectory.failure_code, 'request_budget_exhausted')
+  assert.equal(manifest.verification.verdict, 'UNAVAILABLE')
+  writeFileSync(markerPath, JSON.stringify({ ...marker, failure_code: 'provider-private-text' }) + '\n')
+  const rejected = await inspectApiAgentTrace({
+    runId: RUN_ID, traceDir, tracePath, processExited: true,
+  })
+  assert.equal(rejected.status, 'incomplete')
 })
 
 test('API Agent trace reader rejects a mismatched closure marker', async () => {

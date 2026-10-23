@@ -41,6 +41,18 @@ def test_trace_rejects_unlisted_metadata(tmp_path):
     sink.finish("failed")
 
 
+def test_failed_marker_records_only_whitelisted_diagnostic_code(tmp_path):
+    sink = ApiAgentSafeTrace(tmp_path / "evidence", run_id=RUN_ID, role_name="reviewer")
+    with pytest.raises(ApiAgentTraceError):
+        sink.finish("failed", failure_code="private-model-response")
+    with pytest.raises(ApiAgentTraceError):
+        sink.finish("completed", failure_code="request_budget_exhausted")
+    sink.finish("failed", failure_code="request_budget_exhausted")
+    marker = json.loads(Path(str(sink.path) + ".closed").read_text(encoding="utf-8"))
+    assert marker["failure_code"] == "request_budget_exhausted"
+    assert set(marker) == {"schema_version", "run_id", "trace_id", "final_bytes", "failure_code"}
+
+
 def test_trace_requires_bounded_run_identity(tmp_path):
     with pytest.raises(ApiAgentTraceError):
         ApiAgentSafeTrace(tmp_path / "evidence", run_id="arbitrary", role_name="inspector")

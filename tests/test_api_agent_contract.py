@@ -131,6 +131,7 @@ def test_reviewer_receives_verified_file_bytes_from_real_broker(tmp_path) -> Non
         "content": data.decode("utf-8"),
     }
     assert "verified byte_length" in transport.seen[0]["messages"][0]["content"]
+    assert "do not reread the same file" in transport.seen[0]["messages"][0]["content"]
 
 
 def test_reviewer_can_retry_one_rejected_read_without_leaking_path(tmp_path) -> None:

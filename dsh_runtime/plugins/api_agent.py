@@ -115,13 +115,16 @@ class ApiAgentPlugin:
         except Exception:
             if trace is not None:
                 try:
-                    trace.finish("failed")
+                    trace.finish("failed", failure_code="execution_error")
                 except ApiAgentTraceError:
                     pass
             return PluginResult(False, error="api_agent execution failed")
         if trace is not None:
             try:
-                trace.finish("completed" if outcome.success else "failed")
+                trace.finish(
+                    "completed" if outcome.success else "failed",
+                    failure_code=None if outcome.success else outcome.error_code,
+                )
             except ApiAgentTraceError:
                 return PluginResult(False, error="api_agent trace could not settle")
         record(

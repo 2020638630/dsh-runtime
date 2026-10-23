@@ -148,6 +148,8 @@ export async function writeTerminalEvidence(input: {
         ? rawReviewTrajectory?.toolOperationsSummary : null,
       terminal_reason: reviewStatus === 'available'
         ? rawReviewTrajectory?.terminalReason : null,
+      failure_code: reviewStatus === 'available'
+        ? rawReviewTrajectory?.failureCode : null,
     },
     verification: reviewVerified ? verification(task, input.taskKind) : {
       source: 'runtime_terminal_json', verdict: 'UNAVAILABLE', verdict_raw_line: null,

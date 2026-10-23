@@ -18,6 +18,17 @@ _ROLES = frozenset({"inspector", "reviewer"})
 _TOOLS = frozenset({"list_files", "read_file", "search_text"})
 _STATUSES = frozenset({"completed", "failed"})
 _TERMINALS = frozenset({"completed", "failed", "cancelled"})
+_FAILURE_CODES = frozenset({
+    "execution_error", "http_client_unavailable", "unsupported_tool_schema",
+    "provider_timeout", "provider_network_error", "provider_auth_error",
+    "provider_rate_limited", "provider_http_error", "provider_response_too_large",
+    "provider_response_invalid", "provider_error", "invalid_role", "invalid_prompt",
+    "token_budget_exhausted", "invalid_model_reply", "invalid_observed_model",
+    "model_changed", "model_mismatch", "missing_or_invalid_token_count",
+    "invalid_tool_companion_text", "tool_budget_exhausted", "invalid_tool_call",
+    "invalid_tool_arguments", "tool_error", "invalid_tool_result",
+    "invalid_final_text", "reviewer_no_file_read", "request_budget_exhausted",
+})
 MAX_TRACE_BYTES = 65_536
 MAX_TRACE_EVENTS = 128
 _TERMINAL_RESERVE = 1_024
@@ -85,8 +96,10 @@ class ApiAgentSafeTrace:
             raise ApiAgentTraceError("api_agent trace tool event is invalid")
         self._emit("tool_call", tool_name=name, tool_status=status)
 
-    def finish(self, reason: str) -> None:
-        if reason not in _TERMINALS:
+    def finish(self, reason: str, *, failure_code: str | None = None) -> None:
+        if (reason not in _TERMINALS
+            or (failure_code is not None
+                and (reason != "failed" or failure_code not in _FAILURE_CODES))):
             raise ApiAgentTraceError("api_agent trace terminal reason is invalid")
         self._emit("terminal", terminal_reason=reason)
         try:
@@ -94,10 +107,13 @@ class ApiAgentSafeTrace:
             self._closed = True
             marker = self.path.with_name(self.path.name + ".closed")
             with marker.open("x", encoding="utf-8", newline="\n") as stream:
-                json.dump({
+                marker = {
                     "schema_version": 1, "run_id": self.run_id,
                     "trace_id": self.trace_id, "final_bytes": self.path.stat().st_size,
-                }, stream, separators=(",", ":"))
+                }
+                if failure_code is not None:
+                    marker["failure_code"] = failure_code
+                json.dump(marker, stream, separators=(",", ":"))
                 stream.write("\n")
         except OSError:
             raise ApiAgentTraceError("api_agent trace could not close") from None
