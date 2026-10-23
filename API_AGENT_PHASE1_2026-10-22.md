@@ -61,3 +61,15 @@ Runtime 侧已先实现**默认关闭**的 `DSH_API_AGENT_SAFE_EVENT_TRACE_DIR`�
 Host 安装候选已打成私有 `@dsh-runtime/harness-plugin@0.1.0-rc.15` tarball，保存在 `D:\DeepSeekHarness\api-agent-host-artifacts-20261023\dsh-runtime-harness-plugin-0.1.0-rc.15.tgz`；包含独立 API Trace 读取器，不含凭据。此包还没有安装进新 Home；版本号只标识候选，不能当作稳定发布。
 
 硅基流动 [Chat Completions 官方文档](https://docs.siliconflow.cn/docs/api/chat-completions-post) 与 OpenRouter [Chat Completion 官方文档](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request) 都展示工具调用字段，但具体模型能力必须现场验证。免费模型配额和可用性会变化，不在配置中硬编码。
+
+## 2026-10-23：rc15 官方 Host 隔离安装与无模型激活
+
+候选提交 `aed2494` 干净；原 Runtime 与 Harness 工作树分别仍有 16 和 106 项 Git 可见状态，均未清理、重置或覆盖。五小时额度检查时已用 56%，周额度已用 9%。
+
+在 `D:\DeepSeekHarness\api-agent-host-artifacts-20261023` 建立全新的 `runtime-source`、`home-api-inspector` 和 `inspection-repo`，没有复制旧 Home 或凭据。Runtime 源码从已核对 SHA256 的 `runtime-source-aed2494.zip` 解包；独立 Profile `home-api-inspector/profiles/runtime-api-inspector` 离线安装私有 rc15 tarball，配置仅启用 `repository_inspection`、schema v2 的硅基流动 API inspector，模型固定为 `Qwen/Qwen3-Coder-30B-A3B-Instruct`，请求/工具/输出上限为 3/3/512。Profile 仅保存仓库外连接文件的绝对路径和连接引用，不含 key。隔离仓库 README 为 `RC15_HOST_INSPECTION_MARKER`，当前 Git 干净。
+
+首次启动的 `spawn EPERM` 是沙箱不允许创建治理子进程；窄范围授权后，第二次启动因政策哈希不符被治理 worker 拒绝。原因是 Profile 误用了 JSON 文件字节 SHA256 `013cfa...`，而协议要求 Runtime `load_policy_artifact()` 的规范化政策哈希 `c1cb7d...`。只修正该隔离 Profile 后，未修改的官方 `@deepseek-ai/dsh@0.2.1-rc.2` 在端口 31715 启动且 rc15 不再出现未激活警告。认证首页 200，匿名证据路径 401，认证但缺坐标的证据路径 400。没有调用模型，也没有产生 Runtime 任务或证据 Manifest。
+
+目前官方 Host 进程与内置浏览器的独立页面保持打开；浏览器原生文件夹选择器需用户本机选取 `D:\DeepSeekHarness\api-agent-host-artifacts-20261023\inspection-repo` 并切到“仅可查看”。用户完成后，在该独立工作区发起一次固定范围的 `dsh_runtime` / `repository_inspection` 现场，再核对 Safe Trace、`.closed`、Manifest 来源、审计、README 哈希与 Git 状态。不要在默认工作区调用，也不要启用 D2。若进程已退出，须在同一 Home 上确认无其他 Host 实例后重启；避免同时启动两个实例。
+
+**发布限制仍在**：目录枚举的快速换出换回竞争尚未用句柄绑定的枚举防线消除；API worker 与 API reviewer 未经 Host 验收；此 rc15 是私有候选，不能宣称稳定版或代金券必然抵扣。
