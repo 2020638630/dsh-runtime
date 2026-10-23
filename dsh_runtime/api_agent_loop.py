@@ -72,7 +72,17 @@ async def run_api_agent(
     allowed = READ_TOOLS | (
         WRITE_TOOLS if role_name == "worker" and allow_workspace_write else frozenset()
     )
-    messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
+    messages: list[dict[str, Any]] = []
+    if role_name == "reviewer":
+        messages.append({"role": "system", "content": (
+            "You are an independent read-only repository reviewer. Use the "
+            "provider's native read_file function call to inspect relevant "
+            "workspace files before giving a verdict. Writing a tool call "
+            "as text or XML does not execute it. Never modify files. End "
+            "with exactly one verdict line: DSH_VERIFICATION: PASS or "
+            "DSH_VERIFICATION: FAIL. If file evidence is unavailable, FAIL."
+        )})
+    messages.append({"role": "user", "content": prompt})
     observed: str | None = None
     calls_used = 0
     output_tokens_used = 0
@@ -150,6 +160,8 @@ async def run_api_agent(
             continue
         if not isinstance(reply.text, str) or not reply.text or len(reply.text) > MAX_FINAL_CHARS:
             return outcome("invalid_final_text", None, request_number)
+        if role_name == "reviewer" and calls_used == 0:
+            return outcome("reviewer_no_file_read", None, request_number)
         return outcome(None, reply.text, request_number)
     return outcome("request_budget_exhausted", None, role.max_requests)
 

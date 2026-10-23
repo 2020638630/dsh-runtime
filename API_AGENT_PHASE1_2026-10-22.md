@@ -122,3 +122,11 @@ API worker 仍不开放：`apply_patch` 已从模型角色允许集合与供应�
 在新的 `rc17-reviewer-check` 下从 `058c22a` Git archive 展开 Runtime，建立独立 Home/Profile，离线安装 rc17。Profile 使用 schema v2 的 CodeBuddy worker、硅基流动 API reviewer 与 inspector，仅引用工作树外连接配置路径，未复制 key。官方 0.2.1-rc.2 CLI 配置合成确认插件与 reviewer 条目存在。首次启动因新 Home 缺审计目录未激活，补齐后沙箱报 `spawn EPERM`；停止各隔离进程后，经窄范围授权重启，插件没有激活告警，认证页面 HTTP 200，随后停止临时宿主。**没有调用模型、执行 Runtime 任务或产生 reviewer Manifest**；此项只证明包安装与官方宿主激活，不把 reviewer 提升为日常可用。
 
 下一步在全新临时 Git 仓库做一次受控 `repository_change`：CLI worker 完成最小写入，API reviewer 只读核验，并检查同一 run 的两条 `.closed` 轨迹、独立权限字段、终态 Manifest、审计和精确文件字节。若父 Agent 误把子代理 ID 当 job ID，单独记录并修工具回执，不把它归为 reviewer 成功。API worker 写工具仍关闭，D2 ExecuteGate 仍为 `NOT_CLAIMED`。最近核对两个原工作树分别为 16 与 106 项 Git 可见状态；本次仅写隔离候选与新 Home。五小时额度已用 51%、周额度已用 23%。
+
+### 2026-10-23：直接 Runtime reviewer 现场发现工具协议问题
+
+在 `rc17-reviewer-check` 下新建隔离 Git 仓库和证据目录做非 D2 写入验收。第一轮在配置解析阶段因试验脚本将 inspector 错配为 CodeBuddy 而拒绝，仓库保持干净。第二轮 CodeBuddy 正确创建 `result.txt`，但试验脚本的 run ID 缺 `dsh-runtime-` 前缀，API reviewer Safe Trace 预检失败；该失败仓库和证据均保留。第三轮使用合法 run ID 后，worker 创建精确 `RC17_REVIEWER_OK\n` 字节，README 不变；CodeBuddy 与 API reviewer 各有同一 run 的 `.jsonl`、`.closed`。Reviewer API 阶段返回 `completed` 轨迹，但模型把 `<function=read_file>` 写成普通文本，没有发出原生工具调用，也没有给出精确末行，Runtime 以 `invalid verifier result` 判任务 `failed`。因此不能宣称 reviewer 现场通过，且 rc17 包不作为 reviewer 日常版。
+
+据此候选源码增加 reviewer 专用 system 约束，并在没有真实 `read_file` 工具调用时以 `reviewer_no_file_read` 失败关闭，不接受文本伪工具调用或无文件证据的 `PASS`。无模型测试已覆盖此拒绝和真实工具调用后通过，`tests/test_api_agent_contract.py` 与 Runtime reviewer 路由测试合计 **32 passed**。这项修正还没有打进 rc17 包，也没有做新模型现场；若继续现场须用新源码与新临时仓库，保留上述三轮失败证据。五小时额度最近已用 60%、周已用 24%。
+
+本次 Python 全套为 **592 passed、1 skipped、1 failed**；失败项仍是 `test_safe_event_trace_streams_only_allowlisted_metadata`，期望 6 条、实际 3 条，单项复跑亦失败。它属于先前交接已见的 CodeBuddy JSON 数组 Safe Trace 观察问题，和本次 API reviewer 修改不在同一文件；当前不能把全套称为通过。简单分块解析器复现未触发同样问题，后续应以真实假 CLI 输出时序单独定位，不通过放宽断言掩盖轨迹不完整。

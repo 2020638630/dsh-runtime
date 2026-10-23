@@ -155,6 +155,31 @@ def test_reviewer_cannot_gain_write_tool_from_context() -> None:
     assert result.error_code == "invalid_tool_call" and broker.calls == []
 
 
+def test_reviewer_must_use_native_read_before_verdict() -> None:
+    transport = FakeTransport(ModelReply(
+        text="<function=read_file>README.md</function>\nDSH_VERIFICATION: PASS",
+        output_tokens=10,
+    ))
+    result = run("reviewer", transport, FakeBroker())
+    assert result.error_code == "reviewer_no_file_read"
+    assert result.text is None
+    messages = transport.seen[0]["messages"]
+    assert messages[0]["role"] == "system"
+    assert "native read_file" in messages[0]["content"]
+
+
+def test_reviewer_accepts_verdict_after_native_read() -> None:
+    transport = FakeTransport(
+        ModelReply(tool_calls=(ToolCall("c1", "read_file", '{"path":"README.md"}'),), output_tokens=4),
+        ModelReply(text="Evidence inspected.\nDSH_VERIFICATION: PASS", output_tokens=6),
+    )
+    broker = FakeBroker()
+    result = run("reviewer", transport, broker)
+    assert result.success
+    assert result.tool_calls == 1
+    assert broker.calls == [("read_file", {"path": "README.md"})]
+
+
 def test_transport_error_is_redacted_and_not_retried() -> None:
     transport = FakeTransport(RuntimeError("Authorization: Bearer sensitive-value"))
     result = run("inspector", transport, FakeBroker())
