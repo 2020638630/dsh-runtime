@@ -15,7 +15,8 @@ READ_TOOLS = frozenset({"read_file"})
 # No API worker write tool is qualified for the model-facing surface yet.
 WRITE_TOOLS: frozenset[str] = frozenset()
 MAX_TOOL_ARGUMENT_CHARS = 16_384
-MAX_TOOL_RESULT_CHARS = 32_768
+# A 32 KiB file can expand when JSON-escaped with verified byte metadata.
+MAX_TOOL_RESULT_CHARS = 65_536
 MAX_TOOL_COMPANION_CHARS = 4_096
 MAX_FINAL_CHARS = 100_000
 
@@ -78,7 +79,11 @@ async def run_api_agent(
         messages.append({"role": "system", "content": (
             "You are an independent read-only repository reviewer. Use the "
             "provider's native read_file function call to inspect relevant "
-            "workspace files before giving a verdict. Writing a tool call "
+            "workspace files before giving a verdict. Its JSON response "
+            "contains verified byte_length, sha256, and UTF-8 content from "
+            "one opened file; use those fields for exact byte claims. Do not "
+            "invent file metadata or claim bytes not supported by the tool. "
+            "Writing a tool call "
             "as text or XML does not execute it. Never modify files. End "
             "with exactly one verdict line: DSH_VERIFICATION: PASS or "
             "DSH_VERIFICATION: FAIL. If file evidence is unavailable, FAIL."

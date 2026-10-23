@@ -1,6 +1,8 @@
 """No-network checks for the explicit-file API inspector boundary."""
 
 import asyncio
+from hashlib import sha256
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -14,6 +16,10 @@ def call(broker, name, **arguments):
     return asyncio.run(broker.execute(name, arguments))
 
 
+def read_content(broker, path):
+    return json.loads(call(broker, "read_file", path=path))
+
+
 def test_only_explicit_read_is_exposed_and_credentials_are_excluded(tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -21,7 +27,12 @@ def test_only_explicit_read_is_exposed_and_credentials_are_excluded(tmp_path):
     (workspace / ".env").write_text("API_KEY=secret", encoding="utf-8")
     (workspace / "credentials.json").write_text("secret", encoding="utf-8")
     broker = WorkspaceReadBroker(workspace)
-    assert call(broker, "read_file", path="README.md") == "hello\nworld\n"
+    assert read_content(broker, "README.md") == {
+        "schema_version": 1,
+        "byte_length": 12,
+        "sha256": sha256(b"hello\nworld\n").hexdigest(),
+        "content": "hello\nworld\n",
+    }
     for tool, arguments in (("list_files", {"path": "."}),
                             ("search_text", {"path": ".", "query": "world"})):
         with pytest.raises(ValueError, match="tool is unsupported"):
@@ -72,7 +83,7 @@ def test_read_file_on_fresh_isolated_git_repository(tmp_path):
     subprocess.run(["git", "init", "-q", str(workspace)], check=True)
     (workspace / "README.md").write_bytes(b"isolated trial\n")
     broker = WorkspaceReadBroker(workspace)
-    assert call(broker, "read_file", path="README.md") == "isolated trial\n"
+    assert read_content(broker, "README.md")["content"] == "isolated trial\n"
     with pytest.raises(ValueError):
         call(broker, "read_file", path=".git/config")
 
@@ -116,4 +127,23 @@ def test_read_file_assembles_short_os_reads(tmp_path, monkeypatch):
         return original_read(fd, min(count, 2))
 
     monkeypatch.setattr(os, "read", short_read)
-    assert call(broker, "read_file", path="README.md") == "bounded read"
+    assert read_content(broker, "README.md")["content"] == "bounded read"
+
+
+def test_read_file_reports_verified_bytes_for_utf8_and_newline(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    data = "你好\n".encode("utf-8")
+    (workspace / "note.txt").write_bytes(data)
+    response = read_content(WorkspaceReadBroker(workspace), "note.txt")
+    assert response["content"] == "你好\n"
+    assert response["byte_length"] == len(data)
+    assert response["sha256"] == sha256(data).hexdigest()
+
+
+def test_read_file_rejects_excessive_json_escape_expansion(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "controls.txt").write_bytes(b"\x01" * 20_000)
+    with pytest.raises(ValueError, match="response is too large"):
+        read_content(WorkspaceReadBroker(workspace), "controls.txt")

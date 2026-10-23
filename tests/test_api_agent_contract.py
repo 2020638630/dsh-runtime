@@ -1,6 +1,7 @@
 """No-network contract tests for the opt-in API agent boundary."""
 
 import asyncio
+from hashlib import sha256
 import json
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from dsh_runtime.api_agent_contract import ApiAgentConfig, ApiRole
 from dsh_runtime.api_agent_connections import ConnectionCatalog
 from dsh_runtime.api_agent_loop import ModelReply, ToolCall, run_api_agent
+from dsh_runtime.api_agent_read_tools import WorkspaceReadBroker
 
 
 def config_document() -> dict:
@@ -108,6 +110,27 @@ def test_read_only_tool_loop_keeps_requested_and_observed_separate() -> None:
     assert broker.calls == [("read_file", {"path": "README.md"})]
     assert "apply_patch" not in transport.seen[0]["allowed_tools"]
     assert transport.seen[0]["allowed_tools"] == frozenset({"read_file"})
+
+
+def test_reviewer_receives_verified_file_bytes_from_real_broker(tmp_path) -> None:
+    data = b"RC18_HOST_REVIEW_OK\n"
+    (tmp_path / "review.txt").write_bytes(data)
+    transport = FakeTransport(
+        ModelReply(tool_calls=(ToolCall("c1", "read_file", '{"path":"review.txt"}'),),
+                   output_tokens=5),
+        ModelReply(text="DSH_VERIFICATION: PASS", output_tokens=5),
+    )
+    result = run("reviewer", transport, WorkspaceReadBroker(tmp_path))
+    assert result.success
+    tool_message = transport.seen[1]["messages"][-1]
+    response = json.loads(tool_message["content"])
+    assert response == {
+        "schema_version": 1,
+        "byte_length": len(data),
+        "sha256": sha256(data).hexdigest(),
+        "content": data.decode("utf-8"),
+    }
+    assert "verified byte_length" in transport.seen[0]["messages"][0]["content"]
 
 
 @pytest.mark.parametrize("unsafe_tool", ["list_files", "search_text"])

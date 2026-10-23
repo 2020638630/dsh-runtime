@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import os
+from hashlib import sha256
+import json
 from pathlib import Path
 import stat
 from typing import Any
 
 
 MAX_READ_BYTES = 32_768
+MAX_TOOL_RESULT_BYTES = 65_536
 _BLOCKED_PARTS = frozenset({
     ".git", ".codex", ".ssh", "node_modules", ".npmrc", ".pypirc",
     "credentials.json", "connections.local.json", "id_rsa", "id_ed25519",
@@ -100,9 +103,20 @@ class WorkspaceReadBroker:
         if len(content) > MAX_READ_BYTES or b"\x00" in content:
             raise ValueError("file is too large or binary")
         try:
-            return content.decode("utf-8")
+            text = content.decode("utf-8")
         except UnicodeError:
             raise ValueError("file is not UTF-8") from None
+        # The model must not infer byte counts from rendered text. Bind the
+        # metadata to the same verified handle bytes returned as content.
+        result = json.dumps({
+            "schema_version": 1,
+            "byte_length": len(content),
+            "sha256": sha256(content).hexdigest(),
+            "content": text,
+        }, ensure_ascii=False, separators=(",", ":"))
+        if len(result.encode("utf-8")) > MAX_TOOL_RESULT_BYTES:
+            raise ValueError("file response is too large")
+        return result
 
 
 def _opened_file_path(fd: int) -> Path:
