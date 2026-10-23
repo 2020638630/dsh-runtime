@@ -180,6 +180,30 @@ def test_reviewer_accepts_verdict_after_native_read() -> None:
     assert broker.calls == [("read_file", {"path": "README.md"})]
 
 
+def test_bounded_text_beside_native_tool_call_is_discarded() -> None:
+    transport = FakeTransport(
+        ModelReply(text="I will read the file.", tool_calls=(
+            ToolCall("c1", "read_file", '{"path":"README.md"}'),
+        ), output_tokens=9),
+        ModelReply(text="Checked.\nDSH_VERIFICATION: PASS", output_tokens=6),
+    )
+    broker = FakeBroker()
+    result = run("reviewer", transport, broker)
+    assert result.success and result.tool_calls == 1
+    assert result.text == "Checked.\nDSH_VERIFICATION: PASS"
+    assert "I will read the file." not in str(transport.seen[1]["messages"])
+
+
+def test_oversize_text_beside_tool_call_rejects_before_broker() -> None:
+    broker = FakeBroker()
+    reply = ModelReply(text="x" * 4097, tool_calls=(
+        ToolCall("c1", "read_file", '{"path":"README.md"}'),
+    ), output_tokens=9)
+    result = run("reviewer", FakeTransport(reply), broker)
+    assert result.error_code == "invalid_tool_companion_text"
+    assert broker.calls == []
+
+
 def test_transport_error_is_redacted_and_not_retried() -> None:
     transport = FakeTransport(RuntimeError("Authorization: Bearer sensitive-value"))
     result = run("inspector", transport, FakeBroker())

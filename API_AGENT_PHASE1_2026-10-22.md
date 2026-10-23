@@ -130,3 +130,7 @@ API worker 仍不开放：`apply_patch` 已从模型角色允许集合与供应�
 据此候选源码增加 reviewer 专用 system 约束，并在没有真实 `read_file` 工具调用时以 `reviewer_no_file_read` 失败关闭，不接受文本伪工具调用或无文件证据的 `PASS`。无模型测试已覆盖此拒绝和真实工具调用后通过，`tests/test_api_agent_contract.py` 与 Runtime reviewer 路由测试合计 **32 passed**。这项修正还没有打进 rc17 包，也没有做新模型现场；若继续现场须用新源码与新临时仓库，保留上述三轮失败证据。五小时额度最近已用 60%、周已用 24%。
 
 本次 Python 全套为 **592 passed、1 skipped、1 failed**；失败项仍是 `test_safe_event_trace_streams_only_allowlisted_metadata`，期望 6 条、实际 3 条，单项复跑亦失败。它属于先前交接已见的 CodeBuddy JSON 数组 Safe Trace 观察问题，和本次 API reviewer 修改不在同一文件；当前不能把全套称为通过。简单分块解析器复现未触发同样问题，后续应以真实假 CLI 输出时序单独定位，不通过放宽断言掩盖轨迹不完整。
+
+第四轮独立临时仓库使用 reviewer system 约束后，worker 仍创建正确文件；这次 reviewer 发出了原生工具调用，但供应商同一响应还附带短文本，旧循环以 `mixed_text_and_tools` 失败关闭，API 轨迹 `failed` 且工具未执行。候选循环现在只在文本不超过 4096 字符时**丢弃**随原生工具调用附带的普通文本，仍先验证整批工具参数并仅执行原生调用；超长文本在 Broker 前拒绝。相关定向测试 **44 passed**。随后在第四轮已隔离仓库上单独重跑 reviewer：两次原生 `read_file`，精确末行 `DSH_VERIFICATION: PASS`，API 轨迹 `completed` 且 `.closed` 存在，README/result 文件哈希前后相同。Safe Trace 只记录工具名，不记录目标路径；因此这证明 reviewer 阶段可在该模型与配置下完成，不代替官方 Host 双轨迹 Manifest 现场，也不抹去四轮完整任务失败记录。
+
+排除上述唯一已知 CodeBuddy Safe Trace 失败项后，全套其余 **594 passed、1 skipped、1 deselected**。当前不能称全套无条件通过；需要单独修复该 Safe Trace 时序问题。API reviewer 新兼容处理仍未打入 rc17 安装包。

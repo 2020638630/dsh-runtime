@@ -16,6 +16,7 @@ READ_TOOLS = frozenset({"read_file"})
 WRITE_TOOLS: frozenset[str] = frozenset()
 MAX_TOOL_ARGUMENT_CHARS = 16_384
 MAX_TOOL_RESULT_CHARS = 32_768
+MAX_TOOL_COMPANION_CHARS = 4_096
 MAX_FINAL_CHARS = 100_000
 
 
@@ -123,8 +124,14 @@ async def run_api_agent(
         if output_tokens_used > role.max_output_tokens:
             return outcome("token_budget_exhausted", None, request_number)
         if reply.tool_calls:
-            if reply.text:
-                return outcome("mixed_text_and_tools", None, request_number)
+            # Some gateways attach explanatory text to a native tool call.
+            # It is not a final answer or tool argument; discard it after a
+            # strict bound and execute only the validated native calls.
+            if reply.text is not None and (
+                not isinstance(reply.text, str)
+                or len(reply.text) > MAX_TOOL_COMPANION_CHARS
+            ):
+                return outcome("invalid_tool_companion_text", None, request_number)
             if calls_used + len(reply.tool_calls) > role.max_tool_calls:
                 return outcome("tool_budget_exhausted", None, request_number)
             ids: set[str] = set()
