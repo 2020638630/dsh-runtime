@@ -6,6 +6,9 @@ import pytest
 
 from dsh_runtime.api_agent_connections import Connection, ConnectionCatalog
 from dsh_runtime.api_agent_loop import ModelReply, ToolCall
+from dsh_runtime.api_agent_safe_trace import (
+    RUNTIME_RUN_ID_ENV, SAFE_EVENT_TRACE_DIR_ENV,
+)
 from dsh_runtime.bootstrap import API_AGENT_CONNECTIONS_PATH_ENV, build_controller
 from dsh_runtime.planner import SimplePlanner
 from dsh_runtime.plugins.api_agent import ApiAgentPlugin
@@ -105,3 +108,94 @@ def test_plugin_rejects_write_context_without_calling_model(tmp_path):
     )
     result = asyncio.run(plugin.execute(context, decision.params))
     assert result.success is False and fake.calls == 0
+
+
+def test_plugin_writes_opt_in_safe_trace_outside_workspace(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "README.md").write_bytes(b"isolated trial\n")
+    trace_dir = tmp_path / "evidence"
+    monkeypatch.setenv(SAFE_EVENT_TRACE_DIR_ENV, str(trace_dir))
+    monkeypatch.setenv(
+        RUNTIME_RUN_ID_ENV, "dsh-runtime-00000000-0000-4000-8000-000000000002",
+    )
+    fake = FakeTransport()
+    plugin = ApiAgentPlugin(ConnectionCatalog({"trial": Connection(
+        "openrouter", "https://openrouter.ai/api/v1", "private-test-key",
+    )}), transport_factory=lambda _connection: fake)
+    decision = SimplePlanner(RoleConfig.from_document(config())).next_action(
+        TaskState(goal="inspect", task_kind=TaskKind.REPOSITORY_INSPECTION)
+    )
+    context = ExecutionContext("task", "workspace", "inspect", cwd=str(workspace))
+    result = asyncio.run(plugin.execute(context, decision.params))
+    assert result.success and fake.calls == 2
+    trace = next(trace_dir.glob("api-agent-safe-role-*.jsonl"))
+    body = trace.read_text(encoding="utf-8")
+    events = [json.loads(line) for line in body.splitlines()]
+    assert [event["event_type"] for event in events] == [
+        "started", "tool_call", "terminal",
+    ]
+    assert events[1]["tool_name"] == "read_file"
+    assert events[2]["terminal_reason"] == "completed"
+    assert "private-test-key" not in body
+    assert "isolated trial" not in body
+    assert (trace_dir / (trace.name + ".closed")).is_file()
+    assert list(workspace.iterdir()) == [workspace / "README.md"]
+
+
+def test_cancelled_api_agent_closes_trace(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    trace_dir = tmp_path / "evidence"
+    monkeypatch.setenv(SAFE_EVENT_TRACE_DIR_ENV, str(trace_dir))
+    monkeypatch.setenv(
+        RUNTIME_RUN_ID_ENV, "dsh-runtime-00000000-0000-4000-8000-000000000003",
+    )
+
+    class BlockingTransport:
+        def __init__(self):
+            self.started = asyncio.Event()
+
+        async def complete(self, **_kwargs):
+            self.started.set()
+            await asyncio.Future()
+
+    fake = BlockingTransport()
+    plugin = ApiAgentPlugin(ConnectionCatalog({"trial": Connection(
+        "openrouter", "https://openrouter.ai/api/v1", "private-test-key",
+    )}), transport_factory=lambda _connection: fake)
+    decision = SimplePlanner(RoleConfig.from_document(config())).next_action(
+        TaskState(goal="inspect", task_kind=TaskKind.REPOSITORY_INSPECTION)
+    )
+    context = ExecutionContext("task", "workspace", "inspect", cwd=str(workspace))
+
+    async def cancel_after_start():
+        invocation = asyncio.create_task(plugin.execute(context, decision.params))
+        await fake.started.wait()
+        invocation.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await invocation
+
+    asyncio.run(cancel_after_start())
+    trace = next(trace_dir.glob("api-agent-safe-role-*.jsonl"))
+    events = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["terminal_reason"] == "cancelled"
+    assert (trace_dir / (trace.name + ".closed")).is_file()
+
+
+def test_trace_inside_workspace_fails_before_model_request(tmp_path, monkeypatch):
+    monkeypatch.setenv(SAFE_EVENT_TRACE_DIR_ENV, str(tmp_path / "evidence"))
+    monkeypatch.setenv(
+        RUNTIME_RUN_ID_ENV, "dsh-runtime-00000000-0000-4000-8000-000000000004",
+    )
+    fake = FakeTransport()
+    plugin = ApiAgentPlugin(ConnectionCatalog({"trial": Connection(
+        "openrouter", "https://openrouter.ai/api/v1", "private-test-key",
+    )}), transport_factory=lambda _connection: fake)
+    decision = SimplePlanner(RoleConfig.from_document(config())).next_action(
+        TaskState(goal="inspect", task_kind=TaskKind.REPOSITORY_INSPECTION)
+    )
+    context = ExecutionContext("task", "workspace", "inspect", cwd=str(tmp_path))
+    result = asyncio.run(plugin.execute(context, decision.params))
+    assert not result.success and fake.calls == 0
+    assert not (tmp_path / "evidence").exists()

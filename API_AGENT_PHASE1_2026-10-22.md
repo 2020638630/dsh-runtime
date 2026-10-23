@@ -54,4 +54,6 @@
 
 当前独立 Host Bundle 的 `run.ts` 只向 Runtime 子进程传 `DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR`；`evidence-manifest.ts` 只识别 `codebuddy-safe-worker-*.jsonl`，并对 `repository_inspection` 固定写 `execution_trajectory.status=not_applicable`。因此本次 `runtime-events.jsonl` 只能算隔离试验日志，**尚不是官方 Host 的终态 Evidence Manifest**。下一任务需新增 API Agent 专属的有界、白名单 Safe Trace 与 `.closed` 标记，Host 用独立来源标记读取，严格按 run ID、文件名、目录和终态绑定；旧 CodeBuddy 轨迹的判断保持原样。只读 inspection 的 API 轨迹要有明确来源，不能因任务种类沿用 `not_applicable`。先用伪模型和临时 Home 测试完成、失败、取消及缺失轨迹，再考虑真实 Host 现场。
 
+Runtime 侧已先实现**默认关闭**的 `DSH_API_AGENT_SAFE_EVENT_TRACE_DIR`：启用时要求合法 `DSH_RUNTIME_RUN_ID` 和工作区外绝对目录，只写角色、工具名、结果类别、序号、终态及 `.closed` 的大小绑定，不写 key、提示词、工具参数或模型文本；完成、失败和取消均有终态路径。直接伪模型测试已覆盖完成与取消。Host 尚未设置这个变量，也未读取 `api-agent-safe-role-*.jsonl`；因此不能将独立 Runtime 轨迹称为正式 Manifest 或抽屉验收。
+
 硅基流动 [Chat Completions 官方文档](https://docs.siliconflow.cn/docs/api/chat-completions-post) 与 OpenRouter [Chat Completion 官方文档](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request) 都展示工具调用字段，但具体模型能力必须现场验证。免费模型配额和可用性会变化，不在配置中硬编码。
