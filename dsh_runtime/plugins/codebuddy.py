@@ -1171,6 +1171,7 @@ async def _observe_stdout_file(
     """Read only newly written stdout bytes while preserving the worker's fd."""
 
     total = 0
+    exited_eof_checks = 0
     try:
         with path.open("rb") as stream:
             while True:
@@ -1181,14 +1182,24 @@ async def _observe_stdout_file(
                     chunk = b""
                 if chunk:
                     total += len(chunk)
+                    exited_eof_checks = 0
                     await observer.feed(chunk)
                     await asyncio.sleep(0)
                     continue
-                if path.stat().st_size > total:
-                    observer._sink.mark_incomplete()
-                    break
                 if process.poll() is not None:
-                    break
+                    # Windows can expose process exit a moment before the
+                    # last redirected stdout bytes become readable. Probe a
+                    # few more bounded times before finalizing the trace.
+                    exited_eof_checks += 1
+                    if exited_eof_checks >= 4:
+                        if path.stat().st_size > total:
+                            observer._sink.mark_incomplete()
+                        break
+                    await asyncio.sleep(0.02)
+                    continue
+                if path.stat().st_size > total:
+                    await asyncio.sleep(0.02)
+                    continue
                 await asyncio.sleep(0.02)
         await observer.finish()
     except Exception:

@@ -134,3 +134,13 @@ API worker 仍不开放：`apply_patch` 已从模型角色允许集合与供应�
 第四轮独立临时仓库使用 reviewer system 约束后，worker 仍创建正确文件；这次 reviewer 发出了原生工具调用，但供应商同一响应还附带短文本，旧循环以 `mixed_text_and_tools` 失败关闭，API 轨迹 `failed` 且工具未执行。候选循环现在只在文本不超过 4096 字符时**丢弃**随原生工具调用附带的普通文本，仍先验证整批工具参数并仅执行原生调用；超长文本在 Broker 前拒绝。相关定向测试 **44 passed**。随后在第四轮已隔离仓库上单独重跑 reviewer：两次原生 `read_file`，精确末行 `DSH_VERIFICATION: PASS`，API 轨迹 `completed` 且 `.closed` 存在，README/result 文件哈希前后相同。Safe Trace 只记录工具名，不记录目标路径；因此这证明 reviewer 阶段可在该模型与配置下完成，不代替官方 Host 双轨迹 Manifest 现场，也不抹去四轮完整任务失败记录。
 
 排除上述唯一已知 CodeBuddy Safe Trace 失败项后，全套其余 **594 passed、1 skipped、1 deselected**。当前不能称全套无条件通过；需要单独修复该 Safe Trace 时序问题。API reviewer 新兼容处理仍未打入 rc17 安装包。
+
+### 2026-10-23：rc18 隔离包与后续门槛
+
+短文本伴随原生工具调用的修正已本地提交 `fe74842`。从该提交归档 Runtime 源，并制作私有 `@dsh-runtime/harness-plugin@0.1.0-rc.18` 包，存放在 `D:\DeepSeekHarness\api-agent-host-artifacts-20261023\rc18-reviewer-check\dsh-runtime-harness-plugin-0.1.0-rc.18.tgz`，SHA256 `D8051E12A728748299B878E8CC9F9ABD16608221EF820ADE5760E0BF151E1A3E`。22 个包内文件均未命中本机连接配置的两项 key 字节；包不含连接配置。新的隔离 Home/Profile 离线安装成功；未修改的官方 0.2.1-rc.2 CLI 配置合成包含插件与 API reviewer，窄范围授权启动无插件告警，认证首页 HTTP 200，随后停止。此次**无模型**官方 Host 验收不证明 reviewer 的双轨迹 Manifest 现场通过，也不改变日常入口。
+
+当前候选唯一重复失败的全套项是 CodeBuddy Safe Trace 假 CLI 流式观察。假 CLI 的完整输出已核对为合法 JSON、四个顶层事件；把同一字节按单字节和整块交给观察器均能离线解析四项。实际测试运行时轨迹只记录首个模型事件与 `trace_incomplete`，故问题更可能在运行时文件观察/收尾时序，尚未定位到具体语句。不得通过放宽事件数断言宣称完整。
+
+下一步按优先级：先把 CodeBuddy Safe Trace 观察器的真实文件时序故障定位并修复，再在**全新临时仓库与新 run**中用 rc18 官方 Host 做真实 CLI worker + API reviewer，核对同一 run 的两条 `.closed`、终态 Manifest、审计、文件字节和抽屉显示。API worker 原子落盘与跨第二设备验收继续独立推进。D2 ExecuteGate 保持 `NOT_CLAIMED`；两个原工作树最近分别为 16 与 106 项 Git 可见状态，未清理、重置或覆盖。五小时额度最近已用 78%、周已用 27%，尚未触发 10% / 2% 停止线。
+
+**随后修复进展**：重复运行假 CLI 时，失败样本的观察器在进程已退出但重定向 stdout 末字节尚未可读时提前终结（失败时读到 672 字节、正常为 673 字节）。候选 Runtime 的文件观察器现于进程退出后做最多四次、每次 20 ms 的有界 EOF 复核；若字节仍缺失，仍标记轨迹不完整。新增延迟写入最后一个 `]` 的确定性测试，不放宽原有六事件断言。原失败项与新测试通过，Python 全套 **596 passed、1 skipped**。此修正尚未进入 rc18 Home 内的 Runtime 源副本；未来真实 Host 现场应从修正提交重新归档到**新**隔离位置。此前 rc18 无模型激活结果仍只证明包可加载。

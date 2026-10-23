@@ -1098,6 +1098,48 @@ def test_safe_event_trace_streams_only_allowlisted_metadata(
     assert terminal[-1]["terminal_reason"] == "completed"
 
 
+def test_safe_trace_observer_waits_for_late_final_stdout_byte(tmp_path: Path) -> None:
+    """A settled Windows child may expose its last redirected byte late."""
+    path = tmp_path / "delayed-stdout.json"
+    path.write_bytes(b'[{"type":"message"}')
+
+    class Sink:
+        def __init__(self) -> None:
+            self.events = []
+            self.incomplete = False
+
+        def emit_native_event(self, event) -> None:
+            self.events.append(event["type"])
+
+        def mark_incomplete(self) -> None:
+            self.incomplete = True
+
+    class ExitedProcess:
+        def poll(self) -> int:
+            return 0
+
+    async def scenario() -> Sink:
+        sink = Sink()
+        observer = codebuddy_module._SafeJsonArrayEventObserver(sink)
+
+        async def finish_stdout() -> None:
+            await asyncio.sleep(0.025)
+            with path.open("ab") as stream:
+                stream.write(b"]")
+
+        await asyncio.gather(
+            codebuddy_module._observe_stdout_file(
+                path, ExitedProcess(), observer, max_bytes=1024,
+            ),
+            finish_stdout(),
+        )
+        return sink
+
+    sink = asyncio.run(scenario())
+    assert sink.events == ["message"]
+    assert sink.incomplete is False
+
+
 def test_safe_event_trace_records_empty_stdout_max_turns_without_inventing_turns(
     tmp_path: Path,
 ) -> None:
