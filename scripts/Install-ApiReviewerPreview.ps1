@@ -41,7 +41,7 @@ function AssertNoReparseAncestor([string]$path) {
 
 $kit = (Resolve-Path -LiteralPath $KitRoot).Path
 $manifest = Get-Content -LiteralPath (Join-Path $kit 'manifest.json') -Raw | ConvertFrom-Json
-if ($manifest.schema_version -ne 2 -or $manifest.channel -ne 'private-api-reviewer-preview' -or
+if ($manifest.schema_version -ne 3 -or $manifest.channel -ne 'private-api-reviewer-preview' -or
     $manifest.d2_execute_gate -ne 'NOT_CLAIMED') { throw 'Kit manifest is not an API reviewer preview.' }
 $pluginFile = Join-Path $kit $manifest.plugin.file
 $runtimeFile = Join-Path $kit $manifest.runtime.file
@@ -50,6 +50,24 @@ foreach ($item in @(@($pluginFile, $manifest.plugin.sha256), @($runtimeFile, $ma
   if ((Get-FileHash -LiteralPath $item[0] -Algorithm SHA256).Hash -ne $item[1]) {
     throw "Kit artifact hash mismatch: $($item[0])"
   }
+}
+$wheelRoot = Join-Path $kit 'wheels'
+if (-not (Test-Path -LiteralPath $wheelRoot -PathType Container) -or
+    @($manifest.python_wheels).Count -ne 7) { throw 'Kit Python wheelhouse is incomplete.' }
+$wheelNames = @()
+foreach ($wheel in $manifest.python_wheels) {
+  if ($wheel.file -notmatch '^[A-Za-z0-9_.-]+\.whl$' -or $wheel.file.Contains('..') -or
+      $wheel.sha256 -notmatch '^[A-Fa-f0-9]{64}$') { throw 'Kit Python wheel entry is invalid.' }
+  $wheelPath = Join-Path $wheelRoot $wheel.file
+  if (-not (Test-Path -LiteralPath $wheelPath -PathType Leaf) -or
+      (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash -ne $wheel.sha256) {
+    throw 'Kit Python wheel hash mismatch.'
+  }
+  $wheelNames += $wheel.file
+}
+if (@($wheelNames | Select-Object -Unique).Count -ne 7 -or
+    @((Get-ChildItem -LiteralPath $wheelRoot -File).Name).Count -ne 7) {
+  throw 'Kit Python wheel list is ambiguous.'
 }
 if ($ProfileName -notmatch '^[a-z][a-z0-9-]{2,50}$') { throw 'Invalid ProfileName.' }
 foreach ($entry in @(@($Provider, 'Provider'), @($ConnectionRef, 'ConnectionRef'))) {
@@ -61,6 +79,15 @@ foreach ($entry in @(@($ReviewerModel, 'ReviewerModel'), @($InspectorModel, 'Ins
 foreach ($required in @($ConnectionPath, $PythonPath, $PnpmPath)) {
   if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Missing dependency: $required" }
 }
+$checkHttpx = @'
+import importlib.metadata as metadata
+import sys
+try:
+    valid = metadata.version("httpx") == "0.28.1"
+except metadata.PackageNotFoundError:
+    valid = False
+sys.exit(0 if valid else 1)
+'@
 $homePath = FullPath $HomeRoot
 $runtimePath = FullPath $RuntimeRoot
 $connectionFile = (Resolve-Path -LiteralPath $ConnectionPath).Path
@@ -76,16 +103,29 @@ foreach ($target in @($homePath, $runtimePath, $profilePath, $installedPlugin)) 
   if (Test-Path -LiteralPath $target) { throw "Refusing to overwrite existing path: $target" }
 }
 
+Expand-Archive -LiteralPath $runtimeFile -DestinationPath $runtimePath
+if (-not (Test-Path -LiteralPath (Join-Path $runtimePath 'dsh_runtime\entrypoint.py'))) {
+  throw 'Runtime snapshot is incomplete.'
+}
+$requirements = Join-Path $runtimePath 'requirements-api-agent.txt'
+if (-not (Test-Path -LiteralPath $requirements -PathType Leaf)) {
+  throw 'Runtime API dependency list is missing.'
+}
+$venvPath = Join-Path $runtimePath '.api-agent-venv'
+& $PythonPath -m venv $venvPath
+if ($LASTEXITCODE -ne 0) { throw "Python venv creation failed with exit code $LASTEXITCODE" }
+$effectivePython = Join-Path $venvPath 'Scripts\python.exe'
+& $effectivePython -m pip install --no-index --find-links $wheelRoot --disable-pip-version-check --no-input -r $requirements
+if ($LASTEXITCODE -ne 0) { throw "Bundled API Python dependency install failed with exit code $LASTEXITCODE" }
+& $effectivePython -c $checkHttpx
+if ($LASTEXITCODE -ne 0) { throw 'API Python dependency verification failed.' }
+
 New-Item -ItemType Directory -Path (Join-Path $homePath 'plugin-artifacts') -Force | Out-Null
 New-Item -ItemType Directory -Path $profilePath -Force | Out-Null
 foreach ($dir in @('audit', 'pins', 'evidence')) {
   New-Item -ItemType Directory -Path (Join-Path $homePath $dir) -Force | Out-Null
 }
 Copy-Item -LiteralPath $pluginFile -Destination $installedPlugin
-Expand-Archive -LiteralPath $runtimeFile -DestinationPath $runtimePath
-if (-not (Test-Path -LiteralPath (Join-Path $runtimePath 'dsh_runtime\entrypoint.py'))) {
-  throw 'Runtime snapshot is incomplete.'
-}
 
 $profilePackage = [ordered]@{
   name = "dsh-profile-$ProfileName"
@@ -100,7 +140,7 @@ $patch = @"
 - id: dsh-runtime-standalone
   config:
     runtimeRoot: $(QuoteYaml $runtimePath)
-    python: $(QuoteYaml (FullPath $PythonPath))
+    python: $(QuoteYaml $effectivePython)
     policySource: $(QuoteYaml (Join-Path $runtimePath 'dsh_runtime\resources\selection_policy\selection-v2.json'))
     expectedPolicyHash: $($manifest.policy_hash)
     enabledWorkloads: [ repository_inspection, repository_change ]
