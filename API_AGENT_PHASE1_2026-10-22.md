@@ -73,3 +73,14 @@ Host 安装候选已打成私有 `@dsh-runtime/harness-plugin@0.1.0-rc.15` tarba
 目前官方 Host 进程与内置浏览器的独立页面保持打开；浏览器原生文件夹选择器需用户本机选取 `D:\DeepSeekHarness\api-agent-host-artifacts-20261023\inspection-repo` 并切到“仅可查看”。用户完成后，在该独立工作区发起一次固定范围的 `dsh_runtime` / `repository_inspection` 现场，再核对 Safe Trace、`.closed`、Manifest 来源、审计、README 哈希与 Git 状态。不要在默认工作区调用，也不要启用 D2。若进程已退出，须在同一 Home 上确认无其他 Host 实例后重启；避免同时启动两个实例。
 
 **发布限制仍在**：目录枚举的快速换出换回竞争尚未用句柄绑定的枚举防线消除；API worker 与 API reviewer 未经 Host 验收；此 rc15 是私有候选，不能宣称稳定版或代金券必然抵扣。
+
+## 2026-10-23：官方 Host 真实 API inspector 现场
+
+用户在隔离官方 Host 页面添加 `inspection-repo` 工作区；两个新会话均明确设置“仅可查看”，每个会话只启动一次 `dsh_runtime` 的 `repository_inspection`。Home、仓库、证据路径均保持隔离；此现场不是 D2。
+
+1. 首次 run `dsh-runtime-b1f20e81-8a67-4fb3-aff1-c13098afc615`：治理审计 `ALLOW`，Runtime 终态 `failed / api_agent tool_error`。API Safe Trace 有 `.closed`、来源 `api_agent_safe_event_trace`、状态 `available`，记录 `list_files` 和 `read_file` 完成、`search_text` 失败。安全轨迹按设计不保存模型工具参数，因此**无法确认失败的精确参数或错误原因**。在同一隔离仓库直接无模型执行这三个工具的合法参数均通过；不据此推断模型当时的参数。证据抽屉三个页签显示失败状态、零文件变动与已结算审计。
+2. 第二次新会话收窄为仅 `read_file(path=README.md)`；run `dsh-runtime-c7973891-807d-46ad-ab64-011090eb43d4` 的 Manifest 为 `completed`，轨迹 `available / observed_stream_complete`，工具计数 `read_file=1`、其他两项为零，`.closed` 存在，审计 `settled`，变动列表全空。网页证据抽屉三页签均显示对应终态。README 的 SHA256 仍为 `A5D4141E18CB0099E47E01EF8A25B4DFFAA1FC6198B3D99ACB50FBA957332B63`，Git 干净。该现场证明未修改的官方 Host、独立 rc15 插件、真实硅基流动 API inspector、终态 Manifest 与 Web 抽屉可联动；不证明代金券抵扣或 API worker/reviewer 能用。
+
+宿主 DeepSeek-V4.1-Flash 在第二次 Runtime 启动后把返回的 subagent ID 当作后台 job ID，额外尝试 `job_list`/`job_output`，随后试图运行普通命令。普通命令被人工停止并显示 aborted；仓库仍干净。**这属于父 Agent 对异步子任务回执的理解问题，不是 Runtime API inspector 的第二次调用。**候选源码 `src/tool.ts` 的工具说明已补充“结果通过子任务状态更新送达，ID 不是后台 job ID”；`pnpm typecheck`、`pnpm build`、`pnpm test:tool`（2/2）通过。此说明更改尚未打进 rc15 安装包，需下一候选包与现场验证，不能声称已修复父 Agent 行为。
+
+下一步优先级：先把工具说明更改及现场记录做本地提交；再处理目录枚举的句柄绑定或收缩 `list_files/search_text` 工具面。此安全边界未闭合前，不提升 API inspector 为日常默认，更不启用 API reviewer/worker。然后对父 Agent 异步回执做无模型契约验收，视需要发 rc16 隔离包；API reviewer 和受控写工具分别走独立门槛。五小时额度最新检查为已用 83%、周额度已用 13%，达到五小时剩余 10% 或周剩余 2% 时按用户要求记录后停手。

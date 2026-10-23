@@ -6,7 +6,7 @@ import { RUNTIME_PROVIDER_NAMES } from './provider.ts'
 export function createRuntimeTool(subagents: Pick<SubagentRuntime, 'startActivation'>) {
   return defineTool({
     name: 'dsh_runtime',
-    description: 'Run a governed DSH Runtime repository inspection or change in the current workspace.',
+    description: 'Start one governed DSH Runtime repository inspection or change in the current workspace. This returns a subagent ID immediately; the result arrives later as a subagent status update in the parent conversation. The ID is not a background job ID, so job-list and job-output tools cannot retrieve it. Wait for the status update before reporting the outcome.',
     parameters: {
       task_kind: { type: 'string', enum: ['repository_inspection', 'repository_change'], required: true },
       prompt: { type: 'string', required: true },
