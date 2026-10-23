@@ -84,3 +84,5 @@ Host 安装候选已打成私有 `@dsh-runtime/harness-plugin@0.1.0-rc.15` tarba
 宿主 DeepSeek-V4.1-Flash 在第二次 Runtime 启动后把返回的 subagent ID 当作后台 job ID，额外尝试 `job_list`/`job_output`，随后试图运行普通命令。普通命令被人工停止并显示 aborted；仓库仍干净。**这属于父 Agent 对异步子任务回执的理解问题，不是 Runtime API inspector 的第二次调用。**候选源码 `src/tool.ts` 的工具说明已补充“结果通过子任务状态更新送达，ID 不是后台 job ID”；`pnpm typecheck`、`pnpm build`、`pnpm test:tool`（2/2）通过。此说明更改尚未打进 rc15 安装包，需下一候选包与现场验证，不能声称已修复父 Agent 行为。
 
 下一步优先级：先把工具说明更改及现场记录做本地提交；再处理目录枚举的句柄绑定或收缩 `list_files/search_text` 工具面。此安全边界未闭合前，不提升 API inspector 为日常默认，更不启用 API reviewer/worker。然后对父 Agent 异步回执做无模型契约验收，视需要发 rc16 隔离包；API reviewer 和受控写工具分别走独立门槛。五小时额度最新检查为已用 83%、周额度已用 13%，达到五小时剩余 10% 或周剩余 2% 时按用户要求记录后停手。
+
+异步工具说明已打入未安装的私有 `@dsh-runtime/harness-plugin@0.1.0-rc.16` 候选包：`D:\DeepSeekHarness\api-agent-host-artifacts-20261023\dsh-runtime-harness-plugin-0.1.0-rc.16.tgz`，SHA256 `2FFA2A3C802070424A7D4EF39D844FFA43D7A852C0C5E80EE759B7A56DE18D04`，22 个文件。离线构建与打包通过；扫描本机两套连接密钥字节，rc16 包及本次隔离 Home 的 13 个小型配置/证据文件均未命中。rc16 尚未安装或做模型现场，因此不能把工具说明改动计为已验证修复。rc15 的成功与失败 run 均保留在原隔离 Home 中。
