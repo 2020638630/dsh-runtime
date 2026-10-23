@@ -106,3 +106,11 @@ Host 安装候选已打成私有 `@dsh-runtime/harness-plugin@0.1.0-rc.15` tarba
 复核时原 Runtime 工作树为 16 项、原 Harness 工作树为 108 项 Git 可见状态；后者较交接时的 106 项增加，原因未在本轮追查。本轮只写独立候选和新隔离 Home，未修改、清理或重置原工作树。rc16 隔离服务已停止且随机端口不再监听；五小时已用 15%、周已用 17%。
 
 下一步：在仍隔离的官方 Host 中仅在必要时做 rc16 父 Agent 行为现场，重点观察是否还误用通用 job 工具；若出现误用，应改工具回执/宿主提示并补无模型契约，再次隔离验收。API reviewer 双轨迹和 API worker 原子写工具仍是独立门槛。当前候选仅可作为私有只读试用，不能提升日常默认。两原工作树与 D2 状态须复核后再推进。
+
+### 2026-10-23 后续：API reviewer 双轨迹与 worker 补丁计算
+
+在独立候选分支继续开发，起点 `1e6d622` 干净。Host schema v2 现在允许显式选择**只读** API reviewer，worker API 仍拒绝。Host 将本次 `repository_change` 的 CLI worker Safe Trace 保持在 `execution_trajectory`，把 API reviewer 的独立 `.closed` 轨迹写入 `review_trajectory`，校验同一 run、trace ID、角色和终态。Reviewer 轨迹缺失、角色不符、失败或取消时，不以终行文本冒认可信 `PASS`；worker 阶段先失败、reviewer 未启动时标 `not_applicable`。Codex / CodeBuddy worker 与 API reviewer 的权限字段分别归属，页面审计页显示 API reviewer 轨迹状态与终态。Runtime 对 API reviewer 的 `FAIL` 文案不再误称 Codex。伪模型测试覆盖 reviewer 完成与 provider 失败，既有取消路径和 Host 伪轨迹测试覆盖其余终态；真实 reviewer 模型现场尚未进行，不能视作日常资格。
+
+API worker 仍不开放：`apply_patch` 已从模型角色允许集合与供应商工具 schema 撤下，即使直接给循环写权限也只暴露 `read_file`。新增纯函数 `plan_text_patch` 仅在内存中检查原文件完整 SHA-256、旧文本唯一匹配、UTF-8、BOM/NUL 和 32 KiB 上限，返回候选新字节与摘要；它没有打开路径或写文件能力。后续须设计真实文件句柄到工作区的绑定、抗目录替换的原子落盘、取消与前后证据，才可注册写工具。
+
+当前无模型验证：Python 全套 **591 passed、1 skipped**；Host `pnpm typecheck`、`pnpm build`、`pnpm test:entry` 4/4、`pnpm test:host-core` 1/1、`pnpm test:worker` 3/3、`pnpm test:api-agent-trace` 13/13 已通过。默认沙箱对 Git/Python 子进程报 `EPERM`，这些既有测试经窄范围授权在独立临时目录成功。五小时额度最近已用 41%、周已用 21%，未触发停止线。没有调用模型、没有触碰 D2，也没有改动两个原工作树。

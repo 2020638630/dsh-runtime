@@ -96,6 +96,35 @@ def test_codebuddy_worker_model_is_selected_without_changing_write_authority() -
     assert decision.allow_workspace_write is True
 
 
+def test_api_reviewer_is_read_only_and_fail_verdict_has_correct_attribution() -> None:
+    document = {
+        "schema_version": 2,
+        "roles": {
+            "worker": {"adapter": "codebuddy", "model": None},
+            "reviewer": {
+                "adapter": "api_agent", "provider": "siliconflow",
+                "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+                "connection_ref": "trial_siliconflow", "max_requests": 3,
+                "max_tool_calls": 3, "max_output_tokens": 512,
+            },
+            "inspector": {"adapter": "codex", "model": None},
+        },
+    }
+    planner = SimplePlanner(RoleConfig.from_document(document))
+    task = TaskState(
+        goal="change repository", task_kind=TaskKind.REPOSITORY_CHANGE,
+        allow_workspace_write=True, max_iterations=2, iteration=1,
+    )
+    decision = planner.next_action(task)
+    assert decision.plugin == "api_agent"
+    assert decision.params["role_name"] == "reviewer"
+    assert decision.allow_workspace_write is False
+    task.iteration = 2
+    task.last_invocation_result = "Issue found.\nDSH_VERIFICATION: FAIL"
+    terminal = planner.next_action(task)
+    assert terminal.terminal_error == "API reviewer verification reported FAIL"
+
+
 def test_controller_freezes_roles_at_construction(monkeypatch) -> None:
     document = _document()
     monkeypatch.setenv(ROLE_CONFIG_ENV, json.dumps(document))

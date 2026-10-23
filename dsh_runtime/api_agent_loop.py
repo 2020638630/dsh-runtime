@@ -12,7 +12,8 @@ from dsh_runtime.api_agent_contract import ApiRole
 # Directory names cannot be safely enumerated by the current path-based broker
 # under concurrent junction/rename swaps. Keep the API tool surface explicit.
 READ_TOOLS = frozenset({"read_file"})
-WRITE_TOOLS = frozenset({"apply_patch"})
+# No API worker write tool is qualified for the model-facing surface yet.
+WRITE_TOOLS: frozenset[str] = frozenset()
 MAX_TOOL_ARGUMENT_CHARS = 16_384
 MAX_TOOL_RESULT_CHARS = 32_768
 MAX_FINAL_CHARS = 100_000

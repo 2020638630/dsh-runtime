@@ -11,10 +11,6 @@ from dsh_runtime.api_agent_loop import ModelReply, ToolCall, TransportFailure
 
 _TOOL_DESCRIPTIONS = {
     "read_file": ("Read a bounded UTF-8 workspace file", {"path": {"type": "string"}}),
-    "apply_patch": ("Apply a checked workspace patch", {
-        "path": {"type": "string"}, "old_text": {"type": "string"},
-        "new_text": {"type": "string"}, "expected_sha256": {"type": "string"},
-    }),
 }
 _MAX_RESPONSE_BYTES = 1_000_000
 

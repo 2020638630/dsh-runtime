@@ -17,11 +17,13 @@ export interface ApiAgentTraceEvidence {
   readonly traceComplete: boolean
   readonly traceId: string | null
   readonly roleName: 'inspector' | 'reviewer' | null
+  readonly terminalReason: 'completed' | 'failed' | 'cancelled' | null
   readonly toolOperationsSummary: Readonly<Record<ToolName, number>> | null
 }
 
 function empty(status: Status, traceId: string | null): ApiAgentTraceEvidence {
-  return { status, traceComplete: false, traceId, roleName: null, toolOperationsSummary: null }
+  return { status, traceComplete: false, traceId, roleName: null,
+    terminalReason: null, toolOperationsSummary: null }
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -93,6 +95,7 @@ export async function inspectApiAgentTrace(input: {
   if (lines.length < 2 || lines.length > MAX_EVENTS) return empty('incomplete', traceId)
   const counts = { list_files: 0, read_file: 0, search_text: 0 }
   let role: 'inspector' | 'reviewer' | null = null
+  let terminalReason: 'completed' | 'failed' | 'cancelled' | null = null
   const fields = [
     'captured_at_utc', 'event_seq', 'event_type', 'role_name', 'schema_version',
     'terminal_reason', 'tool_name', 'tool_status', 'trace_id',
@@ -124,6 +127,7 @@ export async function inspectApiAgentTrace(input: {
         || !['completed', 'failed', 'cancelled'].includes(String(event.terminal_reason))) {
         return empty('incomplete', traceId)
       }
+      terminalReason = event.terminal_reason as 'completed' | 'failed' | 'cancelled'
     } else {
       if (event.event_type !== 'tool_call' || event.terminal_reason !== null
         || !TOOLS.includes(event.tool_name as ToolName)
@@ -134,5 +138,5 @@ export async function inspectApiAgentTrace(input: {
     }
   }
   return { status: 'available', traceComplete: true, traceId,
-    roleName: role, toolOperationsSummary: counts }
+    roleName: role, terminalReason, toolOperationsSummary: counts }
 }

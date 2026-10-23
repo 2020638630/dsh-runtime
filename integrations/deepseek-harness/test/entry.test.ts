@@ -112,9 +112,13 @@ test('entry accepts bounded API inspector only with an external connection path'
   assert.throws(() => validateConfig({ ...base, roleConfig: {
     ...roleConfig, roles: { ...roleConfig.roles, worker: roleConfig.roles.inspector },
   } as unknown as Config['roleConfig'], apiAgentConnectionsPath }), /worker is not qualified/)
-  assert.throws(() => validateConfig({ ...base, roleConfig: {
-    ...roleConfig, roles: { ...roleConfig.roles, reviewer: roleConfig.roles.inspector },
-  } as unknown as Config['roleConfig'], apiAgentConnectionsPath }), /reviewer is not qualified/)
+  const apiReviewConfig = { ...roleConfig, roles: {
+    ...roleConfig.roles, reviewer: roleConfig.roles.inspector,
+    inspector: { adapter: 'codex' as const, model: null },
+  } }
+  const reviewResolved = validateConfig({ ...base, roleConfig: apiReviewConfig, apiAgentConnectionsPath })
+  assert.equal(reviewResolved.roleConfig?.roles.reviewer.adapter, 'api_agent')
+  assert.throws(() => validateConfig({ ...base, roleConfig: apiReviewConfig }), /apiAgentConnectionsPath/)
   assert.throws(() => validateConfig({ ...base, roleConfig: {
     ...roleConfig, roles: { ...roleConfig.roles, inspector: {
       ...roleConfig.roles.inspector, max_requests: 13,

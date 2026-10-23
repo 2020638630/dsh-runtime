@@ -151,17 +151,30 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function expectsApiInspector(env: Record<string, string>): boolean {
+function expectsApiRole(env: Record<string, string>, role: 'inspector' | 'reviewer'): boolean {
   const raw = env.DSH_RUNTIME_ROLE_CONFIG_JSON
   if (raw === undefined || raw.length > 16_384) return false
   try {
     const config: unknown = JSON.parse(raw)
     const roles = isRecord(config) ? config.roles : undefined
-    const inspector = isRecord(roles) ? roles.inspector : undefined
+    const selected = isRecord(roles) ? roles[role] : undefined
     return isRecord(config) && config.schema_version === 2
-      && isRecord(inspector) && inspector.adapter === 'api_agent'
+      && isRecord(selected) && selected.adapter === 'api_agent'
   } catch {
     return false
+  }
+}
+
+function workerAdapter(env: Record<string, string>): 'codebuddy' | 'codex' {
+  const raw = env.DSH_RUNTIME_ROLE_CONFIG_JSON
+  if (raw === undefined || raw.length > 16_384) return 'codebuddy'
+  try {
+    const config: unknown = JSON.parse(raw)
+    const roles = isRecord(config) ? config.roles : undefined
+    const worker = isRecord(roles) ? roles.worker : undefined
+    return isRecord(worker) && worker.adapter === 'codex' ? 'codex' : 'codebuddy'
+  } catch {
+    return 'codebuddy'
   }
 }
 
@@ -483,7 +496,9 @@ async function createDshRuntimeRun(
               taskKind: spec.taskKind,
               task, exitCode: outcome.exitCode, stdout,
               durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
-              expectedApiInspector: expectsApiInspector(spec.env),
+              expectedApiInspector: expectsApiRole(spec.env, 'inspector'),
+              expectedApiReviewer: expectsApiRole(spec.env, 'reviewer'),
+              expectedWorkerAdapter: workerAdapter(spec.env),
               maxTurnsConfig: (() => {
                 const raw = spec.env.DSH_CODEBUDDY_MAX_TURNS
                 if (raw === undefined) return 12

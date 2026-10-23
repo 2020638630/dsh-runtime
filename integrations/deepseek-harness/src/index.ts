@@ -40,7 +40,7 @@ export interface RoleConfigV2 {
   schema_version: 2
   roles: {
     worker: CliRoleSelectionConfig
-    reviewer: CliRoleSelectionConfig
+    reviewer: CliRoleSelectionConfig | ApiRoleSelectionConfig
     inspector: CliRoleSelectionConfig | ApiRoleSelectionConfig
   }
 }
@@ -79,7 +79,7 @@ function roleSelection(
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`${role} must be an object`)
   const fields = value as Record<string, unknown>
   if (version === 2 && fields.adapter === 'api_agent') {
-    if (role !== 'inspector') throw new TypeError(`API Agent ${role} is not qualified in Host`)
+    if (role === 'worker') throw new TypeError(`API Agent ${role} is not qualified in Host`)
     if (!exactKeys(fields, [
       'adapter', 'provider', 'model', 'connection_ref',
       'max_requests', 'max_tool_calls', 'max_output_tokens',
@@ -142,7 +142,7 @@ function validateRoleConfig(value: unknown): RoleConfig {
     },
   }
   return { schema_version: 2, roles: {
-    worker, reviewer: reviewer as CliRoleSelectionConfig, inspector,
+    worker, reviewer, inspector,
   } }
 }
 
@@ -187,6 +187,7 @@ export function validateConfig(input: Config): ResolvedConfig {
   const roleConfig = input.roleConfig === undefined ? undefined : validateRoleConfig(input.roleConfig)
   const usesApi = roleConfig?.schema_version === 2 && (
     roleConfig.roles.inspector.adapter === 'api_agent'
+      || roleConfig.roles.reviewer.adapter === 'api_agent'
   )
   let apiAgentConnectionsPath: string | undefined
   if (usesApi) {

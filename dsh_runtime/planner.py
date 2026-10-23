@@ -40,7 +40,7 @@ class SimplePlanner:
                 return self._role_decision(
                     self.roles.reviewer, _verification_prompt(task), role_name="reviewer", allow_write=False
                 )
-            return _verification_decision(task.last_invocation_result)
+            return _verification_decision(task.last_invocation_result, self.roles.reviewer.adapter)
         if (
             task.task_kind is TaskKind.REPOSITORY_INSPECTION
             and task.iteration == 0
@@ -85,7 +85,7 @@ def _verification_prompt(task: TaskState) -> str:
     )
 
 
-def _verification_decision(result: Any) -> Decision:
+def _verification_decision(result: Any, reviewer_adapter: str = "codex") -> Decision:
     if not isinstance(result, str):
         return Decision(
             plugin=None,
@@ -101,7 +101,9 @@ def _verification_decision(result: Any) -> Decision:
         return Decision(
             plugin=None,
             terminal_success=False,
-            terminal_error="Codex verification reported FAIL",
+            terminal_error=("API reviewer verification reported FAIL"
+                            if reviewer_adapter == "api_agent"
+                            else "Codex verification reported FAIL"),
         )
     return Decision(
         plugin=None,

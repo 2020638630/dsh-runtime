@@ -123,8 +123,16 @@ window.__ModuleLoader__.load({
           count ? line('补丁', changes.patch_applicable ? '可应用' : '仅供查看') : null,
           ready.diff ? h('pre', { key: 'diff', style: pre }, ready.diff.slice(0, 200000)) : null]
       } else if (ready) {
+        const review = manifest.review_trajectory
         body = [line('审计状态', manifest.audit.status), line('调用 ID', manifest.audit.call_id),
           line('输出摘要', manifest.audit.stdout_sha256), line('审查判决', manifest.verification.verdict),
+          review?.source === 'api_agent_safe_event_trace'
+            ? line('API 审查轨迹', review.status) : null,
+          review?.source === 'api_agent_safe_event_trace' && review.terminal_reason
+            ? line('API 审查终态', review.terminal_reason) : null,
+          review?.source === 'api_agent_safe_event_trace' && review.status === 'available'
+            ? h('ul', { key: 'review-tools' }, Object.entries(review.tool_operations_summary ?? {})
+              .map(([name, count]) => h('li', { key: name }, `${name}：${count}`))) : null,
           h('pre', { key: 'basis', style: pre }, manifest.verification.evidence_text ?? '未知')]
       }
       return h('div', { 'data-tool': 'dsh_runtime', style: { minWidth: 0 } },

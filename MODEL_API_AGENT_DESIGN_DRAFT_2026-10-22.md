@@ -1,6 +1,6 @@
 # DSH Runtime 模型 API Agent 设计草案
 
-> 状态：持续更新的设计草案。API inspector 已在独立 Runtime 与未修改的官方 Harness + rc15 插件中完成一次真实只读现场；API reviewer/worker 尚未开放。现有 CLI 并行入口不变，D2 ExecuteGate 仍为 `NOT_CLAIMED`。现场证据见 `API_AGENT_PHASE1_2026-10-22.md`。
+> 状态：持续更新的设计草案。API inspector 已在独立 Runtime 与未修改的官方 Harness + rc15 插件中完成一次真实只读现场；API reviewer 仅在未打包的候选源码中允许配置，尚无真实宿主现场；API worker 仍关闭。现有 CLI 并行入口不变，D2 ExecuteGate 仍为 `NOT_CLAIMED`。现场证据见 `API_AGENT_PHASE1_2026-10-22.md`。
 
 ## 1. 建议结论
 
@@ -34,7 +34,7 @@ reviewer 与 worker 使用独立模型会话，不继承 worker 的对话链；�
 
 ## 3. 新执行器的最小工具面
 
-当前候选只向模型提供 `read_file`，且 Broker 仅接受显式相对文件路径。目录枚举的路径检查曾存在快速换出换回竞争；`list_files` 与 `search_text` 已从模型 schema、角色允许集合及 Broker 实现中同时撤下。`read_file` 在打开后核对真实文件句柄路径与边界，并拒绝敏感路径。未来若需要目录枚举，须先设计句柄绑定方案并通过对抗性验证，再单独开放。`apply_patch` 仍是待实现的 worker 写工具门槛，当前 Host 不开放 API worker/reviewer。外部 shell、网络请求、Git 写操作、任意 Python 执行均不在工具面中。
+当前候选只向模型提供 `read_file`，且 Broker 仅接受显式相对文件路径。目录枚举的路径检查曾存在快速换出换回竞争；`list_files` 与 `search_text` 已从模型 schema、角色允许集合及 Broker 实现中同时撤下。`read_file` 在打开后核对真实文件句柄路径与边界，并拒绝敏感路径。未来若需要目录枚举，须先设计句柄绑定方案并通过对抗性验证，再单独开放。`apply_patch` 仍是待实现的 worker 写工具门槛，当前 Host 只在候选源码中允许只读 API reviewer，尚未安装验收。外部 shell、网络请求、Git 写操作、任意 Python 执行均不在工具面中。
 
 每个阶段限制模型请求次数、工具调用次数、单次输出字节、总 token/费用预算和墙钟时长。取消先停止新 API 请求，再取消进行中的本地工具并结算；写工具需记录执行前/后状态。网络错误只能在**未执行任何写工具**或可证明幂等的单次请求边界重试，不能自动重放整个仓库任务。
 
@@ -69,8 +69,8 @@ reviewer 与 worker 使用独立模型会话，不继承 worker 的对话链；�
 
 ## 7. 下一阶段的证据与权限门槛
 
-API reviewer 不能仅靠 Runtime 能调用该角色就对外开放。一次写入任务会同时拥有 CLI worker 轨迹和只读 API reviewer 轨迹；Manifest 必须分别标明两个来源、各自的 `.closed` 与终态，不能把 worker 的 CodeBuddy 轨迹冒充 reviewer 的执行依据。`phase_2_codex_effective_write` 也不能在 reviewer 改用 API Agent 后暗示 Codex 实际参与。Reviewer 的精确终行判决仍由 Runtime 解析，Host 仅展示来源和证据状态；缺失 reviewer 轨迹应为 `unavailable`，不得填充推断值。先用假模型覆盖完成、拒绝、失败、取消和轨迹缺失，再在独立临时仓库做真实写入与异模型审查。
+API reviewer 不能仅靠 Runtime 能调用该角色就对外开放。候选 Host 现已接受独立配置的只读 API reviewer，终态 Manifest 分别保留 CLI worker 的 `execution_trajectory` 和 API reviewer 的 `review_trajectory`，通过角色与 `.closed` 校验拒绝互相冒充。`phase_2_codex_effective_write` 在 API reviewer 配置下为 `null`，避免暗示 Codex 参与。Reviewer 的精确终行判决仍由 Runtime 解析；缺失 reviewer 轨迹为 `unavailable`，但 worker 未完成、审查阶段未启动时为 `not_applicable`。无模型测试已覆盖假模型成功、供应商失败，以及 Host 对缺失、错误角色、失败和取消轨迹的拒绝；仍须在独立临时仓库做真实写入与异模型审查，方可考虑日常启用。
 
-API worker 要另设门槛：先实现带预期哈希与冲突拒绝的受控写工具，明确补丁的原子落盘、变更上限和取消时的结算。当前候选已收缩为显式 `read_file`；该收缩只关闭目录枚举暴露，不替代长期并发文件系统攻击评估。工作区前后快照与 Safe Trace 各自提供观察证据，不以模型最终文本代替。
+API worker 要另设门槛：候选已经加入**不接触文件系统**的 `plan_text_patch`，对原文件完整 SHA-256、唯一旧文本、UTF-8、BOM/NUL 与 32 KiB 上限做确定性检查，并给出新字节与摘要；它只负责补丁计算，不授予写权限。模型端 `apply_patch` schema 和角色允许集合仍关闭。下一步须将已打开文件与工作区绑定，设计抗 Windows junction/目录替换的原子落盘，再用独立临时仓库验证哈希冲突、取消及变化证据，方可开放 API worker。当前显式 `read_file` 的收缩也不替代长期并发文件系统攻击评估。工作区前后快照与 Safe Trace 各自提供观察证据，不以模型最终文本代替。
 
 官方宿主的父 Agent 还需要正确理解异步回执：`dsh_runtime` 启动时返回的是子任务 ID，终态通过 `delivery: parent` 的子任务状态更新到达，不能把 ID 交给通用 job 工具。rc15 现场中父 Agent 曾误用 job 工具；候选源码的无模型契约测试现已验证固定 provider、可信父 Agent、`delivery: parent`、仅含 ID 的启动回执与工具说明。此测试不证明父模型会遵循说明；rc16 的真实宿主行为仍未现场验收。

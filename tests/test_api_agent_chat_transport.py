@@ -86,8 +86,8 @@ def test_transport_rejects_unapproved_endpoint():
         ChatCompletionsTransport(Connection("openrouter", "https://example.invalid", "key"))
 
 
-@pytest.mark.parametrize("unsafe_tool", ["list_files", "search_text"])
-def test_transport_does_not_advertise_directory_enumeration(unsafe_tool):
+@pytest.mark.parametrize("unsafe_tool", ["list_files", "search_text", "apply_patch"])
+def test_transport_does_not_advertise_unqualified_tools(unsafe_tool):
     transport = ChatCompletionsTransport(Connection(
         "openrouter", "https://openrouter.ai/api/v1", "private-test-key"
     ))

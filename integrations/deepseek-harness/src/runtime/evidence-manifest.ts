@@ -52,6 +52,8 @@ export async function writeTerminalEvidence(input: {
   readonly stdout: string
   readonly maxTurnsConfig: number | null
   readonly expectedApiInspector?: boolean
+  readonly expectedApiReviewer?: boolean
+  readonly expectedWorkerAdapter?: 'codebuddy' | 'codex'
 }): Promise<void> {
   const { task, runId, runDir } = input
   if (!UUID.test(task.task_id) || task.task_kind !== input.taskKind
@@ -67,10 +69,13 @@ export async function writeTerminalEvidence(input: {
   const apiTraceName = apiTraceNames.length === 1 ? apiTraceNames[0] : undefined
   const apiInspection = input.taskKind === 'repository_inspection'
     && (input.expectedApiInspector === true || apiTraceNames.length > 0)
+  const apiReview = input.taskKind === 'repository_change'
+    && ((input.expectedApiReviewer === true && task.iteration >= 2)
+      || apiTraceNames.length > 0)
   const traceFile = apiInspection
     ? apiTraceName === undefined ? null : join(input.safeTraceDir, apiTraceName)
     : traceName === undefined ? null : join(input.safeTraceDir, traceName)
-  const trajectory = apiInspection
+  const rawTrajectory = apiInspection
     ? traceFile === null
       ? { status: apiTraceNames.length === 0 ? 'unavailable' as const : 'unknown' as const,
         traceComplete: false, toolOperationsSummary: null }
@@ -85,6 +90,23 @@ export async function writeTerminalEvidence(input: {
       : await inspectSafeTrace({
         runId, traceDir: input.safeTraceDir, tracePath: traceFile, processExited: true,
       })
+  const trajectory = apiInspection && 'roleName' in rawTrajectory
+    && rawTrajectory.status === 'available' && rawTrajectory.roleName !== 'inspector'
+    ? { ...rawTrajectory, status: 'incomplete' as const, traceComplete: false,
+      toolOperationsSummary: null }
+    : rawTrajectory
+  const reviewTraceFile = apiReview && apiTraceName !== undefined
+    ? join(input.safeTraceDir, apiTraceName) : null
+  const rawReviewTrajectory = reviewTraceFile === null ? null : await inspectApiAgentTrace({
+    runId, traceDir: input.safeTraceDir, tracePath: reviewTraceFile, processExited: true,
+  })
+  const reviewStatus = !apiReview ? 'not_applicable'
+    : apiTraceNames.length > 1 ? 'unknown'
+      : rawReviewTrajectory === null ? 'unavailable'
+        : rawReviewTrajectory.roleName === 'reviewer'
+          ? rawReviewTrajectory.status : 'incomplete'
+  const reviewVerified = !apiReview || (reviewStatus === 'available'
+    && rawReviewTrajectory?.terminalReason === 'completed')
   const audit = await inspectCallTrace({
     runId, runDir, tracePath: input.callTracePath, processExited: true,
     exitCode: input.exitCode, stdout: input.stdout, taskStatus: task.status,
@@ -96,9 +118,13 @@ export async function writeTerminalEvidence(input: {
     exit_code: input.exitCode, duration_ms: input.durationMs,
     authority_phases: {
       task_ceiling_allow_write: input.taskKind === 'repository_change',
-      phase_1_codebuddy_effective_write: input.taskKind === 'repository_change' && task.iteration > 0 ? true : null,
-      phase_2_codex_effective_write: apiInspection ? null
+      phase_1_codebuddy_effective_write: input.taskKind === 'repository_change'
+        && task.iteration > 0 && input.expectedWorkerAdapter !== 'codex' ? true : null,
+      phase_1_codex_effective_write: input.taskKind === 'repository_change'
+        && task.iteration > 0 && input.expectedWorkerAdapter === 'codex' ? true : null,
+      phase_2_codex_effective_write: apiInspection || input.expectedApiReviewer === true || apiReview ? null
         : task.iteration >= (input.taskKind === 'repository_change' ? 2 : 1) ? false : null,
+      phase_2_api_agent_effective_write: apiReview && task.iteration >= 2 ? false : null,
     },
     workspace_changes: { ...changes, diff: undefined, diff_content_ref: diffPath },
     execution_trajectory: {
@@ -112,7 +138,21 @@ export async function writeTerminalEvidence(input: {
       max_turns_config: apiInspection ? null : input.maxTurnsConfig,
       tool_operations_summary: trajectory.toolOperationsSummary,
     },
-    verification: verification(task, input.taskKind),
+    review_trajectory: {
+      source: apiReview ? 'api_agent_safe_event_trace' : 'not_applicable',
+      status: reviewStatus,
+      trace_complete: reviewStatus === 'available' && rawReviewTrajectory?.traceComplete === true,
+      trace_file: reviewTraceFile,
+      role_name: reviewStatus === 'available' ? 'reviewer' : null,
+      tool_operations_summary: reviewStatus === 'available'
+        ? rawReviewTrajectory?.toolOperationsSummary : null,
+      terminal_reason: reviewStatus === 'available'
+        ? rawReviewTrajectory?.terminalReason : null,
+    },
+    verification: reviewVerified ? verification(task, input.taskKind) : {
+      source: 'runtime_terminal_json', verdict: 'UNAVAILABLE', verdict_raw_line: null,
+      evidence_text: null, evidence_truncated: false, stage_duration_ms: null,
+    },
     audit: {
       source: 'call_trace', status: audit.status, call_id: audit.callId,
       call_trace_path: input.callTracePath, stdout_bytes: audit.stdoutBytes,

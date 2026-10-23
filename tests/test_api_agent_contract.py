@@ -139,6 +139,13 @@ def test_entire_batch_is_validated_before_first_write() -> None:
     assert result.error_code == "invalid_tool_call" and broker.calls == []
 
 
+def test_worker_write_flag_does_not_advertise_unqualified_patch() -> None:
+    transport = FakeTransport(ModelReply(text="done", output_tokens=1))
+    result = run("worker", transport, FakeBroker(), write=True)
+    assert result.success
+    assert transport.seen[0]["allowed_tools"] == frozenset({"read_file"})
+
+
 def test_reviewer_cannot_gain_write_tool_from_context() -> None:
     transport = FakeTransport(ModelReply(tool_calls=(
         ToolCall("c1", "apply_patch", "{}"),
