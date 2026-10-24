@@ -100,6 +100,7 @@ async def run_api_agent(
     calls_used = 0
     successful_reads = 0
     output_tokens_used = 0
+    final_only_notice_sent = False
 
     def outcome(error: str | None, text: str | None, requests: int) -> AgentOutcome:
         return AgentOutcome(error is None, text, error, role.model, observed, requests, calls_used)
@@ -111,9 +112,18 @@ async def run_api_agent(
     for request_number in range(1, role.max_requests + 1):
         if output_tokens_used >= role.max_output_tokens:
             return outcome("token_budget_exhausted", None, request_number - 1)
+        request_tools = allowed if calls_used < role.max_tool_calls else frozenset()
+        if role_name == "reviewer" and not request_tools and not final_only_notice_sent:
+            messages.append({"role": "system", "content": (
+                "The read_file tool budget is exhausted. No further tools are "
+                "available. Give your final DSH_VERIFICATION verdict using "
+                "only the evidence already returned. If that evidence is "
+                "insufficient, verdict FAIL. Do not claim any unread bytes."
+            )})
+            final_only_notice_sent = True
         try:
             reply = await transport.complete(
-                model=role.model, messages=tuple(messages), allowed_tools=allowed,
+                model=role.model, messages=tuple(messages), allowed_tools=request_tools,
                 max_output_tokens=role.max_output_tokens - output_tokens_used,
             )
         except TransportFailure as exc:

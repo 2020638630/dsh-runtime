@@ -228,6 +228,62 @@ def test_reviewer_accepts_verdict_after_native_read() -> None:
     assert broker.calls == [("read_file", {"path": "README.md"})]
 
 
+def test_reviewer_uses_final_only_request_after_read_budget() -> None:
+    transport = FakeTransport(
+        ModelReply(tool_calls=(ToolCall("c1", "read_file", '{"path":"README.md"}'),), output_tokens=4),
+        ModelReply(tool_calls=(ToolCall("c2", "read_file", '{"path":"review.txt"}'),), output_tokens=4),
+        ModelReply(text="Evidence is sufficient.\nDSH_VERIFICATION: PASS", output_tokens=6),
+    )
+    broker = FakeBroker()
+    result = run("reviewer", transport, broker)
+    assert result.success and result.requests == 3 and result.tool_calls == 2
+    assert len(broker.calls) == 2
+    assert transport.seen[2]["allowed_tools"] == frozenset()
+    assert "If that evidence is insufficient, verdict FAIL" in transport.seen[2]["messages"][-1]["content"]
+
+
+def test_reviewer_extra_tool_call_after_budget_is_not_executed() -> None:
+    transport = FakeTransport(
+        ModelReply(tool_calls=(ToolCall("c1", "read_file", '{"path":"README.md"}'),), output_tokens=4),
+        ModelReply(tool_calls=(ToolCall("c2", "read_file", '{"path":"review.txt"}'),), output_tokens=4),
+        ModelReply(tool_calls=(ToolCall("c3", "read_file", '{"path":"other.txt"}'),), output_tokens=4),
+    )
+    broker = FakeBroker()
+    result = run("reviewer", transport, broker)
+    assert result.error_code == "tool_budget_exhausted"
+    assert result.tool_calls == 2 and len(broker.calls) == 2
+    assert transport.seen[2]["allowed_tools"] == frozenset()
+
+
+def test_reviewer_final_only_still_requires_successful_read(tmp_path) -> None:
+    transport = FakeTransport(
+        ModelReply(tool_calls=(ToolCall("c1", "read_file", '{"path":".env"}'),), output_tokens=4),
+        ModelReply(tool_calls=(ToolCall("c2", "read_file", '{"path":".env"}'),), output_tokens=4),
+        ModelReply(text="DSH_VERIFICATION: PASS", output_tokens=4),
+    )
+    result = run("reviewer", transport, WorkspaceReadBroker(tmp_path))
+    assert result.error_code == "reviewer_no_file_read"
+
+
+def test_r7_pattern_one_success_three_rejected_reads_can_finish(tmp_path) -> None:
+    (tmp_path / "r7-codex-trace.txt").write_bytes(b"R7_CODEX_TRACE_OK\n")
+    role = ApiRole("siliconflow", "vendor/model", "trial", 5, 4, 1024)
+    transport = FakeTransport(
+        ModelReply(tool_calls=(ToolCall("c1", "read_file", '{"path":".env"}'),), output_tokens=10),
+        ModelReply(tool_calls=(ToolCall("c2", "read_file", '{"path":"r7-codex-trace.txt"}'),), output_tokens=10),
+        ModelReply(tool_calls=(ToolCall("c3", "read_file", '{"path":".env"}'),), output_tokens=10),
+        ModelReply(tool_calls=(ToolCall("c4", "read_file", '{"path":".env"}'),), output_tokens=10),
+        ModelReply(text="Verified the requested bytes.\nDSH_VERIFICATION: PASS", output_tokens=10),
+    )
+    result = asyncio.run(run_api_agent(
+        role, "inspect r7-codex-trace.txt", transport, WorkspaceReadBroker(tmp_path),
+        role_name="reviewer", allow_workspace_write=False,
+    ))
+    assert result.success and result.requests == 5 and result.tool_calls == 4
+    assert transport.seen[4]["allowed_tools"] == frozenset()
+    assert transport.seen[4]["messages"][-1]["role"] == "system"
+
+
 def test_bounded_text_beside_native_tool_call_is_discarded() -> None:
     transport = FakeTransport(
         ModelReply(text="I will read the file.", tool_calls=(

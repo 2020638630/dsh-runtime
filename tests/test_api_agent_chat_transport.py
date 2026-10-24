@@ -53,6 +53,30 @@ def test_provider_request_is_single_bounded_and_uses_pinned_endpoint(provider, u
     assert len(requests) == 1
 
 
+def test_final_only_request_sends_no_tool_schema():
+    def handler(request):
+        body = __import__("json").loads(request.content)
+        assert "tools" not in body and "tool_choice" not in body
+        return httpx.Response(200, json={
+            "model": "vendor/model", "choices": [{"finish_reason": "stop", "message": {
+                "content": "DSH_VERIFICATION: FAIL",
+            }}], "usage": {"completion_tokens": 5},
+        })
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            transport = ChatCompletionsTransport(Connection(
+                "siliconflow", "https://api.siliconflow.cn/v1", "private-test-key"
+            ), client=client)
+            return await transport.complete(
+                model="vendor/model", messages=({"role": "user", "content": "verdict"},),
+                allowed_tools=frozenset(), max_output_tokens=100,
+            )
+
+    reply = asyncio.run(scenario())
+    assert reply.text == "DSH_VERIFICATION: FAIL" and reply.tool_calls == ()
+
+
 @pytest.mark.parametrize("status,code", [
     (401, "provider_auth_error"), (429, "provider_rate_limited"),
     (503, "provider_http_error"),
