@@ -6,6 +6,8 @@ param(
   [Parameter(Mandatory=$true)][string]$PythonPath,
   [Parameter(Mandatory=$true)][string]$PnpmPath,
   [string]$ProfileName = 'runtime-api-reviewer-preview',
+  [ValidateSet('codebuddy', 'codex')][string]$WorkerAdapter = 'codebuddy',
+  [string]$WorkerModel = '',
   [string]$Provider = 'siliconflow',
   [string]$ConnectionRef = 'trial_siliconflow',
   [string]$ReviewerModel = 'Qwen/Qwen3-Coder-30B-A3B-Instruct',
@@ -70,12 +72,13 @@ if (@($wheelNames | Select-Object -Unique).Count -ne 7 -or
   throw 'Kit Python wheel list is ambiguous.'
 }
 if ($ProfileName -notmatch '^[a-z][a-z0-9-]{2,50}$') { throw 'Invalid ProfileName.' }
-foreach ($entry in @(@($Provider, 'Provider'), @($ConnectionRef, 'ConnectionRef'))) {
-  if ($entry[0] -notmatch '^[A-Za-z][A-Za-z0-9_-]{1,63}$') { throw "Invalid $($entry[1])." }
-}
+if ($Provider -notin @('siliconflow', 'openrouter')) { throw 'Unsupported Provider.' }
+if ($ConnectionRef -notmatch '^[A-Za-z][A-Za-z0-9_-]{0,63}$') { throw 'Invalid ConnectionRef.' }
+$modelPattern = '^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,127}$'
 foreach ($entry in @(@($ReviewerModel, 'ReviewerModel'), @($InspectorModel, 'InspectorModel'))) {
-  if ($entry[0] -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]{1,127}$') { throw "Invalid $($entry[1])." }
+  if ($entry[0] -notmatch $modelPattern) { throw "Invalid $($entry[1])." }
 }
+if ($WorkerModel -ne '' -and $WorkerModel -notmatch $modelPattern) { throw 'Invalid WorkerModel.' }
 foreach ($required in @($ConnectionPath, $PythonPath, $PnpmPath)) {
   if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Missing dependency: $required" }
 }
@@ -136,6 +139,7 @@ $profilePackage = [ordered]@{
 $utf8 = [System.Text.UTF8Encoding]::new($false)
 [System.IO.File]::WriteAllText((Join-Path $profilePath 'package.json'), ($profilePackage | ConvertTo-Json -Depth 8) + "`n", $utf8)
 [System.IO.File]::WriteAllText((Join-Path $profilePath 'cordis.yml'), "[]`n", $utf8)
+$workerModelYaml = if ($WorkerModel -eq '') { 'null' } else { QuoteYaml $WorkerModel }
 $patch = @"
 - id: dsh-runtime-standalone
   config:
@@ -151,7 +155,7 @@ $patch = @"
     roleConfig:
       schema_version: 2
       roles:
-        worker: { adapter: codebuddy, model: null }
+        worker: { adapter: $WorkerAdapter, model: $workerModelYaml }
         reviewer:
           adapter: api_agent
           provider: $(QuoteYaml $Provider)
