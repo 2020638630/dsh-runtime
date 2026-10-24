@@ -96,6 +96,63 @@ def test_qualification_trace_is_opt_in(tmp_path: Path) -> None:
     assert not (tmp_path / "trace").exists()
 
 
+def test_codex_worker_safe_trace_records_only_tool_metadata(
+    tmp_path: Path, monkeypatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    trace_dir = tmp_path / "evidence"
+    run_id = "dsh-runtime-12345678-1234-1234-1234-123456789abc"
+    monkeypatch.setenv("DSH_CODEX_STUB_MODE", "tool-success")
+    monkeypatch.setenv("DSH_CODEX_SAFE_EVENT_TRACE_DIR", str(trace_dir))
+    monkeypatch.setenv("DSH_RUNTIME_RUN_ID", run_id)
+
+    async def scenario():
+        return await executor_with(plugin()).execute(
+            "codex", context(workspace, allow_workspace_write=True),
+            {"prompt": "private prompt must not appear"}, 1.0,
+        )
+
+    result = asyncio.run(scenario())
+    assert result.success is True
+    trace_path = next(trace_dir.glob("codex-safe-worker-*.jsonl"))
+    raw = trace_path.read_text(encoding="utf-8")
+    events = [json.loads(line) for line in raw.splitlines()]
+    assert [event["event_type"] for event in events] == [
+        "started", "tool_call", "tool_call", "native_terminal", "terminal"
+    ]
+    assert [event["tool_name"] for event in events[1:3]] == [
+        "commandExecution", "fileChange"
+    ]
+    assert events[-1]["terminal_reason"] == "completed"
+    assert "private prompt" not in raw
+    assert "do not persist" not in raw
+    marker = json.loads((trace_dir / (trace_path.name + ".closed")).read_text())
+    assert marker["run_id"] == run_id
+    assert marker["final_bytes"] == trace_path.stat().st_size
+
+
+def test_codex_safe_trace_rejects_workspace_overlap_before_spawn(
+    tmp_path: Path, monkeypatch
+) -> None:
+    trace_dir = tmp_path / "evidence"
+    monkeypatch.setenv("DSH_CODEX_SAFE_EVENT_TRACE_DIR", str(trace_dir))
+    monkeypatch.setenv(
+        "DSH_RUNTIME_RUN_ID", "dsh-runtime-12345678-1234-1234-1234-123456789abc"
+    )
+
+    async def scenario():
+        return await executor_with(plugin()).execute(
+            "codex", context(tmp_path, allow_workspace_write=True),
+            {"prompt": "never spawn"}, 1.0,
+        )
+
+    result = asyncio.run(scenario())
+    assert result.success is False
+    assert result.error == "Codex safe trace could not start"
+    assert not trace_dir.exists()
+
+
 def test_qualification_trace_captures_identity_protocol_stderr_and_authority(
     tmp_path: Path, monkeypatch
 ) -> None:

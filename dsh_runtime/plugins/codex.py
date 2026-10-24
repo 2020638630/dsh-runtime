@@ -20,6 +20,10 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from ..codex_safe_trace import (
+    CodexSafeTrace, CodexSafeTraceError, RUNTIME_RUN_ID_ENV,
+    SAFE_EVENT_TRACE_DIR_ENV,
+)
 from ..runtime.plugin import ExecutionContext, PluginResult
 
 
@@ -201,6 +205,7 @@ class _CodexSession:
         model: str | None,
         max_output_chars: int,
         trace: _CodexQualificationTrace | None = None,
+        safe_trace: CodexSafeTrace | None = None,
     ) -> None:
         self.process = process
         self.cwd = cwd
@@ -208,6 +213,7 @@ class _CodexSession:
         self.model = model
         self.max_output_chars = max_output_chars
         self.trace = trace
+        self.safe_trace = safe_trace
         self._next_id = 1
         self.thread_id: str | None = None
         self.turn_id: str | None = None
@@ -386,6 +392,10 @@ class _CodexSession:
         if self.turn_id is not None and params.get("turnId") != self.turn_id:
             return
         item = params.get("item")
+        if (self.safe_trace is not None and isinstance(item, dict)
+            and item.get("type") in {"commandExecution", "fileChange"}):
+            status = "completed" if item.get("status") == "completed" else "failed"
+            self.safe_trace.tool(item["type"], status)
         if not isinstance(item, dict) or item.get("type") != "agentMessage":
             return
         text = item.get("text")
@@ -483,6 +493,8 @@ class _CodexSession:
                 if not isinstance(terminal, dict) or terminal.get("id") != self.turn_id:
                     continue
                 status = terminal.get("status")
+                if self.safe_trace is not None and status in {"completed", "failed"}:
+                    self.safe_trace.native_terminal(status)
                 if status != "completed":
                     error = terminal.get("error")
                     message = error.get("message") if isinstance(error, dict) else None
@@ -649,6 +661,7 @@ class CodexPlugin:
         session: _CodexSession | None = None
         stderr_task: asyncio.Task[bytes] | None = None
         trace: _CodexQualificationTrace | None = None
+        safe_trace: CodexSafeTrace | None = None
         trace_error: str | None = None
         trace_capture_error: str | None = None
         cancelled = False
@@ -682,6 +695,20 @@ class CodexPlugin:
                         f"{_QUALIFICATION_OBSERVABILITY_FAILURE}: "
                         f"cannot prepare trace sink: {type(exc).__name__}: {exc}"
                     ),
+                )
+
+        raw_safe_dir = os.environ.get(SAFE_EVENT_TRACE_DIR_ENV)
+        if raw_safe_dir and ctx.allow_workspace_write:
+            try:
+                safe_dir = Path(raw_safe_dir)
+                if safe_dir.resolve().is_relative_to(cwd_path.resolve()):
+                    raise CodexSafeTraceError("Codex safe trace overlaps workspace")
+                safe_trace = CodexSafeTrace(
+                    safe_dir, run_id=os.environ.get(RUNTIME_RUN_ID_ENV, "")
+                )
+            except (OSError, CodexSafeTraceError):
+                return PluginResult(
+                    success=False, error="Codex safe trace could not start"
                 )
 
         try:
@@ -723,6 +750,7 @@ class CodexPlugin:
                 model=model,
                 max_output_chars=self.max_output_chars,
                 trace=trace,
+                safe_trace=safe_trace,
             )
             await session.initialize()
             await session.start_thread()
@@ -735,7 +763,7 @@ class CodexPlugin:
             if session is not None:
                 await session.interrupt()
             raise
-        except _CodexProtocolError as exc:
+        except (_CodexProtocolError, CodexSafeTraceError) as exc:
             # Only bounded stage-level diagnostics cross the Plugin boundary.
             diagnostic = str(exc)
             if diagnostic not in {
@@ -759,6 +787,18 @@ class CodexPlugin:
                     trace_capture_error = (
                         f"stderr capture failed: {type(exc).__name__}: {exc}"
                     )
+
+            if safe_trace is not None:
+                reason = "cancelled" if cancelled else (
+                    "completed" if result is not None and result.success else "failed"
+                )
+                try:
+                    safe_trace.finish(reason)
+                except CodexSafeTraceError:
+                    if not cancelled:
+                        result = PluginResult(
+                            success=False, error="Codex safe trace could not close"
+                        )
 
             if trace is not None:
                 trace.event(

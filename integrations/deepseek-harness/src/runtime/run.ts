@@ -376,7 +376,8 @@ async function createDshRuntimeRun(
     }
     for (const key of [
       'DSH_RUNTIME_RUN_ID', 'DSH_RUNTIME_CALL_TRACE_PATH',
-      'DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR', 'DSH_API_AGENT_SAFE_EVENT_TRACE_DIR',
+      'DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR', 'DSH_CODEX_SAFE_EVENT_TRACE_DIR',
+      'DSH_API_AGENT_SAFE_EVENT_TRACE_DIR',
     ]) {
       if (Object.hasOwn(spec.env, key)) {
         throw new Error(`subagent-dsh-runtime: ${key} conflicts with Host-owned evidence paths`)
@@ -395,6 +396,7 @@ async function createDshRuntimeRun(
       // Host-generated evidence filename crosses the legacy MAX_PATH limit.
       DSH_RUNTIME_CALL_TRACE_PATH: toNamespacedPath(callTracePath),
       DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR: toNamespacedPath(safeTraceDir),
+      DSH_CODEX_SAFE_EVENT_TRACE_DIR: toNamespacedPath(safeTraceDir),
       DSH_API_AGENT_SAFE_EVENT_TRACE_DIR: toNamespacedPath(safeTraceDir),
     }
     evidencePaths = {

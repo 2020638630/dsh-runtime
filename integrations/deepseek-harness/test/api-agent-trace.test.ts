@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { inspectApiAgentTrace } from '../src/runtime/api-agent-trace-evidence.ts'
+import { inspectCodexTrace } from '../src/runtime/codex-trace-evidence.ts'
 import { writeTerminalEvidence } from '../src/runtime/evidence-manifest.ts'
 import { captureWorkspace } from '../src/runtime/workspace-evidence.ts'
 
@@ -40,6 +41,88 @@ function fixture(
   }) + '\n')
   return { traceDir, tracePath }
 }
+
+function addCodexTrace(traceDir: string) {
+  const traceId = 'b'.repeat(32)
+  const tracePath = join(traceDir, `codex-safe-worker-${traceId}.jsonl`)
+  const base = {
+    schema_version: 1, trace_id: traceId,
+    captured_at_utc: '2026-10-24T00:00:00+00:00',
+    tool_name: null, tool_status: null, native_status: null,
+    terminal_reason: null, trace_complete: true,
+  }
+  const records = [
+    { ...base, event_seq: 0, event_type: 'started' },
+    { ...base, event_seq: 1, event_type: 'tool_call',
+      tool_name: 'commandExecution', tool_status: 'completed' },
+    { ...base, event_seq: 2, event_type: 'tool_call',
+      tool_name: 'fileChange', tool_status: 'completed' },
+    { ...base, event_seq: 3, event_type: 'native_terminal', native_status: 'completed' },
+    { ...base, event_seq: 4, event_type: 'terminal', terminal_reason: 'completed' },
+  ]
+  const bytes = Buffer.from(records.map(event => JSON.stringify(event)).join('\n') + '\n')
+  writeFileSync(tracePath, bytes)
+  writeFileSync(`${tracePath}.closed`, JSON.stringify({
+    schema_version: 1, run_id: RUN_ID, trace_id: traceId, final_bytes: bytes.length,
+  }) + '\n')
+  return tracePath
+}
+
+test('Codex worker trace and API reviewer trace remain separately attributable', async () => {
+  const { traceDir } = fixture('reviewer')
+  const tracePath = addCodexTrace(traceDir)
+  const codex = await inspectCodexTrace({
+    runId: RUN_ID, traceDir, tracePath, processExited: true,
+  })
+  assert.deepEqual(codex, {
+    status: 'available', traceComplete: true,
+    toolOperationsSummary: { commandExecution: 1, fileChange: 1 },
+  })
+  const manifest = await changeManifest(traceDir, 2, 'codex')
+  assert.equal(manifest.execution_trajectory.source, 'codex_safe_event_trace')
+  assert.equal(manifest.execution_trajectory.status, 'available')
+  assert.equal(manifest.execution_trajectory.trace_complete, true)
+  assert.deepEqual(manifest.execution_trajectory.tool_operations_summary,
+    { commandExecution: 1, fileChange: 1 })
+  assert.equal(manifest.review_trajectory.status, 'available')
+  assert.equal(manifest.review_trajectory.tool_operations_summary.read_file, 1)
+})
+
+test('Codex worker trace is incomplete when its closure disagrees', async () => {
+  const { traceDir } = fixture('reviewer')
+  const tracePath = addCodexTrace(traceDir)
+  writeFileSync(`${tracePath}.closed`, JSON.stringify({
+    schema_version: 1, run_id: RUN_ID, trace_id: 'b'.repeat(32), final_bytes: 1,
+  }) + '\n')
+  const evidence = await inspectCodexTrace({
+    runId: RUN_ID, traceDir, tracePath, processExited: true,
+  })
+  assert.equal(evidence.status, 'incomplete')
+  const manifest = await changeManifest(traceDir, 2, 'codex')
+  assert.equal(manifest.execution_trajectory.status, 'incomplete')
+  assert.equal(manifest.execution_trajectory.tool_operations_summary, null)
+})
+
+test('Codex worker trace rejects extra content and invalid event order', async () => {
+  const { traceDir } = fixture('reviewer')
+  const tracePath = addCodexTrace(traceDir)
+  const original = readFileSync(tracePath, 'utf8').trimEnd().split('\n').map(line => JSON.parse(line))
+  for (const events of [
+    original.map((event, index) => index === 1 ? { ...event, command: 'private text' } : event),
+    original.map((event, index) => index === 3 ? { ...event, event_type: 'started' } : event),
+    original.map((event, index) => index === 4 ? { ...event, terminal_reason: 'failed' } : event),
+  ]) {
+    const bytes = Buffer.from(events.map(event => JSON.stringify(event)).join('\n') + '\n')
+    writeFileSync(tracePath, bytes)
+    writeFileSync(`${tracePath}.closed`, JSON.stringify({
+      schema_version: 1, run_id: RUN_ID, trace_id: 'b'.repeat(32), final_bytes: bytes.length,
+    }) + '\n')
+    const evidence = await inspectCodexTrace({
+      runId: RUN_ID, traceDir, tracePath, processExited: true,
+    })
+    assert.equal(evidence.status, 'incomplete')
+  }
+})
 
 test('API Agent trace reader returns only bounded metadata after closure', async () => {
   const { traceDir, tracePath } = fixture()

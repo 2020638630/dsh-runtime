@@ -48,6 +48,13 @@ input.on('line', (line) => {
       } })
       return
     }
+    if (mode === 'tool-success') {
+      for (const type of ['commandExecution', 'fileChange']) {
+        send({ jsonrpc: '2.0', method: 'item/completed', params: {
+          threadId, turnId, item: { type, status: 'completed', rawSensitiveArgument: 'do not persist' },
+        } })
+      }
+    }
     const prompt = params.input?.[0]?.text ?? ''
     const cwd = process.cwd()
     send({

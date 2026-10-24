@@ -4,11 +4,13 @@ import { readdir, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { inspectCallTrace } from './call-trace-evidence.ts'
 import { inspectApiAgentTrace } from './api-agent-trace-evidence.ts'
+import { inspectCodexTrace } from './codex-trace-evidence.ts'
 import { inspectSafeTrace } from './safe-trace-evidence.ts'
 import { captureWorkspace, compareWorkspace, type WorkspaceSnapshot } from './workspace-evidence.ts'
 import type { DshRuntimeTaskKind, RuntimeTaskState } from './run.ts'
 
 const TRACE_NAME = /^codebuddy-safe-worker-[0-9a-f]{32}\.jsonl$/u
+const CODEX_TRACE_NAME = /^codex-safe-worker-[0-9a-f]{32}\.jsonl$/u
 const API_TRACE_NAME = /^api-agent-safe-role-[0-9a-f]{32}\.jsonl$/u
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u
 
@@ -64,8 +66,11 @@ export async function writeTerminalEvidence(input: {
   const changes = compareWorkspace(input.before, after)
   const safeTraceNames = await readdir(input.safeTraceDir)
   const traceNames = safeTraceNames.filter(name => TRACE_NAME.test(name))
+  const codexTraceNames = safeTraceNames.filter(name => CODEX_TRACE_NAME.test(name))
+  const workerTraceNames = input.expectedWorkerAdapter === 'codex'
+    ? codexTraceNames : traceNames
   const apiTraceNames = safeTraceNames.filter(name => API_TRACE_NAME.test(name))
-  const traceName = traceNames.length === 1 ? traceNames[0] : undefined
+  const traceName = workerTraceNames.length === 1 ? workerTraceNames[0] : undefined
   const apiTraceName = apiTraceNames.length === 1 ? apiTraceNames[0] : undefined
   const apiInspection = input.taskKind === 'repository_inspection'
     && (input.expectedApiInspector === true || apiTraceNames.length > 0)
@@ -85,11 +90,15 @@ export async function writeTerminalEvidence(input: {
     : input.taskKind === 'repository_inspection'
       ? { status: 'not_applicable' as const, traceComplete: false, toolOperationsSummary: null }
     : traceFile === null
-      ? { status: traceNames.length === 0 ? 'unavailable' as const : 'unknown' as const,
+      ? { status: workerTraceNames.length === 0 ? 'unavailable' as const : 'unknown' as const,
         traceComplete: false, turnsUsed: null, toolOperationsSummary: null }
-      : await inspectSafeTrace({
-        runId, traceDir: input.safeTraceDir, tracePath: traceFile, processExited: true,
-      })
+      : input.expectedWorkerAdapter === 'codex'
+        ? await inspectCodexTrace({
+          runId, traceDir: input.safeTraceDir, tracePath: traceFile, processExited: true,
+        })
+        : await inspectSafeTrace({
+          runId, traceDir: input.safeTraceDir, tracePath: traceFile, processExited: true,
+        })
   const trajectory = apiInspection && 'roleName' in rawTrajectory
     && rawTrajectory.status === 'available' && rawTrajectory.roleName !== 'inspector'
     ? { ...rawTrajectory, status: 'incomplete' as const, traceComplete: false,
@@ -128,7 +137,9 @@ export async function writeTerminalEvidence(input: {
     },
     workspace_changes: { ...changes, diff: undefined, diff_content_ref: diffPath },
     execution_trajectory: {
-      source: apiInspection ? 'api_agent_safe_event_trace' : 'safe_event_trace',
+      source: apiInspection ? 'api_agent_safe_event_trace'
+        : input.expectedWorkerAdapter === 'codex' ? 'codex_safe_event_trace'
+          : 'safe_event_trace',
       status: trajectory.status,
       trace_complete: trajectory.traceComplete,
       trace_scope: 'observed_stream_complete', trace_file: traceFile,
