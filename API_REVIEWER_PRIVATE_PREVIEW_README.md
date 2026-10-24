@@ -2,7 +2,7 @@
 
 本包配合**未修改的官方 DeepSeekHarness `0.2.1-rc.2`**。它安装独立 Home/Profile 和 Runtime 源码快照；已有日常 Home 不作为安装目标。worker 可选 CodeBuddy 或 Codex CLI；reviewer/inspector 为只读模型 API。API worker 写工具仍关闭；D2 ExecuteGate 为 `NOT_CLAIMED`。
 
-包内 `manifest.json` 列出插件 TGZ、Runtime ZIP 的 SHA-256 与固定源码提交。`Install-ApiReviewerPreview.ps1` 在写入前核对这两个摘要、目标目录不存在、Home/Runtime 不互相嵌套且外部连接文件不在二者内；随后离线或在线安装插件。包不含 API key、Home、会话或已有 Profile；安装器只把外部 `ConnectionPath` 路径写入新 Profile，不复制文件内容。
+包内 `manifest.json` 列出插件 TGZ、Runtime ZIP 的 SHA-256 与固定源码提交。`Install-ApiReviewerPreview.ps1` 在写入前核对这两个摘要、目标目录不存在、Home/Runtime 不互相嵌套且外部连接文件不在二者内；它还用包内 Runtime 解析器核对连接文件、引用名和 provider，失败时只给固定错误提示，不输出 key。随后离线或在线安装插件。包不含 API key、Home、会话或已有 Profile；安装器只把外部 `ConnectionPath` 路径写入新 Profile，不复制文件内容。
 
 安装参数：`-KitRoot` 为解包目录；`-HomeRoot` 和 `-RuntimeRoot` 必须是两个不存在的独立目录；`-ConnectionPath` 指向用户自己保管的连接 JSON；`-PythonPath`、`-PnpmPath` 指向本机程序。`-WorkerAdapter` 只能为 `codebuddy`（默认）或 `codex`；`-WorkerModel` 默认为空，即使用 CLI 自身默认模型，也可填写该 CLI 支持的模型 ID。所选 CLI 必须在运行机器上可用，安装器不会安装 CLI 或探测其账户额度。`-Provider` 只能为 `siliconflow` 或 `openrouter`；`-ConnectionRef`、`-ReviewerModel`、`-InspectorModel` 必须与外部连接配置和实际供应商能力一致。安装器先校验 Manifest 中的七个 Python wheel 摘要，再在新 Runtime 目录创建专用 Python venv，从包内 wheelhouse 安装 `httpx==0.28.1` 及固定依赖；**不会访问 Python 包索引或修改共享 Python**。`-Offline` 仅控制 pnpm，它要求本机 pnpm 缓存已有插件依赖。安装器当前不自动验证官方 Host 程序版本，启动前须核对为 `0.2.1-rc.2`；建议先在没有真实会话的新 Home 中安装和配置检查，再做独立临时仓库验收。
 

@@ -106,6 +106,19 @@ foreach ($target in @($homePath, $runtimePath, $profilePath, $installedPlugin)) 
   if (Test-Path -LiteralPath $target) { throw "Refusing to overwrite existing path: $target" }
 }
 
+$checkConnection = @'
+import sys
+from pathlib import Path
+try:
+    sys.path.insert(0, sys.argv[1])
+    from dsh_runtime.api_agent_connections import ConnectionCatalog
+    ConnectionCatalog.from_file(Path(sys.argv[2])).get(sys.argv[3], sys.argv[4])
+except Exception:
+    sys.exit(1)
+'@
+& $PythonPath -c $checkConnection $runtimeFile $connectionFile $ConnectionRef $Provider
+if ($LASTEXITCODE -ne 0) { throw 'Connection configuration validation failed.' }
+
 Expand-Archive -LiteralPath $runtimeFile -DestinationPath $runtimePath
 if (-not (Test-Path -LiteralPath (Join-Path $runtimePath 'dsh_runtime\entrypoint.py'))) {
   throw 'Runtime snapshot is incomplete.'
