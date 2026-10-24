@@ -332,6 +332,27 @@ def test_protocol_failure_is_safe_and_not_raw_json(tmp_path: Path, monkeypatch) 
     assert "jsonrpc" not in (result.error or "")
 
 
+def test_unsupported_model_failure_is_actionable_without_raw_message(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("DSH_CODEX_STUB_MODE", "unsupported-model")
+
+    async def scenario():
+        return await executor_with(plugin()).execute(
+            "codex", context(tmp_path), {"prompt": "fail"}, 1.0
+        )
+
+    result = asyncio.run(scenario())
+
+    assert result.success is False
+    assert result.stop_reason is StopReason.FAILED
+    assert result.error == (
+        "Codex bounded invocation failed: "
+        "Codex model is not supported by this account"
+    )
+    assert "sensitive request detail" not in result.error
+
+
 def test_missing_codex_executable_is_bounded_failure(tmp_path: Path) -> None:
     async def scenario():
         missing = CodexPlugin(command=(str(tmp_path / "missing-codex"),))

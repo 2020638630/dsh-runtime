@@ -484,6 +484,19 @@ class _CodexSession:
                     continue
                 status = terminal.get("status")
                 if status != "completed":
+                    error = terminal.get("error")
+                    message = error.get("message") if isinstance(error, dict) else None
+                    if isinstance(message, str):
+                        normalized = message.lower()
+                        if "model" in normalized and (
+                            "not supported" in normalized
+                            or "unsupported" in normalized
+                        ):
+                            # The provider's message can contain request details.
+                            # Report only a fixed, actionable category to the Host.
+                            raise _CodexProtocolError(
+                                "Codex model is not supported by this account"
+                            )
                     raise _CodexProtocolError("Codex turn did not complete")
                 output = self.final_answer or self.unphased_answer
                 if not output:
