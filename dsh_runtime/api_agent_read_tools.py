@@ -49,7 +49,12 @@ class WorkspaceReadBroker:
             candidate = candidate / part
             if _linked(candidate):
                 raise ValueError("linked paths are not allowed")
-        target = (self.root / path).resolve(strict=True)
+        try:
+            target = (self.root / path).resolve(strict=True)
+        except OSError:
+            # A missing model-supplied path is correctable within the existing
+            # API reviewer budget; never echo the host path to the model.
+            raise ValueError("path is unavailable") from None
         if not target.is_relative_to(self.root):
             raise ValueError("path leaves workspace")
         if directory is True and not target.is_dir():

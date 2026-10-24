@@ -88,6 +88,15 @@ def test_read_file_on_fresh_isolated_git_repository(tmp_path):
         call(broker, "read_file", path=".git/config")
 
 
+def test_missing_relative_file_has_bounded_error(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    broker = WorkspaceReadBroker(workspace)
+    with pytest.raises(ValueError, match="^path is unavailable$") as failure:
+        call(broker, "read_file", path="missing-private-name.txt")
+    assert "missing-private-name" not in str(failure.value)
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows junction race probe")
 def test_file_replaced_by_junction_after_path_check_is_rejected(tmp_path, monkeypatch):
     workspace = tmp_path / "workspace"
