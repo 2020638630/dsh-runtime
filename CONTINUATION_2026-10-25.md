@@ -1,6 +1,6 @@
 # Independent Runtime plugin continuation
 
-Updated 2026-10-25. The active isolated candidate is `D:\DeepSeekHarness\vis-api-agent-stable-candidate-20261024` on `codex/api-agent-stable-20261024`; the historical evidence read regression is at `cf9db1e`. The original `D:\PythonProject\dsh-runtime` and `D:\DeepSeekHarness\deepseek-harness` worktrees have respectively 16 and 106 Git-visible entries; preserve every uncommitted and untracked item. Do not clean, reset, overwrite or move them. Formal D2 ExecuteGate remains `NOT_CLAIMED`.
+Updated 2026-10-25. The active isolated candidate is `D:\DeepSeekHarness\vis-api-agent-stable-candidate-20261024` on `codex/api-agent-stable-20261024`. At the last status check its HEAD was `b21cf28` and its worktree was clean. The original `D:\PythonProject\dsh-runtime` and `D:\DeepSeekHarness\deepseek-harness` worktrees had respectively 16 and 106 Git-visible entries; preserve every uncommitted and untracked item. Do not clean, reset, overwrite or move them. Formal D2 ExecuteGate remains `NOT_CLAIMED`.
 
 ## Completed in the isolated candidate
 
@@ -13,6 +13,7 @@ Updated 2026-10-25. The active isolated candidate is `D:\DeepSeekHarness\vis-api
 - `be80579`: this continuation record and fixed probe coordinates.
 - `43a1798`: historical evidence relocation sidecar design and acceptance matrix, with no reader relaxation.
 - `cf9db1e`: original evidence read, copied-root rejection, wrong-parent rejection and missing-run regression. `pnpm test:terminal-evidence` passes 1/1.
+- `b21cf28`: direct `CreateFileW`/`CreateHardLinkW` counterexample recorded; API worker write remains disabled.
 
 Focused inventory tests pass 5/5, evidence Home tests 2/2, TypeScript typecheck passes, and the PowerShell source scripts parse. The original r10 private ZIP hash remains `1729C4ADB89CCE2733724A5F4CB74AC2EC4C127AFDCB91C5C8CC79F174BFB159`.
 
@@ -27,6 +28,6 @@ The unmodified official `@deepseek-ai/dsh@0.2.1-rc.3` passed fresh install, conf
 1. Design a verifiable relocation format for historical evidence without rewriting original Manifest bytes. A sidecar or new Manifest version needs source/copy digest binding, explicit UI provenance and adversarial tests. Until then, replay only from the original evidence root.
 2. Keep the official update gate small: compare exact installed packages first, then run only the tier required by changed surfaces. If official tool/subagent/reviewer artifacts change, use a fresh bounded trial repository and retain both terminal traces, Manifest, audit, exact bytes and drawer result. Do not repeat a model task for a metadata-only change without a concrete regression signal.
 3. API worker write remains closed. The Windows create-only experiment found that another path could hardlink the staged file even with an exclusive handle; the last link-count check and commit cannot currently be proven atomic. Preserve this safety boundary and the CLI worker fallback while researching a stronger primitive.
-   A separate direct Win32 reproduction is recorded at `D:\DeepSeekHarness\hardlink-share-probe-20261025\RESULT.md`: `CreateFileW` with share mode zero followed by `CreateHardLinkW` succeeded on this machine, producing the same inode with two links. This conflicts with the broad wording in Microsoft documentation, so do not treat that wording as a safety proof for this environment.
+   A separate direct Win32 reproduction is recorded at `D:\DeepSeekHarness\hardlink-share-probe-20261025\RESULT.md`: `CreateFileW` with share mode zero followed by `CreateHardLinkW` succeeded on this machine, producing the same inode with two links. Adding `FILE_FLAG_DELETE_ON_CLOSE` also allowed a new hard link; after handle close its alias remained. This conflicts with the broad wording in Microsoft documentation, so do not treat that wording as a safety proof for this environment.
 4. The second Windows device's final PASS run raw Manifest, `.closed` traces and audit remain unavailable. Do not claim independent cross-device proof or promote a stable/daily replacement on that basis. The user deferred second-device work; progress on local work without asking for it again.
 5. Keep the old private Harness branch and daily Home as rollback until the independent plugin has its full release evidence. Review old branches one at a time only after this gate; do not batch-delete or reset worktrees.
