@@ -75,6 +75,41 @@ test('missing and conflicting installed packages fail closed', t => {
     versions: ['0.2.1-rc.2', '0.3.0'] }])
 })
 
+test('a stale pnpm store entry does not conflict with the directly linked package', t => {
+  const fixture = makeFixture(t)
+  const stale = join(fixture.plugin, 'node_modules', '.pnpm', '@deepseek-ai+dsh-tools@0.1.0',
+    'node_modules', '@deepseek-ai', 'dsh-tools')
+  mkdirSync(join(stale, 'lib'), { recursive: true })
+  writeFileSync(join(stale, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-tools', version: '0.1.0' }))
+  writeFileSync(join(stale, 'lib', 'index.js'), 'export const value = 0\n')
+  const snapshot = collectHostSnapshot(fixture.host, fixture.plugin)
+  assert.deepEqual(snapshot.issues, [])
+  assert.equal(snapshot.packages['@deepseek-ai/dsh-tools'].version, '0.2.1-rc.2')
+})
+
+test('installed plugin inventory may use a separate source root for imports', t => {
+  const fixture = makeFixture(t)
+  const installed = join(fixture.plugin, '..', 'installed-profile')
+  fixture.addPackage(installed, 'dsh-tools', '0.2.1-rc.2')
+  const snapshot = collectHostSnapshot(fixture.host, installed, fixture.plugin)
+  assert.deepEqual(snapshot.issues, [])
+  assert.deepEqual(snapshot.imported_packages, ['@deepseek-ai/dsh', '@deepseek-ai/dsh-tools'])
+  assert.equal(snapshot.packages['@deepseek-ai/dsh-tools'].version, '0.2.1-rc.2')
+})
+
+test('Windows-shortened pnpm store names resolve through the package directory', t => {
+  const fixture = makeFixture(t)
+  const installed = join(fixture.plugin, '..', 'short-name-profile')
+  const packageRoot = join(installed, 'node_modules', '.pnpm', '@deepseek-ai+dsh-to_opaquehash',
+    'node_modules', '@deepseek-ai', 'dsh-tools')
+  mkdirSync(join(packageRoot, 'lib'), { recursive: true })
+  writeFileSync(join(packageRoot, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-tools', version: '0.2.1-rc.2' }))
+  writeFileSync(join(packageRoot, 'lib', 'index.js'), 'export const value = 1\n')
+  const snapshot = collectHostSnapshot(fixture.host, installed, fixture.plugin)
+  assert.deepEqual(snapshot.issues, [])
+  assert.equal(snapshot.packages['@deepseek-ai/dsh-tools'].version, '0.2.1-rc.2')
+})
+
 test('runner declaration must match the installed official Host', t => {
   const fixture = makeFixture(t)
   writeFileSync(join(fixture.host, 'package.json'), JSON.stringify({ dependencies: { '@deepseek-ai/dsh': '0.3.0' } }))

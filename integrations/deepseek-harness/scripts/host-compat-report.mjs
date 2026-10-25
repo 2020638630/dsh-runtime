@@ -62,20 +62,25 @@ function importedPackages(pluginRoot) {
 function candidateRoots(hostRoot, name) {
   const suffix = name.slice('@deepseek-ai/'.length)
   const nodeModules = join(hostRoot, 'node_modules')
-  const roots = [join(nodeModules, '@deepseek-ai', suffix)]
+  const direct = join(nodeModules, '@deepseek-ai', suffix)
+  // pnpm keeps old store entries after an upgrade. A direct link is the
+  // package this root resolves; stale store entries are not installed variants.
+  if (existsSync(join(direct, 'package.json'))) return [direct]
+  const roots = []
   const store = join(nodeModules, '.pnpm')
   if (existsSync(store)) {
     for (const entry of readdirSync(store)) {
-      if (entry.startsWith(`@deepseek-ai+${suffix}@`)) {
-        roots.push(join(store, entry, 'node_modules', '@deepseek-ai', suffix))
-      }
+      // pnpm shortens long peer-qualified directory names on Windows, so the
+      // folder name alone cannot identify a package. Check its package path.
+      const candidate = join(store, entry, 'node_modules', '@deepseek-ai', suffix)
+      if (existsSync(join(candidate, 'package.json'))) roots.push(candidate)
     }
   }
   return roots.filter(root => existsSync(join(root, 'package.json')))
 }
 
-export function collectHostSnapshot(hostRoot, pluginRoot) {
-  const requested = importedPackages(pluginRoot)
+export function collectHostSnapshot(hostRoot, pluginRoot, importsRoot = pluginRoot) {
+  const requested = importedPackages(importsRoot)
   const packages = {}
   const issues = []
   for (const name of requested) {
@@ -149,8 +154,9 @@ function cli() {
   }
   const host = value('--host')
   const plugin = value('--plugin')
-  if (!host || !plugin) throw new Error('Usage: node host-compat-report.mjs --host HOST_RUNNER --plugin PLUGIN_ROOT [--baseline REPORT.json]')
-  const snapshot = collectHostSnapshot(host, plugin)
+  const importsFrom = value('--imports-from') ?? plugin
+  if (!host || !plugin) throw new Error('Usage: node host-compat-report.mjs --host HOST_RUNNER --plugin PLUGIN_ROOT [--imports-from SOURCE_ROOT] [--baseline REPORT.json]')
+  const snapshot = collectHostSnapshot(host, plugin, importsFrom)
   const baseline = value('--baseline')
   const comparison = baseline ? compareHostSnapshots(readJson(baseline).snapshot, snapshot) : null
   process.stdout.write(`${JSON.stringify({ snapshot, comparison }, null, 2)}\n`)
