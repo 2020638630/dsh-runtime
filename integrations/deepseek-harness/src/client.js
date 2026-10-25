@@ -32,6 +32,8 @@ window.__ModuleLoader__.load({
         && typeof audit?.status === 'string'
         && typeof verification?.verdict === 'string'
         && typeof value.diff === 'string'
+        && (value.relocation === undefined || (value.relocation?.status === 'verified_copy'
+          && typeof value.relocation?.createdAt === 'string'))
     }
 
     const panel = { padding: '16px 20px', overflow: 'auto', overflowWrap: 'anywhere' }
@@ -110,7 +112,7 @@ window.__ModuleLoader__.load({
         && changes?.observation_boundary === 'window_observed_changes'
       const scope = manifest?.evidence_scope
       const attributionKnown = scope?.change_attribution === 'not_established_shared_workspace'
-      const summary = ready ? `${manifest.status} · ${Math.round(manifest.duration_ms / 1000)} 秒`
+      const summary = ready ? `${manifest.status} · ${Math.round(manifest.duration_ms / 1000)} 秒${ready.relocation ? ' · 历史证据副本' : ''}`
         : state === 'waiting' ? (id ? `等待证据 ${Math.max(0, Math.round((now - start) / 1000))} 秒` : '正在启动')
           : state === 'aborted' ? '已取消'
             : state === 'error' ? '运行失败' : '终态证据不可用'
@@ -162,6 +164,8 @@ window.__ModuleLoader__.load({
         h('header', { style: { ...panel, display: 'flex', justifyContent: 'space-between' } },
           h('strong', null, 'DSH Runtime'), h('button', { type: 'button', 'aria-label': '关闭', style: button, onClick: () => setOpen(false) }, '×')),
         h('div', { style: panel }, `任务状态：${manifest.status}　模型审查判决：${manifest.verification.verdict}`),
+        ready.relocation && h('div', { style: panel },
+          `历史证据副本：复制哈希已核对（${ready.relocation.createdAt}）。此校验只证明副本与迁移收据一致，不证明原始任务或审查正确。`),
         h('nav', { 'aria-label': 'DSH Runtime', style: { display: 'flex', padding: '0 16px' } },
           Object.entries(labels).map(([name, label]) => h('button', { key: name, type: 'button',
             'aria-current': tab === name ? 'page' : undefined,

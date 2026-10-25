@@ -6,7 +6,8 @@ import { runInNewContext } from 'node:vm'
 
 const source = readFileSync(join(import.meta.dirname, '..', '..', 'src', 'client.js'), 'utf8')
 
-function render(tab: string, changes: Record<string, unknown>, scope?: Record<string, unknown>): string {
+function render(tab: string, changes: Record<string, unknown>, scope?: Record<string, unknown>,
+  relocation?: { status: 'verified_copy'; createdAt: string }): string {
   let registered: ((props: Record<string, unknown>) => unknown) | undefined
   const react = {
     createElement: (type: unknown, props: unknown, ...children: unknown[]) => ({ type, props, children }),
@@ -20,7 +21,7 @@ function render(tab: string, changes: Record<string, unknown>, scope?: Record<st
             verification: { verdict: 'PASS', evidence_text: 'model report' },
             execution_trajectory: { status: 'available', turns_used: null },
             audit: { status: 'settled', call_id: 'id', stdout_sha256: 'hash' },
-          }, diff: 'patch text' }, true, tab, Date.now(),
+          }, diff: 'patch text', relocation }, true, tab, Date.now(),
         ]
         return [values[index++] ?? initial, () => {}]
       }
@@ -64,6 +65,14 @@ test('drawer separates model verdict from bounded snapshot and uncertain attribu
   assert.match(text, /变动归属：未证明/u)
   assert.match(text, /新增：one\.txt/u)
   assert.match(render('audit', changes, scope), /判决范围：模型报告/u)
+})
+
+test('drawer identifies a verified historical copy without presenting its hashes as task proof', () => {
+  const changes = { added_files: [], modified_files: [], deleted_files: [] }
+  const text = render('audit', changes, undefined,
+    { status: 'verified_copy', createdAt: '2026-10-25T00:00:00.000Z' })
+  assert.match(text, /历史证据副本/u)
+  assert.match(text, /不证明原始任务或审查正确/u)
 })
 
 test('drawer does not present a file list as confirmed without snapshot metadata', () => {

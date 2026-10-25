@@ -1,8 +1,8 @@
 # Historical evidence relocation design (proposal)
 
-Status: design only. The current authenticated route accepts only a Manifest whose absolute `workspace_changes.diff_content_ref` resolves to the `diff.patch` in the selected evidence root. The read-only `check-evidence-home.mjs` detects an incompatible copied root. Neither command nor route repairs historical evidence.
+Status: experimental implementation in the isolated `codex/evidence-relocation-20261025` branch. The qualified daily candidate still accepts only a Manifest whose absolute `workspace_changes.diff_content_ref` resolves to the `diff.patch` in the selected evidence root. Nothing migrates automatically. The original evidence root remains required for the qualified daily entry.
 
-`pnpm test:terminal-evidence` fixes the current fail-closed behavior as a regression: an original run reads, its byte-identical copied run is rejected, a wrong parent is rejected, and a missing run returns no evidence. The future relocation implementation must add explicit receipt cases rather than weakening this original-path check.
+`pnpm test:terminal-evidence` covers original reads, copied-root rejection without a receipt, receipt-verified replay, altered Diff/trace/receipt rejection, wrong parent, missing run and parent ownership. `pnpm test:copy-terminal-evidence` covers the explicit copier. These focused tests do not yet qualify a daily release.
 
 ## Goal and invariant
 
@@ -23,11 +23,13 @@ A trusted, explicit migration command copies one run into a new Home only when t
 
 The receipt is an integrity statement about the copy, **not** a signature or independent proof that the source Runtime task was correct. If a malicious actor can alter both the source and receipt, these hashes alone cannot establish authenticity. Do not represent them as such.
 
+The experimental installed command is `dsh-runtime-copy-evidence --source-evidence-root ABS_SOURCE_EVIDENCE --target-evidence-root ABS_EMPTY_TARGET_EVIDENCE --run-id dsh-runtime-UUID --workspace-id SESSION_ID` (`node scripts/copy-terminal-evidence.mjs` from source). It copies one settled run only, refuses an existing target run, rejects symbolic and multiply linked files, and leaves any interrupted `.dsh-evidence-copy-*` staging directory visible for diagnosis. It does not clean that directory automatically. The caller must create the destination evidence root and arrange the corresponding Session migration separately. It copies the bounded top-level artifacts plus the Runtime-owned `safe-trace-<run-id>` directory, retaining original file bytes. Never point an active daily Profile at an experimental target.
+
 ## Read contract
 
 The Host first follows today's strict original-path check. On mismatch, it may consider a relocation receipt only when the run directory and files are bounded regular files inside the selected evidence root. It must validate receipt schema, identities, the exact original Diff reference, all recorded hashes, and a fixed relative `diff.patch` name. It reads via bound handles to avoid a path swap between validation and content reads. Missing, malformed, oversized, symlinked, conflicting or digest-mismatched receipts fail closed. The authenticated Session ownership check remains unchanged.
 
-If accepted, the route returns a separate relocation status (for example `verified_copy`) alongside the unchanged Manifest and Diff. The drawer must display that this is a migrated copy and keep the model verdict and snapshot attribution labels distinct. If the original root is still available, compare its current digest inventory with the receipt when migrating; replay later must not require the original disk to remain mounted.
+If accepted, the route returns `relocation: { status: 'verified_copy', createdAt }` alongside the unchanged Manifest and Diff. The drawer displays a historical-copy label and explains that hashes do not prove task correctness. The copier compares source and destination bytes at migration time; replay later does not require the original disk to remain mounted.
 
 ## Acceptance before implementation is enabled
 
