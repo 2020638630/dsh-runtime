@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { test } from 'node:test'
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { collectHostSnapshot, compareHostSnapshots } from '../scripts/host-compat-report.mjs'
 
 function makeFixture(t) {
@@ -59,6 +61,32 @@ test('version-only package metadata does not imply imported code changed', t => 
   assert.equal(result.classification, 'PACKAGE_METADATA_CHANGED')
   assert.deepEqual(result.metadata_only_packages, ['@deepseek-ai/dsh-tools'])
   assert.deepEqual(result.artifact_changed_packages, [])
+  assert.equal(result.minimum_gate, 'focused-or-higher')
+})
+
+test('installed package digest detects bin and non-lib entry file changes', t => {
+  const fixture = makeFixture(t)
+  mkdirSync(join(fixture.dsh, 'bin'))
+  writeFileSync(join(fixture.dsh, 'bin', 'cli.js'), 'console.log(1)\n')
+  writeFileSync(join(fixture.tools, 'entry.js'), 'export const entry = 1\n')
+  const before = collectHostSnapshot(fixture.host, fixture.plugin)
+  writeFileSync(join(fixture.dsh, 'bin', 'cli.js'), 'console.log(2)\n')
+  assert.equal(compareHostSnapshots(before, collectHostSnapshot(fixture.host, fixture.plugin)).classification, 'HOST_SHELL_CHANGED')
+  writeFileSync(join(fixture.tools, 'entry.js'), 'export const entry = 2\n')
+  assert.equal(compareHostSnapshots(before, collectHostSnapshot(fixture.host, fixture.plugin)).classification, 'IMPORTED_ARTIFACT_CHANGED')
+})
+
+test('import inventory reads source syntax without comments or string false positives', t => {
+  const fixture = makeFixture(t)
+  const src = join(fixture.plugin, 'src')
+  writeFileSync(join(src, 'panel.tsx'), "export { x } from '@deepseek-ai/dsh-ui/subpath'\n")
+  writeFileSync(join(src, 'dynamic.js'), "const x = await import(`@deepseek-ai/dsh-dynamic`)\nconst y = require('@deepseek-ai/dsh-required')\n")
+  writeFileSync(join(src, 'noise.ts'), "// from '@deepseek-ai/dsh-fake'\nconst text = \"from '@deepseek-ai/dsh-fake2'\"\n")
+  for (const name of ['dsh-ui', 'dsh-dynamic', 'dsh-required']) fixture.addPackage(fixture.plugin, name, '1.0.0')
+  const snapshot = collectHostSnapshot(fixture.host, fixture.plugin)
+  assert.deepEqual(snapshot.issues, [])
+  assert.deepEqual(snapshot.imported_packages, ['@deepseek-ai/dsh', '@deepseek-ai/dsh-dynamic',
+    '@deepseek-ai/dsh-required', '@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-ui'])
 })
 
 test('missing and conflicting installed packages fail closed', t => {
@@ -85,6 +113,43 @@ test('a stale pnpm store entry does not conflict with the directly linked packag
   const snapshot = collectHostSnapshot(fixture.host, fixture.plugin)
   assert.deepEqual(snapshot.issues, [])
   assert.equal(snapshot.packages['@deepseek-ai/dsh-tools'].version, '0.2.1-rc.2')
+})
+
+test('a stale Host store entry does not conflict with a linked Host dependency', t => {
+  const fixture = makeFixture(t)
+  const virtual = join(fixture.host, 'node_modules', '.pnpm', '@deepseek-ai+dsh@0.2.1-rc.2', 'node_modules')
+  const installedHost = join(virtual, '@deepseek-ai', 'dsh')
+  mkdirSync(join(installedHost, 'lib'), { recursive: true })
+  writeFileSync(join(installedHost, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '0.2.1-rc.2',
+    dependencies: { '@deepseek-ai/dsh-tools': '0.2.1-rc.2' } }))
+  writeFileSync(join(installedHost, 'lib', 'index.js'), 'export const value = 1\n')
+  rmSync(fixture.dsh, { recursive: true })
+  symlinkSync(installedHost, fixture.dsh, process.platform === 'win32' ? 'junction' : 'dir')
+  const linkedTool = join(virtual, '@deepseek-ai', 'dsh-tools')
+  mkdirSync(join(linkedTool, 'lib'), { recursive: true })
+  writeFileSync(join(linkedTool, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-tools', version: '0.2.1-rc.2' }))
+  writeFileSync(join(linkedTool, 'lib', 'index.js'), 'export const value = 1\n')
+  const stale = join(fixture.host, 'node_modules', '.pnpm', '@deepseek-ai+dsh-tools@0.1.0',
+    'node_modules', '@deepseek-ai', 'dsh-tools')
+  mkdirSync(join(stale, 'lib'), { recursive: true })
+  writeFileSync(join(stale, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-tools', version: '0.1.0' }))
+  writeFileSync(join(stale, 'lib', 'index.js'), 'export const value = 0\n')
+  const snapshot = collectHostSnapshot(fixture.host, fixture.plugin)
+  assert.deepEqual(snapshot.issues, [])
+  writeFileSync(join(linkedTool, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-tools', version: '0.3.0' }))
+  assert.deepEqual(collectHostSnapshot(fixture.host, fixture.plugin).issues,
+    [{ package: '@deepseek-ai/dsh-tools', reason: 'ambiguous-installed-variants', versions: ['0.2.1-rc.2', '0.3.0'] }])
+})
+
+test('unreachable stale Host store variants are ignored when Profile resolves one package', t => {
+  const fixture = makeFixture(t)
+  for (const version of ['0.1.0', '0.3.0']) {
+    const stale = join(fixture.host, 'node_modules', '.pnpm', `@deepseek-ai+dsh-tools@${version}`,
+      'node_modules', '@deepseek-ai', 'dsh-tools')
+    mkdirSync(stale, { recursive: true })
+    writeFileSync(join(stale, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-tools', version }))
+  }
+  assert.deepEqual(collectHostSnapshot(fixture.host, fixture.plugin).issues, [])
 })
 
 test('installed plugin inventory may use a separate source root for imports', t => {
@@ -115,4 +180,27 @@ test('runner declaration must match the installed official Host', t => {
   writeFileSync(join(fixture.host, 'package.json'), JSON.stringify({ dependencies: { '@deepseek-ai/dsh': '0.3.0' } }))
   assert.deepEqual(collectHostSnapshot(fixture.host, fixture.plugin).issues,
     [{ package: 'host-runner', reason: 'declared-host-version-mismatch' }])
+})
+
+test('missing pnpm lockfile and old snapshot schema stop comparison', t => {
+  const fixture = makeFixture(t)
+  const before = collectHostSnapshot(fixture.host, fixture.plugin)
+  rmSync(join(fixture.host, 'pnpm-lock.yaml'))
+  const after = collectHostSnapshot(fixture.host, fixture.plugin)
+  assert.ok(after.issues.some(issue => issue.reason === 'missing-pnpm-lockfile'))
+  assert.equal(compareHostSnapshots(before, after).classification, 'BLOCKED_INPUT')
+  assert.equal(compareHostSnapshots({ ...before, schema_version: 1 }, before).classification, 'BLOCKED_INPUT')
+})
+
+test('CLI executes through a directory junction rather than silently exiting', t => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-host-compat-cli-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const link = join(root, 'scripts-link')
+  symlinkSync(join(dirname(dirname(fileURLToPath(import.meta.url))), 'scripts'), link,
+    process.platform === 'win32' ? 'junction' : 'dir')
+  const run = spawnSync(process.execPath, [join(link, 'host-compat-report.mjs')], { encoding: 'utf8' })
+  if (run.error?.code === 'EPERM') return t.skip('sandbox denied child process; rerun outside process sandbox')
+  assert.ifError(run.error)
+  assert.equal(run.status, 2)
+  assert.match(run.stderr, /Usage: node host-compat-report\.mjs/u)
 })

@@ -26,3 +26,7 @@ The rc.30 package changes only its version and those eight declared dependency p
 ## Gate
 
 This qualifies an **experimental, no-model rc.30 alignment**, not a daily release. The rc.30 Profile has received its own visible old-session drawer check, but no bounded live worker/reviewer run. The second-device raw PASS evidence is deferred. Keep the qualified rc.2 daily candidate and its rollback Home unchanged.
+
+The `HOST_DEPENDENCY_CHANGED` row of `HOST_COMPATIBILITY_GATE.md` also requires a six-workspace historical session sample. The rc.30-specific checks above did **not** complete that sample; the single old r9 session and drawer replay do not satisfy it. Record this as an open acceptance item before any daily qualification. No claim is made here about a full rc.30 gate pass.
+
+On 2026-10-26 the inventory scanner was hardened after independent review. Its schema 2 package-wide digest and source-import parser invalidate schema 1 baseline comparisons. New read-only rc.3 inventories are saved at `D:\DeepSeekHarness\evidence-relocation-artifacts-20261025\rc30-host-inventory-v2-20261026.json` and `D:\DeepSeekHarness\evidence-relocation-artifacts-20261025\rc30-installed-host-inventory-v2-20261026.json`; each found 10 imported packages and zero issues. These same-version inventories are not an upgrade comparison or acceptance pass. The original schema 1 reports remain historical evidence.
