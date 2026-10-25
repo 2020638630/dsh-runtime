@@ -136,6 +136,11 @@ export async function writeTerminalEvidence(input: {
       phase_2_api_agent_effective_write: apiReview && task.iteration >= 2 ? false : null,
     },
     workspace_changes: { ...changes, diff: undefined, diff_content_ref: diffPath },
+    evidence_scope: {
+      review_verdict_basis: 'runtime_terminal_model_report',
+      workspace_change_basis: 'bounded_git_pre_post_snapshot',
+      change_attribution: 'not_established_shared_workspace',
+    },
     execution_trajectory: {
       source: apiInspection ? 'api_agent_safe_event_trace'
         : input.expectedWorkerAdapter === 'codex' ? 'codex_safe_event_trace'

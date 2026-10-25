@@ -105,6 +105,11 @@ window.__ModuleLoader__.load({
       const manifest = ready?.manifest
       const changes = manifest?.workspace_changes
       const count = changes ? changes.added_files.length + changes.modified_files.length + changes.deleted_files.length : 0
+      const observed = changes?.source === 'workspace_pre_post_snapshot_delta'
+        && changes?.baseline_compared === true
+        && changes?.observation_boundary === 'window_observed_changes'
+      const scope = manifest?.evidence_scope
+      const attributionKnown = scope?.change_attribution === 'not_established_shared_workspace'
       const summary = ready ? `${manifest.status} · ${Math.round(manifest.duration_ms / 1000)} 秒`
         : state === 'waiting' ? (id ? `等待证据 ${Math.max(0, Math.round((now - start) / 1000))} 秒` : '正在启动')
           : state === 'aborted' ? '已取消'
@@ -116,16 +121,22 @@ window.__ModuleLoader__.load({
           h('ul', { key: 'tools' }, Object.entries(trajectory.tool_operations_summary ?? {})
             .map(([name, count]) => h('li', { key: name }, `${name}：${count}`)))]
       } else if (ready && tab === 'changes') {
-        body = [line('运行窗口观察到的变化', count === 0 ? '无' : `${count} 项`),
-          line('新增', changes.added_files.join('、') || '无'),
-          line('修改', changes.modified_files.join('、') || '无'),
-          line('删除', changes.deleted_files.join('、') || '无'),
-          count ? line('补丁', changes.patch_applicable ? '可应用' : '仅供查看') : null,
-          ready.diff ? h('pre', { key: 'diff', style: pre }, ready.diff.slice(0, 200000)) : null]
+        body = [line('文件范围证据', observed ? '运行前后快照观察' : '不可用：未确认可比的前后快照'),
+          line('快照覆盖', observed ? 'Git 已跟踪文件及非忽略的未跟踪文件；受排除策略约束，补丁另有大小上限' : '未知'),
+          observed ? line('排除路径', Array.isArray(changes.scope_exclusions)
+            ? changes.scope_exclusions.join('、') || '无' : '未记录') : null,
+          line('变动归属', observed && attributionKnown ? '未证明；工作区未物理隔离，可能有并发编辑' : '未知'),
+          observed ? line('观察到的变化', count === 0 ? '无' : `${count} 项`) : null,
+          observed ? line('新增', changes.added_files.join('、') || '无') : null,
+          observed ? line('修改', changes.modified_files.join('、') || '无') : null,
+          observed ? line('删除', changes.deleted_files.join('、') || '无') : null,
+          observed && count ? line('补丁', changes.patch_applicable ? '可应用' : '仅供查看') : null,
+          observed && ready.diff ? h('pre', { key: 'diff', style: pre }, ready.diff.slice(0, 200000)) : null]
       } else if (ready) {
         const review = manifest.review_trajectory
         body = [line('审计状态', manifest.audit.status), line('调用 ID', manifest.audit.call_id),
-          line('输出摘要', manifest.audit.stdout_sha256), line('审查判决', manifest.verification.verdict),
+          line('输出摘要', manifest.audit.stdout_sha256), line('模型审查判决', manifest.verification.verdict),
+          line('判决范围', '模型报告；文件变化由独立快照观察，不能据此认定变动归属'),
           review?.source === 'api_agent_safe_event_trace'
             ? line('API 审查轨迹', review.status) : null,
           review?.source === 'api_agent_safe_event_trace' && review.terminal_reason
@@ -135,6 +146,7 @@ window.__ModuleLoader__.load({
           review?.source === 'api_agent_safe_event_trace' && review.status === 'available'
             ? h('ul', { key: 'review-tools' }, Object.entries(review.tool_operations_summary ?? {})
               .map(([name, count]) => h('li', { key: name }, `${name}：${count}`))) : null,
+          line('模型审查原文', ''),
           h('pre', { key: 'basis', style: pre }, manifest.verification.evidence_text ?? '未知')]
       }
       return h('div', { 'data-tool': 'dsh_runtime', style: { minWidth: 0 } },
@@ -149,7 +161,7 @@ window.__ModuleLoader__.load({
           style: { width: 'min(560px, 100vw)', height: '100%', background: 'var(--dsw-alias-bg-base, white)', display: 'flex', flexDirection: 'column' } },
         h('header', { style: { ...panel, display: 'flex', justifyContent: 'space-between' } },
           h('strong', null, 'DSH Runtime'), h('button', { type: 'button', 'aria-label': '关闭', style: button, onClick: () => setOpen(false) }, '×')),
-        h('div', { style: panel }, `任务状态：${manifest.status}　审查判决：${manifest.verification.verdict}`),
+        h('div', { style: panel }, `任务状态：${manifest.status}　模型审查判决：${manifest.verification.verdict}`),
         h('nav', { 'aria-label': 'DSH Runtime', style: { display: 'flex', padding: '0 16px' } },
           Object.entries(labels).map(([name, label]) => h('button', { key: name, type: 'button',
             'aria-current': tab === name ? 'page' : undefined,

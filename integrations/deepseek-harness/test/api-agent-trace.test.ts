@@ -303,6 +303,13 @@ test('API reviewer trace is separate from worker trace and Codex attribution', a
   assert.equal(manifest.authority_phases.phase_1_codebuddy_effective_write, true)
   assert.equal(manifest.authority_phases.phase_1_codex_effective_write, null)
   assert.equal(manifest.verification.verdict, 'PASS')
+  assert.deepEqual(manifest.evidence_scope, {
+    review_verdict_basis: 'runtime_terminal_model_report',
+    workspace_change_basis: 'bounded_git_pre_post_snapshot',
+    change_attribution: 'not_established_shared_workspace',
+  })
+  assert.equal(manifest.workspace_changes.baseline_compared, true)
+  assert.equal(manifest.workspace_changes.observation_boundary, 'window_observed_changes')
 })
 
 test('Codex worker is not attributed to CodeBuddy in an API review task', async () => {
