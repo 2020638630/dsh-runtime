@@ -40,7 +40,8 @@
     "test:api-agent-trace": "tsc -p tsconfig.test.json && node .build/test/api-agent-trace.test.js",
     "test:client-evidence-scope": "tsc -p tsconfig.test.json && node .build/test/client-evidence-scope.test.js",
     "test:host-compat-report": "node test/host-compat-report.test.mjs",
-    "test:check-evidence-home": "node test/check-evidence-home.test.mjs"
+    "test:check-evidence-home": "node test/check-evidence-home.test.mjs",
+    "test:terminal-evidence": "tsc -p tsconfig.test.json && node .build/test/read-terminal-evidence.test.js"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.5",

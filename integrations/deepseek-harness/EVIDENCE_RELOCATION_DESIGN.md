@@ -2,6 +2,8 @@
 
 Status: design only. The current authenticated route accepts only a Manifest whose absolute `workspace_changes.diff_content_ref` resolves to the `diff.patch` in the selected evidence root. The read-only `check-evidence-home.mjs` detects an incompatible copied root. Neither command nor route repairs historical evidence.
 
+`pnpm test:terminal-evidence` fixes the current fail-closed behavior as a regression: an original run reads, its byte-identical copied run is rejected, a wrong parent is rejected, and a missing run returns no evidence. The future relocation implementation must add explicit receipt cases rather than weakening this original-path check.
+
 ## Goal and invariant
 
 Allow a user to move an independent Home and still open an old settled Runtime drawer while retaining the original `evidence-manifest.v1.json` and `diff.patch` **byte for byte**. A copied file must never silently acquire the label of a fresh Runtime run. The original run, workspace, reviewer verdict and audit remain as recorded; relocation provenance is separate.
