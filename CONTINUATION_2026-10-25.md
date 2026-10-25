@@ -1,6 +1,18 @@
 # Independent Runtime plugin continuation
 
-Updated 2026-10-25. The active isolated candidate is `D:\DeepSeekHarness\vis-api-agent-stable-candidate-20261024` on `codex/api-agent-stable-20261024`. At the last status check its HEAD was `b21cf28` and its worktree was clean. The original `D:\PythonProject\dsh-runtime` and `D:\DeepSeekHarness\deepseek-harness` worktrees had respectively 16 and 106 Git-visible entries; preserve every uncommitted and untracked item. Do not clean, reset, overwrite or move them. Formal D2 ExecuteGate remains `NOT_CLAIMED`.
+Latest update 2026-10-25: the active isolated candidate is `D:\DeepSeekHarness\vis-evidence-relocation-candidate-20261025` on `codex/evidence-relocation-20261025`, HEAD `a58f9c7` after the rc.30 package and acceptance commits. The original `D:\PythonProject\dsh-runtime` and `D:\DeepSeekHarness\deepseek-harness` worktrees still have respectively 16 and 106 Git-visible entries; preserve every uncommitted and untracked item. Do not clean, reset, overwrite or move them. Formal D2 ExecuteGate remains `NOT_CLAIMED`.
+
+## Latest experimental candidate and next gate
+
+- Historical evidence relocation, exact-byte receipt verification and the visible `历史证据副本` label are implemented in the isolated candidate. The authentic old r9 Session was visually replayed in the unmodified official rc.3 Host with three drawer tabs; see `EVIDENCE_RELOCATION_ACCEPTANCE_2026-10-25.md`. The original evidence root was preserved.
+- rc.29's visual replay used a mixed rc.2 plugin / rc.3 Host dependency graph. The rc.30 private tarball pins plugin dependencies to rc.3, retains identical 20 `lib` files, two CLI scripts and patch, and has SHA-256 `2F6EB8D2BB03A4759CF9CC158BB3EAEA6EFEC22A096E1F39490598DD41CC2EB3`. Commit `541153f` records its exact package source; `a58f9c7` adds later acceptance documents.
+- The source and freshly installed Profile inventories both show `HOST_DEPENDENCY_CHANGED`, zero imported code/type artifact digest changes and zero issues. The inventory scanner now handles stale pnpm store entries and Windows-shortened store names; 8/8 focused inventory tests pass. rc.30 typecheck/build and focused entry, Host core, tool, client evidence and terminal evidence tests pass. Its separate official Host launch passed authenticated page 200, anonymous evidence 401, parent-owned relocated evidence 200 and wrong-child 404. No model-backed task or D2 call was sent. Details: `RC30_RC3_ALIGNMENT_2026-10-25.md`.
+- The rc.30 isolated Host was stopped after acceptance. The rc.29 browser tab and its separate Host were left available for the user's visual review. No daily Home or official Host installation was replaced.
+- Next: decide whether the experimental relocation feature enters a private parallel daily candidate. Before any promotion, perform rc.30's own old-session visible drawer replay and a bounded real Host worker/reviewer trial if required by the release gate; obtain the deferred second-device raw PASS evidence separately. Keep the rc.2 qualified daily path and rollback intact. API worker write remains disabled because the Windows hard-link race has no accepted proof of atomic safety.
+
+## Earlier stable candidate record
+
+The earlier isolated candidate was `D:\DeepSeekHarness\vis-api-agent-stable-candidate-20261024` on `codex/api-agent-stable-20261024`, HEAD `b21cf28` at its last check. The following sections preserve that earlier record.
 
 ## Completed in the isolated candidate
 
