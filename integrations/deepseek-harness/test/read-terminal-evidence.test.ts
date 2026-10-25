@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { copyFileSync, linkSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, linkSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { test } from 'node:test'
@@ -69,6 +69,16 @@ test('original settled evidence reads, but a copied absolute Diff reference fail
   linkSync(join(copiedRun, 'trace.jsonl'), alias)
   await assert.rejects(readTerminalEvidence({ ...input, evidenceRoot: copied }), /unsafe relocated artifact/u)
   rmSync(alias)
+  const copiedTrace = join(copiedRun, 'trace.jsonl')
+  rmSync(copiedTrace)
+  try {
+    symlinkSync(join(originalRun, 'trace.jsonl'), copiedTrace)
+    await assert.rejects(readTerminalEvidence({ ...input, evidenceRoot: copied }), /unsafe relocated (?:artifact|directory)/u)
+    rmSync(copiedTrace)
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException)?.code !== 'EPERM') throw error
+  }
+  copyFileSync(join(originalRun, 'trace.jsonl'), copiedTrace)
   writeFileSync(join(copiedRun, 'unexpected.txt'), 'extra')
   await assert.rejects(readTerminalEvidence({ ...input, evidenceRoot: copied }), /inventory changed/u)
   await assert.rejects(readTerminalEvidence({ ...input, evidenceRoot: original,
