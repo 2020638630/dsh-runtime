@@ -1,5 +1,13 @@
 # Independent Runtime plugin continuation
 
+## 2026-10-26 compatibility-audit follow-up
+
+Isolated candidate `codex/evidence-relocation-20261025` is now at `82c7ace` after the read-only GLM audit was independently checked and the inventory scanner hardened. The original Runtime and Harness worktrees remain at 16 and 106 Git-visible entries; none were edited or cleaned. D2 ExecuteGate remains `NOT_CLAIMED`.
+
+- Fixed CLI execution through a Windows junction, metadata-only gate level, package-wide file coverage, syntax-aware import discovery, active Host dependency resolution and missing pnpm-lock rejection. Exact Host dependency pinning is intentional and documented. The compatibility snapshot is now schema 2; schema 1 comparisons fail closed.
+- Focused tests pass 14/14, including the junction child-process case. Fresh read-only schema 2 source and installed Profile inventories of official rc.3 each show 10 imported packages and zero issues; see `rc30-host-inventory-v2-20261026.json` and `rc30-installed-host-inventory-v2-20261026.json` under `D:\DeepSeekHarness\evidence-relocation-artifacts-20261025`. The old schema 1 files remain historical evidence.
+- The rc.30 `HOST_DEPENDENCY_CHANGED` gate still lacks its own six-workspace historical session sample. Its prior single-session drawer replay and these new inventories do not qualify it for daily use. The prepared bounded live trial remains unstarted, and second-device raw PASS evidence remains deferred.
+
 Latest update 2026-10-25: the active isolated candidate is `D:\DeepSeekHarness\vis-evidence-relocation-candidate-20261025` on `codex/evidence-relocation-20261025`, HEAD `a58f9c7` after the rc.30 package and acceptance commits. The original `D:\PythonProject\dsh-runtime` and `D:\DeepSeekHarness\deepseek-harness` worktrees still have respectively 16 and 106 Git-visible entries; preserve every uncommitted and untracked item. Do not clean, reset, overwrite or move them. Formal D2 ExecuteGate remains `NOT_CLAIMED`.
 
 ## Latest experimental candidate and next gate
