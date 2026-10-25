@@ -1,5 +1,7 @@
 # API reviewer 私有并行试用包
 
+> 本文前述 rc19 包的安装说明保留为历史记录。后续 r10/rc.3 隔离候选的安装脚本已增加 `-HostRunnerRoot` 和 `-NodePath` 必填项，并要求包内 `Assert-QualifiedHost.ps1` 与 Manifest 的官方 Host metadata/artifact SHA-256 同时存在。它在写入目标 Home/Runtime 前拒绝未知或被改动的 Host，启动脚本 `Start-QualifiedHost.ps1` 每次再核对同一个 runner。在线 pnpm 安装显式使用官方 npm registry；离线安装仍只用本机缓存。旧 rc19 ZIP 字节和行为不因这份源码更新而改变。
+
 本包配合**未修改的官方 DeepSeekHarness `0.2.1-rc.2`**。它安装独立 Home/Profile 和 Runtime 源码快照；已有日常 Home 不作为安装目标。worker 可选 CodeBuddy 或 Codex CLI；reviewer/inspector 为只读模型 API。API worker 写工具仍关闭；D2 ExecuteGate 为 `NOT_CLAIMED`。
 
 包内 `manifest.json` 列出插件 TGZ、Runtime ZIP 的 SHA-256 与固定源码提交。`Install-ApiReviewerPreview.ps1` 在写入前核对这两个摘要、目标目录不存在、Home/Runtime 不互相嵌套且外部连接文件不在二者内；它还用包内 Runtime 解析器核对连接文件、引用名和 provider，失败时只给固定错误提示，不输出 key。随后离线或在线安装插件。包不含 API key、Home、会话或已有 Profile；安装器只把外部 `ConnectionPath` 路径写入新 Profile，不复制文件内容。

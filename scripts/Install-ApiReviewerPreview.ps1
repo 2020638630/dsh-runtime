@@ -5,6 +5,8 @@ param(
   [Parameter(Mandatory=$true)][string]$ConnectionPath,
   [Parameter(Mandatory=$true)][string]$PythonPath,
   [Parameter(Mandatory=$true)][string]$PnpmPath,
+  [Parameter(Mandatory=$true)][string]$HostRunnerRoot,
+  [Parameter(Mandatory=$true)][string]$NodePath,
   [string]$ProfileName = 'runtime-api-reviewer-preview',
   [ValidateSet('codebuddy', 'codex')][string]$WorkerAdapter = 'codebuddy',
   [string]$WorkerModel = '',
@@ -43,6 +45,8 @@ function AssertNoReparseAncestor([string]$path) {
 
 $kit = (Resolve-Path -LiteralPath $KitRoot).Path
 $manifest = Get-Content -LiteralPath (Join-Path $kit 'manifest.json') -Raw | ConvertFrom-Json
+. (Join-Path $kit 'Assert-QualifiedHost.ps1')
+$qualifiedHost = Assert-QualifiedHost -Manifest $manifest -HostRunnerRoot $HostRunnerRoot -NodePath $NodePath
 if ($manifest.schema_version -ne 3 -or $manifest.channel -ne 'private-api-reviewer-preview' -or
     $manifest.d2_execute_gate -ne 'NOT_CLAIMED') { throw 'Kit manifest is not an API reviewer preview.' }
 $pluginFile = Join-Path $kit $manifest.plugin.file
@@ -190,6 +194,7 @@ $patch = @"
 
 $installArgs = @('install', '--ignore-scripts')
 if ($Offline) { $installArgs += '--offline' }
+else { $installArgs += '--registry=https://registry.npmjs.org/' }
 Push-Location -LiteralPath $profilePath
 try {
   & $PnpmPath @installArgs
@@ -198,4 +203,6 @@ try {
 
 Write-Output "Installed profile=$profilePath"
 Write-Output "Runtime commit=$($manifest.runtime.commit)"
+Write-Output "Qualified Host=$($manifest.official_host)"
+Write-Output "Host runner=$($qualifiedHost.RunnerPath)"
 Write-Output 'No connection file or credential was copied into the Home or kit.'
