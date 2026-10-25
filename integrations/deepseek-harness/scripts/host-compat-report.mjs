@@ -86,7 +86,8 @@ export function collectHostSnapshot(hostRoot, pluginRoot) {
       .filter(record => record.name === name)
     const unique = [...new Map(records.map(record => [JSON.stringify(record), record])).values()]
     if (unique.length !== 1) {
-      issues.push({ package: name, reason: unique.length === 0 ? 'missing' : 'ambiguous-installed-variants' })
+      issues.push({ package: name, reason: unique.length === 0 ? 'missing' : 'ambiguous-installed-variants',
+        versions: [...new Set(unique.map(record => record.version))].sort() })
       continue
     }
     packages[name] = unique[0]
@@ -112,24 +113,32 @@ export function collectHostSnapshot(hostRoot, pluginRoot) {
 }
 
 export function compareHostSnapshots(previous, current) {
+  const result = (classification, changed_packages, artifact_changed_packages, metadata_only_packages, minimum_gate) =>
+    ({ classification, changed_packages, artifact_changed_packages, metadata_only_packages, minimum_gate })
   if (previous.schema_version !== 1 || current.schema_version !== 1
     || previous.issues.length || current.issues.length) {
-    return { classification: 'BLOCKED_INPUT', changed_packages: [], minimum_gate: 'manual-triage' }
+    return result('BLOCKED_INPUT', [], [], [], 'manual-triage')
   }
   if (JSON.stringify(previous.imported_packages) !== JSON.stringify(current.imported_packages)) {
-    return { classification: 'PLUGIN_IMPORT_SET_CHANGED', changed_packages: [], minimum_gate: 'focused-or-higher' }
+    return result('PLUGIN_IMPORT_SET_CHANGED', [], [], [], 'focused-or-higher')
   }
   const changed = current.imported_packages.filter(name => JSON.stringify(previous.packages[name]) !== JSON.stringify(current.packages[name]))
-  const imported = changed.filter(name => name !== '@deepseek-ai/dsh')
-  if (imported.length) return { classification: 'IMPORTED_SURFACE_CHANGED', changed_packages: changed, minimum_gate: 'focused-or-higher' }
+  const artifactChanged = changed.filter(name => previous.packages[name]?.artifacts_sha256 !== current.packages[name]?.artifacts_sha256)
+  const metadataOnly = changed.filter(name => !artifactChanged.includes(name))
+  if (artifactChanged.some(name => name !== '@deepseek-ai/dsh')) {
+    return result('IMPORTED_ARTIFACT_CHANGED', changed, artifactChanged, metadataOnly, 'focused-or-higher')
+  }
   if (previous.host_lock_sha256 !== current.host_lock_sha256
     || previous.host_runner_package_sha256 !== current.host_runner_package_sha256) {
-    return { classification: 'HOST_DEPENDENCY_CHANGED', changed_packages: changed, minimum_gate: 'focused-or-higher' }
+    return result('HOST_DEPENDENCY_CHANGED', changed, artifactChanged, metadataOnly, 'focused-or-higher')
   }
-  if (changed.length || previous.host_runner_dependency !== current.host_runner_dependency) {
-    return { classification: 'HOST_SHELL_CHANGED', changed_packages: changed, minimum_gate: 'fast-smoke' }
+  if (artifactChanged.length) {
+    return result('HOST_SHELL_CHANGED', changed, artifactChanged, metadataOnly, 'focused-or-higher')
   }
-  return { classification: 'SAME_ARTIFACTS', changed_packages: [], minimum_gate: 'fast-smoke' }
+  if (metadataOnly.length || previous.host_runner_dependency !== current.host_runner_dependency) {
+    return result('PACKAGE_METADATA_CHANGED', changed, [], metadataOnly, 'fast-smoke')
+  }
+  return result('SAME_ARTIFACTS', [], [], [], 'fast-smoke')
 }
 
 function cli() {

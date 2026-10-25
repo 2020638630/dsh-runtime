@@ -34,7 +34,8 @@ test('identical Host artifacts need only the fast gate', t => {
   assert.deepEqual(before.issues, [])
   assert.equal(before.host_version, '0.2.1-rc.2')
   const result = compareHostSnapshots(before, collectHostSnapshot(fixture.host, fixture.plugin))
-  assert.deepEqual(result, { classification: 'SAME_ARTIFACTS', changed_packages: [], minimum_gate: 'fast-smoke' })
+  assert.deepEqual(result, { classification: 'SAME_ARTIFACTS', changed_packages: [],
+    artifact_changed_packages: [], metadata_only_packages: [], minimum_gate: 'fast-smoke' })
 })
 
 test('Host shell and imported tool changes are classified separately', t => {
@@ -45,8 +46,19 @@ test('Host shell and imported tool changes are classified separately', t => {
   assert.equal(compareHostSnapshots(before, shell).classification, 'HOST_SHELL_CHANGED')
   writeFileSync(join(fixture.tools, 'lib', 'index.js'), 'export const value = 2\n')
   const imported = compareHostSnapshots(before, collectHostSnapshot(fixture.host, fixture.plugin))
-  assert.equal(imported.classification, 'IMPORTED_SURFACE_CHANGED')
+  assert.equal(imported.classification, 'IMPORTED_ARTIFACT_CHANGED')
   assert.deepEqual(imported.changed_packages, ['@deepseek-ai/dsh', '@deepseek-ai/dsh-tools'])
+  assert.deepEqual(imported.artifact_changed_packages, ['@deepseek-ai/dsh', '@deepseek-ai/dsh-tools'])
+})
+
+test('version-only package metadata does not imply imported code changed', t => {
+  const fixture = makeFixture(t)
+  const before = collectHostSnapshot(fixture.host, fixture.plugin)
+  writeFileSync(join(fixture.tools, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh-tools', version: '0.2.1-rc.3' }))
+  const result = compareHostSnapshots(before, collectHostSnapshot(fixture.host, fixture.plugin))
+  assert.equal(result.classification, 'PACKAGE_METADATA_CHANGED')
+  assert.deepEqual(result.metadata_only_packages, ['@deepseek-ai/dsh-tools'])
+  assert.deepEqual(result.artifact_changed_packages, [])
 })
 
 test('missing and conflicting installed packages fail closed', t => {
@@ -54,12 +66,13 @@ test('missing and conflicting installed packages fail closed', t => {
   const before = collectHostSnapshot(fixture.host, fixture.plugin)
   rmSync(fixture.tools, { recursive: true })
   const missing = collectHostSnapshot(fixture.host, fixture.plugin)
-  assert.deepEqual(missing.issues, [{ package: '@deepseek-ai/dsh-tools', reason: 'missing' }])
+  assert.deepEqual(missing.issues, [{ package: '@deepseek-ai/dsh-tools', reason: 'missing', versions: [] }])
   assert.equal(compareHostSnapshots(before, missing).classification, 'BLOCKED_INPUT')
   fixture.addPackage(fixture.plugin, 'dsh-tools', '0.2.1-rc.2')
   fixture.addPackage(fixture.host, 'dsh-tools', '0.3.0')
   const ambiguous = collectHostSnapshot(fixture.host, fixture.plugin)
-  assert.deepEqual(ambiguous.issues, [{ package: '@deepseek-ai/dsh-tools', reason: 'ambiguous-installed-variants' }])
+  assert.deepEqual(ambiguous.issues, [{ package: '@deepseek-ai/dsh-tools', reason: 'ambiguous-installed-variants',
+    versions: ['0.2.1-rc.2', '0.3.0'] }])
 })
 
 test('runner declaration must match the installed official Host', t => {
