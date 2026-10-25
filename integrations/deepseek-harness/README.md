@@ -1,5 +1,9 @@
 # DSH Runtime for official DeepSeekHarness (private preview)
 
+## Fast official Host update triage
+
+`node scripts/host-compat-report.mjs --host ABS_HOST_RUNNER --plugin ABS_PLUGIN_ROOT --baseline ABS_BASELINE_JSON` reads installed package metadata and the code/type artifacts of official packages imported by this plugin. Without `--baseline`, it emits a baseline JSON document. It reports `SAME_ARTIFACTS`, `HOST_SHELL_CHANGED`, `HOST_DEPENDENCY_CHANGED`, `IMPORTED_SURFACE_CHANGED`, or a fail-closed input classification. This is a **change inventory**, not a compatibility verdict: run the no-model Host smoke and use the risk-based escalation procedure before adding a new official version to a supported matrix. `pnpm test:host-compat-report` exercises synthetic changed/missing/ambiguous package cases. The fixed r9 candidate is qualified only for the recorded `0.2.1-rc.2` Host.
+
 This package is an independently installable Host and Web bundle for the unmodified public `@deepseek-ai/dsh@0.2.1-rc.2`. It is still a private preview. The authenticated terminal Evidence Manifest route and three-tab Web drawer passed isolated real Host read-only and write tasks. Keep the private RC4 Harness as the parallel daily fallback.
 
 ## Build and install in an isolated Profile
