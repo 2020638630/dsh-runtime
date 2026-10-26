@@ -32,3 +32,5 @@ Existing `evidence-manifest.v1.json` files contain an absolute `workspace_change
 `check-evidence-home.mjs` is a local, read-only diagnostic. It checks one run's bounded Manifest and Diff under the supplied root and prints only a status code. It never repairs or rewrites evidence, and `READY` does not claim that a model judgment is correct.
 
 A separate [relocation design and experimental implementation record](EVIDENCE_RELOCATION_DESIGN.md) specifies the sidecar copy receipt and remaining gates before moved historical evidence may be replayed in a daily Home.
+
+For a deferred second-device single-file PASS run, the repository-only `scripts/verify-raw-host-run.mjs` can check a copied run directory, separate governance audit and optional target file without loading a Home or calling a model. The [handoff](../../CROSS_DEVICE_RAW_EVIDENCE_HANDOFF_2026-10-26.md) lists the exact files. This bounded consistency check is not part of the installed plugin or an automatic release verdict; the audit links by Session and task kind because its record has no run ID.
