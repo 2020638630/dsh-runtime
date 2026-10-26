@@ -6,6 +6,7 @@ Date: 2026-10-26. Scope: isolated Windows local installation and no-model offici
 
 - Kit: `D:\DeepSeekHarness\evidence-relocation-artifacts-20261025\rc30-private-preview-kit-20261026`.
 - Private ZIP: `D:\DeepSeekHarness\evidence-relocation-artifacts-20261025\rc30-private-preview-kit-20261026.zip`, SHA-256 `738E79152E3A34EB0343214851BA93F170918FCB83BB1F4F2C49AA1D7CB14DD9` (14 entries, 1,242,253 bytes). It contains no file with the exact sensitive names listed below. The ZIP is local only; it was not published.
+- The ZIP was reopened after creation; the embedded plugin tarball, Runtime ZIP and all seven wheels matched the embedded manifest hashes (9/9). This checks package integrity within the local ZIP, not independent provenance.
 - Official Host: unmodified `@deepseek-ai/dsh@0.2.1-rc.3`; the installer and launcher checked the selected runner's exact package/artifact identity against `manifest.json`.
 - Plugin: `@dsh-runtime/harness-plugin@0.1.0-rc.30`, tarball SHA-256 `2F6EB8D2BB03A4759CF9CC158BB3EAEA6EFEC22A096E1F39490598DD41CC2EB3`.
 - Runtime source: commit `d3af857bb87babb0f96b87adc2839f8761b45eba`, ZIP SHA-256 `AF4A06184FE4DCDB6FF65CAF3B6AF771FD1CB23C794F975DB11816AD07964E55`.
