@@ -1,5 +1,9 @@
 # Independent Runtime plugin continuation
 
+## 2026-10-26 rc.30 six-workspace no-model sample
+
+The previously open rc.30 six-workspace historical UI sample passed in a new isolated Home with official rc.3 Host and rc.30 installed dependencies. Six real workspaces showed session rows `[2,3,3,5,10,12]`, visible composer inputs and zero page errors. The Host was stopped. The run modified only its disposable Home copy (six new compressed Session files and one changed copied Session file); original source Home data was not an output target. The bounded model-backed trial and second-device raw PASS evidence remain open. See `RC30_RC3_ALIGNMENT_2026-10-25.md` and `D:\DeepSeekHarness\evidence-relocation-artifacts-20261025\rc30-six-workspace-sample-20261026.json`. D2 ExecuteGate remains `NOT_CLAIMED`.
+
 ## 2026-10-26 second independent scanner review
 
 The GLM follow-up audit of `b8fbe67` confirmed a two-argument dynamic `import()` omission. It also exposed a Profile-side virtual-store fallback that could count stale packages. The isolated candidate now scans imports with one or more arguments and follows declared Host/Profile dependency links; bare pnpm store entries no longer count as installed. The inventory contract is schema 3, so schema 1/2 reports are historical and cannot be used as upgrade baselines. Source and installed Profile read-only rc.3 inventories are saved as `rc30-host-inventory-v3-20261026.json` and `rc30-installed-host-inventory-v3-20261026.json` under `D:\DeepSeekHarness\evidence-relocation-artifacts-20261025`; both show 10 imports and zero issues. A missing repository-local TypeScript development dependency now emits a clear CLI error. The rc.30 six-workspace sample, bounded live task and second-device evidence remain open; D2 stays `NOT_CLAIMED`.
