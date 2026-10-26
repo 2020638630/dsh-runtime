@@ -86,15 +86,6 @@ if ($WorkerModel -ne '' -and $WorkerModel -notmatch $modelPattern) { throw 'Inva
 foreach ($required in @($ConnectionPath, $PythonPath, $PnpmPath)) {
   if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Missing dependency: $required" }
 }
-$checkHttpx = @'
-import importlib.metadata as metadata
-import sys
-try:
-    valid = metadata.version("httpx") == "0.28.1"
-except metadata.PackageNotFoundError:
-    valid = False
-sys.exit(0 if valid else 1)
-'@
 $homePath = FullPath $HomeRoot
 $runtimePath = FullPath $RuntimeRoot
 $connectionFile = (Resolve-Path -LiteralPath $ConnectionPath).Path
@@ -137,8 +128,10 @@ if ($LASTEXITCODE -ne 0) { throw "Python venv creation failed with exit code $LA
 $effectivePython = Join-Path $venvPath 'Scripts\python.exe'
 & $effectivePython -m pip install --no-index --find-links $wheelRoot --disable-pip-version-check --no-input -r $requirements
 if ($LASTEXITCODE -ne 0) { throw "Bundled API Python dependency install failed with exit code $LASTEXITCODE" }
-& $effectivePython -c $checkHttpx
-if ($LASTEXITCODE -ne 0) { throw 'API Python dependency verification failed.' }
+$httpxMetadata = & $effectivePython -m pip show httpx
+if ($LASTEXITCODE -ne 0 -or @($httpxMetadata | Where-Object { $_ -ceq 'Version: 0.28.1' }).Count -ne 1) {
+  throw 'API Python dependency verification failed.'
+}
 
 New-Item -ItemType Directory -Path (Join-Path $homePath 'plugin-artifacts') -Force | Out-Null
 New-Item -ItemType Directory -Path $profilePath -Force | Out-Null
