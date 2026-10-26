@@ -1,6 +1,6 @@
 # 第二台 Windows 设备：最终 PASS 原始证据交接
 
-状态：准备完成，第二台设备目前不可用，尚未取得其最终 PASS run 的原始文件。本说明不会把本机 rc.19/rc.30 样本当作跨设备证据。正式 D2 ExecuteGate 仍为 `NOT_CLAIMED`。
+状态：已从第二台 Windows 云桌面取得 rc.30 CodeBuddy worker/API reviewer 最终 run 的原始文件；本机只读检查返回 `RAW_EVIDENCE_CONSISTENT`，云桌面与本机 ZIP SHA-256 完全一致。详见 `RC30_CLOUD_CODEBUDDY_R5_RESULT_2026-10-26.md`。一致性检查不构成发布批准。本说明不会把本机 rc.19/rc.30 样本当作跨设备证据。正式 D2 ExecuteGate 仍为 `NOT_CLAIMED`。
 
 ## 设备可用时只带回这些文件
 
