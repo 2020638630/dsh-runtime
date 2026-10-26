@@ -1,5 +1,9 @@
 # Independent Runtime plugin continuation
 
+## 2026-10-26 second Windows device official Host no-model launch
+
+The user-provided Wuying cloud desktop screenshot shows the unmodified official rc.3 Host serving the installed r3 Profile at `127.0.0.1:39271`. After official Host account authentication, the main page, workspace selector, model picker and composer input were visible and usable. This is a no-model UI check only; plugin listing, Codex worker CLI authentication, a bounded `dsh_runtime` call, raw cross-device evidence reconciliation and rollback remain open. The SiliconFlow connection JSON is separate from official Host authentication. D2 remains `NOT_CLAIMED`.
+
 ## 2026-10-26 second Windows device r3 install
 
 The user-provided cloud desktop screenshot shows the PS5.1-r2 private kit installed successfully into `C:\DSH-RC30\preview-home-20261026-r3` and `C:\DSH-RC30\preview-runtime-20261026-r3`. The output names Profile `runtime-api-reviewer-preview`, Runtime commit `d3af857bb87babb0f96b87adc2839f8761b45eba`, qualified unmodified Host `@deepseek-ai/dsh@0.2.1-rc.3`, and rc.30 plugin. The Profile dependency install finished with pnpm 11.25.0; the installer reports no connection file or credential copied into Home or kit. This closes cross-device installation only. Official Host no-model launch, model-backed run, raw evidence reconciliation and old-entry rollback remain open. The prior r2 partial Runtime directory and original dirty worktrees remain preserved; D2 stays `NOT_CLAIMED`.
