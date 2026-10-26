@@ -1,4 +1,7 @@
 function Get-HostArtifactDigest([string]$PackageRoot) {
+  # Windows PowerShell 5.1 uses .NET Framework, which has neither
+  # Path.GetRelativePath nor SHA256.HashData/Convert.ToHexString.
+  $rootPrefix = [System.IO.Path]::GetFullPath($PackageRoot).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
   $entries = @()
   foreach ($directory in @('lib', 'dist')) {
     $path = Join-Path $PackageRoot $directory
@@ -8,14 +11,31 @@ function Get-HostArtifactDigest([string]$PackageRoot) {
       }
     }
   }
+  $pathsByRelative = @{}
+  foreach ($entry in $entries) {
+    $fullPath = [System.IO.Path]::GetFullPath($entry.FullName)
+    if (-not $fullPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+      throw 'Official Host artifact path escapes package root.'
+    }
+    $relative = $fullPath.Substring($rootPrefix.Length).Replace('\', '/')
+    if ($pathsByRelative.ContainsKey($relative)) { throw 'Duplicate official Host artifact path.' }
+    $pathsByRelative[$relative] = $fullPath
+  }
+  # Sort-Object compares punctuation differently in Windows PowerShell 5.1.
+  $relativePaths = [string[]]@($pathsByRelative.Keys)
+  [Array]::Sort($relativePaths, [StringComparer]::Ordinal)
   $payload = [System.Text.StringBuilder]::new()
-  foreach ($entry in @($entries | Sort-Object { [System.IO.Path]::GetRelativePath($PackageRoot, $_.FullName).Replace('\', '/') })) {
-    $relative = [System.IO.Path]::GetRelativePath($PackageRoot, $entry.FullName).Replace('\', '/')
-    $fileHash = (Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  foreach ($relative in $relativePaths) {
+    $fileHash = (Get-FileHash -LiteralPath $pathsByRelative[$relative] -Algorithm SHA256).Hash.ToLowerInvariant()
     [void]$payload.Append($relative).Append([char]0).Append($fileHash).Append([char]0)
   }
   $bytes = [System.Text.Encoding]::UTF8.GetBytes($payload.ToString())
-  return [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($bytes))
+  $hasher = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    return [BitConverter]::ToString($hasher.ComputeHash($bytes)).Replace('-', '')
+  } finally {
+    $hasher.Dispose()
+  }
 }
 
 function Assert-QualifiedHost {
