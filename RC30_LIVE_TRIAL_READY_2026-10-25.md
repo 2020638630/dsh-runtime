@@ -1,4 +1,6 @@
-# rc.30 official Host live trial: prepared, not started
+# rc.30 official Host live trial: preparation record
+
+Completed on 2026-10-26. The terminal result is in `RC30_LIVE_TRIAL_RESULT_2026-10-26.md`. The following text preserves the pre-run inputs and plan as they stood before submission.
 
 Date: 2026-10-25. This handoff is for a future **single bounded model-backed trial**. No rc.30 model task has been sent yet. Do not infer PASS from installation or no-model drawer replay. Formal D2 ExecuteGate remains `NOT_CLAIMED`.
 
