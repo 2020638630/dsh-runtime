@@ -1,5 +1,9 @@
 # Independent Runtime plugin continuation
 
+## 2026-10-26 second independent scanner review
+
+The GLM follow-up audit of `b8fbe67` confirmed a two-argument dynamic `import()` omission. It also exposed a Profile-side virtual-store fallback that could count stale packages. The isolated candidate now scans imports with one or more arguments and follows declared Host/Profile dependency links; bare pnpm store entries no longer count as installed. The inventory contract is schema 3, so schema 1/2 reports are historical and cannot be used as upgrade baselines. Source and installed Profile read-only rc.3 inventories are saved as `rc30-host-inventory-v3-20261026.json` and `rc30-installed-host-inventory-v3-20261026.json` under `D:\DeepSeekHarness\evidence-relocation-artifacts-20261025`; both show 10 imports and zero issues. A missing repository-local TypeScript development dependency now emits a clear CLI error. The rc.30 six-workspace sample, bounded live task and second-device evidence remain open; D2 stays `NOT_CLAIMED`.
+
 ## 2026-10-26 compatibility-audit follow-up
 
 Isolated candidate `codex/evidence-relocation-20261025` is now at `82c7ace` after the read-only GLM audit was independently checked and the inventory scanner hardened. The original Runtime and Harness worktrees remain at 16 and 106 Git-visible entries; none were edited or cleaned. D2 ExecuteGate remains `NOT_CLAIMED`.

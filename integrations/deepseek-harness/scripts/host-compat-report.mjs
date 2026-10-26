@@ -1,13 +1,22 @@
 /** Read-only inventory for triaging an official Host update. No compatibility verdict. */
 import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import ts from 'typescript'
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex')
 const readJson = path => JSON.parse(readFileSync(path, 'utf8'))
 const SOURCE_EXTENSIONS = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/u
+
+function loadTypescript() {
+  try { return createRequire(import.meta.url)('typescript') } catch (error) {
+    if (error.code === 'MODULE_NOT_FOUND') {
+      throw new Error('typescript is required for the source import inventory; install this repository\'s devDependencies')
+    }
+    throw error
+  }
+}
 
 function artifactFiles(root) {
   const files = []
@@ -44,6 +53,7 @@ function packageRecord(root) {
 }
 
 function importedPackages(pluginRoot) {
+  const ts = loadTypescript()
   const found = new Set(['@deepseek-ai/dsh'])
   const src = join(pluginRoot, 'src')
   const add = specifier => {
@@ -63,7 +73,7 @@ function importedPackages(pluginRoot) {
           } else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)
             && node.moduleReference.expression && ts.isStringLiteralLike(node.moduleReference.expression)) {
             add(node.moduleReference.expression.text)
-          } else if (ts.isCallExpression(node) && node.arguments.length === 1 && ts.isStringLiteralLike(node.arguments[0])
+          } else if (ts.isCallExpression(node) && node.arguments.length >= 1 && ts.isStringLiteralLike(node.arguments[0])
             && (node.expression.kind === ts.SyntaxKind.ImportKeyword
               || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) {
             add(node.arguments[0].text)
@@ -86,10 +96,15 @@ function directPackageRoot(root, name) {
   return existsSync(join(direct, 'package.json')) ? direct : null
 }
 
-function reachableHostRoots(hostRoot) {
+function reachableRoots(installRoot) {
   const found = new Map()
   const visited = new Set()
-  const pending = [directPackageRoot(hostRoot, '@deepseek-ai/dsh')].filter(Boolean)
+  const manifestPath = join(installRoot, 'package.json')
+  if (!existsSync(manifestPath)) return found
+  const manifest = readJson(manifestPath)
+  const pending = Object.keys({ ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.peerDependencies })
+    .map(name => join(installRoot, 'node_modules', name))
+    .filter(path => existsSync(join(path, 'package.json')))
   while (pending.length) {
     const root = realpathSync(pending.pop())
     if (visited.has(root)) continue
@@ -103,44 +118,25 @@ function reachableHostRoots(hostRoot) {
     const nodeModules = metadata.name?.startsWith('@') ? dirname(dirname(root)) : dirname(root)
     for (const name of Object.keys({ ...metadata.dependencies, ...metadata.optionalDependencies, ...metadata.peerDependencies })) {
       const local = join(nodeModules, name)
-      const linked = existsSync(join(local, 'package.json')) ? local : join(hostRoot, 'node_modules', name)
+      const linked = existsSync(join(local, 'package.json')) ? local : join(installRoot, 'node_modules', name)
       if (existsSync(join(linked, 'package.json'))) pending.push(linked)
     }
   }
   return found
 }
 
-function candidateRoots(pluginRoot, name) {
-  const suffix = name.slice('@deepseek-ai/'.length)
-  const nodeModules = join(pluginRoot, 'node_modules')
-  const direct = directPackageRoot(pluginRoot, name)
-  // pnpm keeps old store entries after an upgrade. A direct link is the
-  // package this root resolves; stale store entries are not installed variants.
-  if (direct) return [direct]
-  const roots = []
-  const store = join(nodeModules, '.pnpm')
-  if (existsSync(store)) {
-    for (const entry of readdirSync(store)) {
-      // pnpm shortens long peer-qualified directory names on Windows, so the
-      // folder name alone cannot identify a package. Check its package path.
-      const candidate = join(store, entry, 'node_modules', '@deepseek-ai', suffix)
-      if (existsSync(join(candidate, 'package.json'))) roots.push(candidate)
-    }
-  }
-  return roots.filter(root => existsSync(join(root, 'package.json')))
-}
-
 export function collectHostSnapshot(hostRoot, pluginRoot, importsRoot = pluginRoot) {
   const requested = importedPackages(importsRoot)
   const packages = {}
   const issues = []
-  const hostReachable = reachableHostRoots(hostRoot)
+  const hostReachable = reachableRoots(hostRoot)
+  const pluginReachable = reachableRoots(pluginRoot)
   for (const name of requested) {
-    // Only count Host packages reachable from the installed Host dependency
-    // graph or directly linked at the runner root. Old pnpm store entries alone
-    // are not active installations. The external Profile can add more variants.
-    const directHost = directPackageRoot(hostRoot, name)
-    const roots = [...(hostReachable.get(name) ?? []), ...(directHost ? [directHost] : []), ...candidateRoots(pluginRoot, name)]
+    // Count resolved packages, never unreferenced pnpm store entries. A direct
+    // plugin-root link is also reachable by its source code even if undeclared.
+    const directPlugin = directPackageRoot(pluginRoot, name)
+    const roots = [...(hostReachable.get(name) ?? []), ...(pluginReachable.get(name) ?? []),
+      ...(directPlugin ? [directPlugin] : [])]
     const records = roots.map(packageRecord)
       .filter(record => record.name === name)
     const unique = [...new Map(records.map(record => [JSON.stringify(record), record])).values()]
@@ -160,7 +156,7 @@ export function collectHostSnapshot(hostRoot, pluginRoot, importsRoot = pluginRo
     issues.push({ package: 'host-runner', reason: 'declared-host-version-mismatch' })
   }
   return {
-    schema_version: 2,
+    schema_version: 3,
     host_name: packages['@deepseek-ai/dsh']?.name ?? null,
     host_version: packages['@deepseek-ai/dsh']?.version ?? null,
     host_runner_dependency: runner?.dependencies?.['@deepseek-ai/dsh'] ?? null,
@@ -175,7 +171,7 @@ export function collectHostSnapshot(hostRoot, pluginRoot, importsRoot = pluginRo
 export function compareHostSnapshots(previous, current) {
   const result = (classification, changed_packages, artifact_changed_packages, metadata_only_packages, minimum_gate) =>
     ({ classification, changed_packages, artifact_changed_packages, metadata_only_packages, minimum_gate })
-  if (previous.schema_version !== 2 || current.schema_version !== 2
+  if (previous.schema_version !== 3 || current.schema_version !== 3
     || previous.issues.length || current.issues.length) {
     return result('BLOCKED_INPUT', [], [], [], 'manual-triage')
   }
