@@ -18,3 +18,5 @@ Status: **ready for one opt-in private trial; no model task has been sent from r
 4. The independent post-run check will compare the actual target bytes and Git delta with the settled Manifest, Diff, dual closed traces and governance audit. A model `PASS` alone is insufficient. The target should be 26 ASCII bytes for `RC31_OFFICIAL_RC4_TRIAL_OK` plus one LF, total 27 bytes; recalculate independently during verification.
 
 The existing rc.30/official rc.3 parallel entry and older RC4 daily entry remain separate. Their earlier bounded no-model fallback evidence still stands; no claim is made here that an rc.31-to-rc.30 in-place upgrade/rollback cycle has passed.
+
+The single trial subsequently completed with a bounded `PASS`. Independent read-only reconciliation found the requested 27-byte file and a consistent raw evidence chain; the child report's 26-byte total was wrong. See `RC31_OFFICIAL_RC4_LIVE_TRIAL_RESULT_2026-10-27.md`. Do not repeat the trial for the prose count.
