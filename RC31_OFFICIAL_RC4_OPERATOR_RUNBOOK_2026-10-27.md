@@ -23,6 +23,24 @@ The local rc.31 `repository_change` had one 27-byte target and consistent raw Ma
 3. Keep `connections.local.json` in a separate protected location. Do not place it under the kit, Home or Runtime, and do not send its contents, API keys or login tokens with acceptance evidence. The connection must contain the selected `ConnectionRef`/provider pair. Verify Python 3.12, pnpm 11.25.0 and CodeBuddy 2.164.0 separately.
 4. Installation needs access to the official npm registry unless all exact package metadata and tarballs are already cached for `-Offline`. The bundled Python wheel install itself uses `--no-index`.
 
+If the second device does not already have an exact qualified **rc.4** Host runner, prepare one in its own new directory first. Do not reuse or update the rc.3 daily runner. The selected Node 24 executable must be on `PATH` for npm and must also be passed explicitly to the kit. This example pins the direct Host dependency; the kit preflight then checks the downloaded Host package and compiled artifact digests. Keep the npm output, including any install-script warnings, for review.
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$hostRunnerRoot = 'REPLACE_WITH_NEW_OFFICIAL_RC4_RUNNER_DIRECTORY'
+$node24Directory = 'REPLACE_WITH_DIRECTORY_CONTAINING_NODE_24_EXE'
+if (Test-Path -LiteralPath $hostRunnerRoot) { throw 'Runner directory already exists; stop.' }
+$env:PATH = $node24Directory + [System.IO.Path]::PathSeparator + $env:PATH
+& (Join-Path $node24Directory 'node.exe') --version
+New-Item -ItemType Directory -Path $hostRunnerRoot | Out-Null
+$hostPackage = '{"name":"dsh-official-rc4-isolated-runner","private":true,"version":"0.0.0","dependencies":{"@deepseek-ai/dsh":"0.2.1-rc.4"}}' + "`n"
+[System.IO.File]::WriteAllText((Join-Path $hostRunnerRoot 'package.json'), $hostPackage, [System.Text.UTF8Encoding]::new($false))
+& npm.cmd install --prefix $hostRunnerRoot --registry=https://registry.npmjs.org/
+if ($LASTEXITCODE -ne 0) { throw "Host runner npm install failed: $LASTEXITCODE" }
+```
+
+The exact package/artifact check happens when `Install-ApiReviewerPreview.ps1` starts. A wrong Host, missing entry or changed compiled Host file is rejected before it writes a new Home/Runtime. The runner itself is an external prerequisite and is not contained in the frozen kit ZIP.
+
 PowerShell 5.1 template; replace every `REPLACE_*` path and use a fresh suffix for each attempt. It does not alter old Homes:
 
 ```powershell
