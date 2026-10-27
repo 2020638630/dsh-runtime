@@ -1,0 +1,63 @@
+name: Harness plugin tests
+
+on:
+  push:
+    branches:
+      - master
+      - codex/**
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-harness-plugin-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plugin:
+    name: plugin / windows-latest
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: integrations/deepseek-harness
+        shell: pwsh
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '24.19.0'
+
+      - name: Install pinned pnpm
+        run: |
+          npm install -g pnpm@11.25.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm.cmd --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install exact lockfile dependencies without lifecycle scripts
+        run: |
+          pnpm.cmd install --frozen-lockfile --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Typecheck, build and keyless regressions
+        run: |
+          $checks = @(
+            'typecheck', 'build',
+            'test:admission', 'test:worker', 'test:pin-store', 'test:provider',
+            'test:launcher', 'test:host-core', 'test:tool', 'test:entry',
+            'test:api-agent-trace', 'test:client-evidence-scope',
+            'test:host-compat-report', 'test:check-evidence-home',
+            'test:terminal-evidence', 'test:copy-terminal-evidence'
+          )
+          foreach ($check in $checks) {
+            pnpm.cmd run $check
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
