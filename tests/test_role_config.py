@@ -128,6 +128,10 @@ def test_api_reviewer_is_read_only_and_fail_verdict_has_correct_attribution() ->
 def test_controller_freezes_roles_at_construction(monkeypatch) -> None:
     document = _document()
     monkeypatch.setenv(ROLE_CONFIG_ENV, json.dumps(document))
+    monkeypatch.setattr(
+        "dsh_runtime.plugins.codebuddy._default_command",
+        lambda: ("codebuddy.cmd",),
+    )
     controller = build_controller()
     document["roles"]["inspector"]["model"] = "changed-later"
     monkeypatch.setenv(ROLE_CONFIG_ENV, json.dumps(document))

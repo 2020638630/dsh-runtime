@@ -53,6 +53,10 @@ def test_api_worker_is_rejected_until_write_tools_are_qualified():
 def test_bootstrap_requires_explicit_external_connection_file(monkeypatch):
     monkeypatch.setenv(ROLE_CONFIG_ENV, json.dumps(config()))
     monkeypatch.delenv(API_AGENT_CONNECTIONS_PATH_ENV, raising=False)
+    monkeypatch.setattr(
+        "dsh_runtime.plugins.codebuddy._default_command",
+        lambda: ("codebuddy.cmd",),
+    )
     with pytest.raises(ValueError, match=API_AGENT_CONNECTIONS_PATH_ENV):
         build_controller()
 
