@@ -63,7 +63,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 & (Join-Path $kitRoot 'Install-ApiReviewerPreview.ps1') @installParams
 ```
 
-The installer validates the Host and kit hashes before writing Home/Runtime, then creates the Runtime venv and Profile. A failed install **may leave a partial fresh target**. Keep the error output and partial path for diagnosis; do not rerun against the same path and do not remove it until evidence has been captured. Resolve the cause and choose new Home/Runtime/stage suffixes for the next attempt. The scripts do not provide an in-place repair or uninstall operation.
+The installer validates the Host and kit hashes before writing Home/Runtime, then creates the Runtime venv and Profile. A failed install **may leave a partial fresh target**. Keep the error output and partial path for diagnosis; do not rerun against the same path and do not remove it until evidence has been captured. Resolve the cause and choose new Home/Runtime/stage suffixes for the next attempt. This fresh-path procedure passed one controlled pnpm-failure exercise with a no-model recovered Host probe; see `RC31_PARTIAL_INSTALL_RECOVERY_2026-10-27.md` in the source candidate. The scripts do not provide an in-place repair or uninstall operation.
 
 ## Start, check and stop
 
