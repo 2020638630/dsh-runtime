@@ -62,7 +62,7 @@ try {
   $tampered = New-FakeRunner 'same-version-tampered-code' $runnerJson $hostJson $true
   Invoke-PreflightCase 'same-version-tampered-code' $tampered $QualifiedNodePath 'not the qualified package'
   if ($OldNodePath -and (Test-Path -LiteralPath $OldNodePath -PathType Leaf)) {
-    Invoke-PreflightCase 'old-node' $QualifiedRunnerRoot $OldNodePath 'requires Node 24.19.0'
+    Invoke-PreflightCase 'old-node' $QualifiedRunnerRoot $OldNodePath 'requires Node 24.22.1'
   }
   $qualifiedError = if (Test-Path -LiteralPath (Join-Path $QualifiedRunnerRoot '.rc31-install-complete.json')) { 'Missing dependency' } else { 'completion record is missing' }
   Invoke-PreflightCase 'qualified-runner' $QualifiedRunnerRoot $QualifiedNodePath $qualifiedError

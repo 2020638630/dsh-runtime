@@ -33,7 +33,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7.0.0
         with:
-          node-version: '24.19.0'
+          node-version: '24.22.1'
 
       - name: Install pinned pnpm
         run: |
@@ -66,3 +66,23 @@ jobs:
         run: |
           node ../../tests/test-rc31-install.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Exercise Windows completion and path boundaries with keyless fixtures
+        working-directory: .
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $assets = Join-Path $env:RUNNER_TEMP 'rc31-test-assets'
+          $kit = Join-Path $env:RUNNER_TEMP 'rc31-test-kit'
+          $fixture = Join-Path $env:RUNNER_TEMP 'rc31-completion-fixture'
+          python tests/build_rc31_completion_fixture.py $assets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/New-Rc31InstallKit.ps1 -AssetRoot $assets -OutputRoot $kit
+          ./tests/Test-Rc31Completion.ps1 -KitRoot $kit -NodePath (Get-Command node.exe).Source -PnpmPath (Get-Command pnpm.cmd).Source -PythonPath (Get-Command python.exe).Source -FixtureRoot $fixture *>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'rc31-completion.log')
+
+      - name: Retain completion regression log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rc31-completion-log
+          path: ${{ runner.temp }}/rc31-completion.log
+          if-no-files-found: ignore

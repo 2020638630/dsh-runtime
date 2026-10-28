@@ -58,8 +58,8 @@ function Assert-QualifiedHost {
   if ($nodeExit -ne 0 -or $nodeVersionText -notmatch '^v\d+\.\d+\.\d+$') {
     throw 'Node version could not be verified.'
   }
-  if ([Version]($nodeVersionText.Substring(1)) -lt [Version]'24.19.0') {
-    throw 'Official Host requires Node 24.19.0 or newer.'
+  if ($nodeVersionText -cne 'v24.22.1') {
+    throw 'Official Host requires Node 24.22.1.'
   }
   $runnerPath = Get-Rc31Path $HostRunnerRoot
   $runnerPackage = Join-Path $runnerPath 'package.json'

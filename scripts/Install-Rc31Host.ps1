@@ -14,7 +14,7 @@ if (-not (Test-Path -LiteralPath $PnpmPath -PathType Leaf)) { throw 'pnpm execut
 $version = & $PnpmPath --version
 if ($LASTEXITCODE -ne 0 -or $version -ne '11.25.0') { throw 'Host installation requires pnpm 11.25.0.' }
 $nodeVersion = & $NodePath --version
-if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^v\d+\.\d+\.\d+$' -or [Version]$nodeVersion.Substring(1) -lt [Version]'24.19.0') { throw 'Node 24.19.0 or newer is required.' }
+if ($LASTEXITCODE -ne 0 -or $nodeVersion -cne 'v24.22.1') { throw 'Node 24.22.1 is required.' }
 $oldPath = $env:PATH
 try {
   $env:PATH = (Split-Path -Parent (Resolve-Path -LiteralPath $NodePath).Path) + [IO.Path]::PathSeparator + $oldPath

@@ -1,0 +1,55 @@
+{
+  "schema_version": 3,
+  "channel": "private-api-reviewer-preview",
+  "official_host": "@deepseek-ai/dsh@0.2.1-rc.4",
+  "official_host_package_sha256": "AB0994EF7FC70A9974D39735D6E30B500B4BE3435012B53CAB1DF149F39BBC5C",
+  "official_host_artifacts_sha256": "04277235EB38088C0074D46E5ADFBD61A11CC86D191DF4498C43174B316CE4C0",
+  "plugin": {
+    "name": "@dsh-runtime/harness-plugin",
+    "version": "0.1.0-rc.31",
+    "file": "dsh-runtime-harness-plugin-0.1.0-rc.31.tgz",
+    "sha256": "6DE84801B6773CF00CAAFF2826193876ACE99C9299953F5AA25C04F502DF5447"
+  },
+  "runtime": {
+    "commit": "0000000000000000000000000000000000000000",
+    "file": "runtime-fixture.zip",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "policy_hash": "c1cb7d4350a94e9353dd445de41a741a66f01b2be88b8f073613dd548adad463",
+  "roles": {
+    "worker": "codebuddy_or_codex_cli",
+    "reviewer": "api_agent_readonly",
+    "inspector": "api_agent_readonly"
+  },
+  "d2_execute_gate": "NOT_CLAIMED",
+  "python_wheels": [
+    {
+      "file": "anyio-4.13.0-py3-none-any.whl",
+      "sha256": "08B310F9E24A9594186FD75B4F73F4A4152069E3853F1ED8BFBF58369F4AD708"
+    },
+    {
+      "file": "certifi-2026.5.20-py3-none-any.whl",
+      "sha256": "3C52E209BA0A4AD7AEBE60436A4AB349C39E1E602E8C134221E546902AD25897"
+    },
+    {
+      "file": "h11-0.16.0-py3-none-any.whl",
+      "sha256": "63CF8BBE7522DE3BF65932FDA1D9C2772064FFB3DAE62D55932DA54B31CB6C86"
+    },
+    {
+      "file": "httpcore-1.0.9-py3-none-any.whl",
+      "sha256": "2D400746A40668FC9DEC9810239072B40B4484B640A8C38FD654A024C7A1BF55"
+    },
+    {
+      "file": "httpx-0.28.1-py3-none-any.whl",
+      "sha256": "D909FCCCC110F8C7FAF814CA82A9A4D816BC5A6DBFEA25D6591D6985B8BA59AD"
+    },
+    {
+      "file": "idna-3.18-py3-none-any.whl",
+      "sha256": "7F952CBE720B688055E3F87DE14F5C3E5FDAA8BC3928985C4077CA689DE849A2"
+    },
+    {
+      "file": "typing_extensions-4.15.0-py3-none-any.whl",
+      "sha256": "F0FA19C6845758AB08074A0CFA8B7AECB71C999CA73D62883BC25CC018C4E548"
+    }
+  ]
+}
