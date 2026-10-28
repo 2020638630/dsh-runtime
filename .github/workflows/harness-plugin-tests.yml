@@ -94,6 +94,11 @@ jobs:
         run: |
           node tests/test-rc31-host-mcp.mjs (Join-Path $env:RUNNER_TEMP 'rc31-completion-fixture/host') (Join-Path $env:RUNNER_TEMP 'rc31-host-mcp') 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'rc31-host-mcp.log')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise fixed ZIP64 regression
+        working-directory: .
+        run: |
+          node tests/test-rc31-zip64.mjs run (Join-Path $env:RUNNER_TEMP 'rc31-completion-fixture/host') (Join-Path $env:RUNNER_TEMP 'rc31-zip64') 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'rc31-zip64.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Retain completion and Host regression logs
         if: always()
         uses: actions/upload-artifact@v6
@@ -107,4 +112,6 @@ jobs:
             ${{ runner.temp }}/rc31-host-mcp/**/requests.json
             ${{ runner.temp }}/rc31-host-mcp/**/result.json
             ${{ runner.temp }}/rc31-host-mcp/**/patch.yml
+            ${{ runner.temp }}/rc31-zip64.log
+            ${{ runner.temp }}/rc31-zip64/*.json
           if-no-files-found: error
