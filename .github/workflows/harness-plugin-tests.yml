@@ -79,10 +79,22 @@ jobs:
           ./scripts/New-Rc31InstallKit.ps1 -AssetRoot $assets -OutputRoot $kit
           ./tests/Test-Rc31Completion.ps1 -KitRoot $kit -NodePath (Get-Command node.exe).Source -PnpmPath (Get-Command pnpm.cmd).Source -PythonPath (Get-Command python.exe).Source -FixtureRoot $fixture *>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'rc31-completion.log')
 
+      - name: Exercise installed web-fetch consumer
+        working-directory: .
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $modules = Join-Path $env:RUNNER_TEMP 'rc31-completion-fixture/host/node_modules/.pnpm'
+          $matches = @(Get-ChildItem -Force $modules -Directory | Where-Object { $_.Name -like '@deepseek-ai+dsh-web-fetch-*' -and (Test-Path (Join-Path $_.FullName 'node_modules/@deepseek-ai/dsh-web-fetch-http/lib/index.js')) })
+          if ($matches.Count -ne 1) { throw "Expected one installed web-fetch consumer; got $($matches.Count)" }
+          $consumer = Join-Path $matches[0].FullName 'node_modules/@deepseek-ai/dsh-web-fetch-http/lib/index.js'
+          node tests/test-rc31-web-fetch.mjs $consumer 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'rc31-web-fetch.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Retain completion regression log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rc31-completion-log
-          path: ${{ runner.temp }}/rc31-completion.log
-          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/rc31-completion.log
+            ${{ runner.temp }}/rc31-web-fetch.log
+          if-no-files-found: error
