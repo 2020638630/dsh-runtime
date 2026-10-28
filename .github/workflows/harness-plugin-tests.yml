@@ -89,7 +89,12 @@ jobs:
           $consumer = Join-Path $matches[0].FullName 'node_modules/@deepseek-ai/dsh-web-fetch-http/lib/index.js'
           node tests/test-rc31-web-fetch.mjs $consumer 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'rc31-web-fetch.log')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Retain completion regression log
+      - name: Exercise installed Host MCP registration and redirect rejection
+        working-directory: .
+        run: |
+          node tests/test-rc31-host-mcp.mjs (Join-Path $env:RUNNER_TEMP 'rc31-completion-fixture/host') (Join-Path $env:RUNNER_TEMP 'rc31-host-mcp') 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'rc31-host-mcp.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Retain completion and Host regression logs
         if: always()
         uses: actions/upload-artifact@v6
         with:
@@ -97,4 +102,9 @@ jobs:
           path: |
             ${{ runner.temp }}/rc31-completion.log
             ${{ runner.temp }}/rc31-web-fetch.log
+            ${{ runner.temp }}/rc31-host-mcp.log
+            ${{ runner.temp }}/rc31-host-mcp/**/host.log
+            ${{ runner.temp }}/rc31-host-mcp/**/requests.json
+            ${{ runner.temp }}/rc31-host-mcp/**/result.json
+            ${{ runner.temp }}/rc31-host-mcp/**/patch.yml
           if-no-files-found: error
