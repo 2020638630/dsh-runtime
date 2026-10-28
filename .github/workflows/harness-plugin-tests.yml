@@ -55,7 +55,7 @@ jobs:
             'test:launcher', 'test:host-core', 'test:tool', 'test:entry',
             'test:api-agent-trace', 'test:client-evidence-scope',
             'test:host-compat-report', 'test:check-evidence-home',
-            'test:terminal-evidence', 'test:copy-terminal-evidence'
+            'test:terminal-evidence', 'test:copy-terminal-evidence', 'test:dependency-proxy'
           )
           foreach ($check in $checks) {
             pnpm.cmd run $check

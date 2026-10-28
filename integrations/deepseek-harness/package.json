@@ -49,7 +49,8 @@
     "test:host-compat-report": "node test/host-compat-report.test.mjs",
     "test:check-evidence-home": "node test/check-evidence-home.test.mjs",
     "test:terminal-evidence": "tsc -p tsconfig.test.json && node .build/test/read-terminal-evidence.test.js && node test/evidence-route.test.mjs",
-    "test:copy-terminal-evidence": "node test/copy-terminal-evidence.test.mjs"
+    "test:copy-terminal-evidence": "node test/copy-terminal-evidence.test.mjs",
+    "test:dependency-proxy": "node test/dependency-proxy.test.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "4.0.5",
@@ -61,7 +62,7 @@
     "@deepseek-ai/dsh-subagent": "0.2.1-rc.4",
     "@deepseek-ai/dsh-subprocess": "0.2.1-rc.4",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.4",
-    "zod": "4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@types/node": "24.10.0",
