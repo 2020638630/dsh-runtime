@@ -61,3 +61,8 @@ jobs:
             pnpm.cmd run $check
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+
+      - name: Reproduce relocated rc.31 installations and rejection cases
+        run: |
+          node ../../tests/test-rc31-install.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

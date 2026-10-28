@@ -87,3 +87,10 @@ function Assert-QualifiedHost {
     Version = $hostInfo.version
   }
 }
+
+function Assert-QualifiedGraph {
+  param([string]$KitRoot, [string]$NodePath, [string]$Root, [ValidateSet('host','profile')][string]$Kind)
+  $template = if ($Kind -eq 'host') { 'install\rc31\host' } else { 'install\rc31\profiles\template' }
+  & $NodePath (Join-Path $KitRoot 'check-rc31-graph.mjs') (Join-Path $KitRoot $template) $Root $Kind
+  if ($LASTEXITCODE -ne 0) { throw "$Kind dependency graph is not qualified." }
+}

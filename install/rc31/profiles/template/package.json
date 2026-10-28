@@ -1,0 +1,6 @@
+{
+  "name": "dsh-rc31-profile",
+  "private": true,
+  "dependencies": { "@dsh-runtime/harness-plugin": "file:../../plugin-artifacts/dsh-runtime-harness-plugin-0.1.0-rc.31.tgz" },
+  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "@dsh-runtime/harness-plugin"] } }
+}

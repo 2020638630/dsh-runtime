@@ -9,6 +9,14 @@ the rc.4 package. Node 24 satisfies undici's >=22.19.0 requirement. The plugin
 CI and a real loopback proxy/fetch test exercise this combination; they do not
 prove compatibility with every Host configuration.
 
+The rc.31 install policy additionally scopes undici 8.12.2 to the rc.4
+web-fetch consumer, fflate 0.8.3 to libreoffice-kit 0.1.5, and MCP client
+2.3.0 to the rc.4 MCP consumer; the resulting client resolves core 2.3.0.
+MCP client declares Node >=20 and zod ^4.2.0; undici requires Node >=22.19.0.
+The installer requires Node >=24.19.0. These are graph constraints, not proof
+of behavioral compatibility. Web-fetch, archive handling and MCP cross-origin
+redirect behavior still need bounded acceptance against the actual deployment.
+
 These are **pnpm workspace-root overrides**, not transitive package metadata.
 When this plugin is installed into another Host, that Host's own lockfile and
 root policy determine the resolved versions. Packaging the plugin does not force

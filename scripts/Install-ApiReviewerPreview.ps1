@@ -47,9 +47,15 @@ $kit = (Resolve-Path -LiteralPath $KitRoot).Path
 $manifest = Get-Content -LiteralPath (Join-Path $kit 'manifest.json') -Raw | ConvertFrom-Json
 . (Join-Path $kit 'Assert-QualifiedHost.ps1')
 $qualifiedHost = Assert-QualifiedHost -Manifest $manifest -HostRunnerRoot $HostRunnerRoot -NodePath $NodePath
+Assert-QualifiedGraph -KitRoot $kit -NodePath $NodePath -Root $qualifiedHost.RunnerPath -Kind host
 if ($manifest.schema_version -ne 3 -or $manifest.channel -ne 'private-api-reviewer-preview' -or
     $manifest.d2_execute_gate -ne 'NOT_CLAIMED') { throw 'Kit manifest is not an API reviewer preview.' }
 $pluginFile = Join-Path $kit $manifest.plugin.file
+$policyPlugin = Join-Path $kit 'install\rc31\plugin-artifacts\dsh-runtime-harness-plugin-0.1.0-rc.31.tgz'
+if (-not (Test-Path -LiteralPath $policyPlugin -PathType Leaf) -or
+    (Get-FileHash -LiteralPath $policyPlugin -Algorithm SHA256).Hash -ne $manifest.plugin.sha256) {
+  throw 'Kit plugin does not match the locked Profile artifact.'
+}
 $runtimeFile = Join-Path $kit $manifest.runtime.file
 foreach ($item in @(@($pluginFile, $manifest.plugin.sha256), @($runtimeFile, $manifest.runtime.sha256))) {
   if (-not (Test-Path -LiteralPath $item[0] -PathType Leaf)) { throw "Missing kit artifact: $($item[0])" }
@@ -86,6 +92,8 @@ if ($WorkerModel -ne '' -and $WorkerModel -notmatch $modelPattern) { throw 'Inva
 foreach ($required in @($ConnectionPath, $PythonPath, $PnpmPath)) {
   if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Missing dependency: $required" }
 }
+$pnpmVersion = & $PnpmPath --version
+if ($LASTEXITCODE -ne 0 -or $pnpmVersion -ne '11.25.0') { throw 'Profile installation requires pnpm 11.25.0.' }
 $homePath = FullPath $HomeRoot
 $runtimePath = FullPath $RuntimeRoot
 $connectionFile = (Resolve-Path -LiteralPath $ConnectionPath).Path
@@ -140,14 +148,11 @@ foreach ($dir in @('audit', 'pins', 'evidence')) {
 }
 Copy-Item -LiteralPath $pluginFile -Destination $installedPlugin
 
-$profilePackage = [ordered]@{
-  name = "dsh-profile-$ProfileName"
-  private = $true
-  dependencies = @{ '@dsh-runtime/harness-plugin' = "file:../../plugin-artifacts/$($manifest.plugin.file)" }
-  dsh = @{ profile = @{ bundles = @('@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@dsh-runtime/harness-plugin') } }
-}
 $utf8 = [System.Text.UTF8Encoding]::new($false)
-[System.IO.File]::WriteAllText((Join-Path $profilePath 'package.json'), ($profilePackage | ConvertTo-Json -Depth 8) + "`n", $utf8)
+if ($manifest.plugin.file -ne 'dsh-runtime-harness-plugin-0.1.0-rc.31.tgz') { throw 'Unexpected locked plugin filename.' }
+foreach ($name in @('package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml')) {
+  Copy-Item -LiteralPath (Join-Path $kit "install\rc31\profiles\template\$name") -Destination (Join-Path $profilePath $name)
+}
 [System.IO.File]::WriteAllText((Join-Path $profilePath 'cordis.yml'), "[]`n", $utf8)
 $workerModelYaml = if ($WorkerModel -eq '') { 'null' } else { QuoteYaml $WorkerModel }
 $patch = @"
@@ -185,14 +190,17 @@ $patch = @"
 "@
 [System.IO.File]::WriteAllText((Join-Path $profilePath 'cordis.patch.yml'), $patch + "`n", $utf8)
 
-$installArgs = @('install', '--ignore-scripts')
+$installArgs = @('install', '--frozen-lockfile', '--ignore-scripts')
 if ($Offline) { $installArgs += '--offline' }
 else { $installArgs += '--registry=https://registry.npmjs.org/' }
 Push-Location -LiteralPath $profilePath
+$previousPath = $env:PATH
 try {
+  $env:PATH = (Split-Path -Parent (Resolve-Path -LiteralPath $NodePath).Path) + [IO.Path]::PathSeparator + $previousPath
   & $PnpmPath @installArgs
   if ($LASTEXITCODE -ne 0) { throw "pnpm install failed with exit code $LASTEXITCODE" }
-} finally { Pop-Location }
+} finally { $env:PATH = $previousPath; Pop-Location }
+Assert-QualifiedGraph -KitRoot $kit -NodePath $NodePath -Root $profilePath -Kind profile
 
 Write-Output "Installed profile=$profilePath"
 Write-Output "Runtime commit=$($manifest.runtime.commit)"
