@@ -7,6 +7,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $kit = (Resolve-Path -LiteralPath $KitRoot).Path
+. (Join-Path $kit 'Assert-QualifiedHost.ps1')
+$HostRunnerRoot = Get-Rc31Path $HostRunnerRoot
 if (Test-Path -LiteralPath $HostRunnerRoot) { throw 'Refusing to overwrite Host runner.' }
 if (-not (Test-Path -LiteralPath $PnpmPath -PathType Leaf)) { throw 'pnpm executable is missing.' }
 $version = & $PnpmPath --version
@@ -28,5 +30,6 @@ try {
   $manifest = Get-Content -LiteralPath (Join-Path $kit 'manifest.json') -Raw | ConvertFrom-Json
   $hostInfo = Assert-QualifiedHost -Manifest $manifest -HostRunnerRoot $HostRunnerRoot -NodePath $NodePath
   Assert-QualifiedGraph -KitRoot $kit -NodePath $NodePath -Root $hostInfo.RunnerPath -Kind host
+  Write-Rc31Completion -Root $hostInfo.RunnerPath -Kind host
   Write-Output "Installed Host runner=$($hostInfo.RunnerPath)"
 } finally { $env:PATH = $oldPath }

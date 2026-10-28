@@ -21,33 +21,12 @@ $ErrorActionPreference = 'Stop'
 function QuoteYaml([string]$value) {
   return "'" + $value.Replace('\', '/').Replace("'", "''") + "'"
 }
-function FullPath([string]$value) {
-  return [System.IO.Path]::GetFullPath($value).TrimEnd('\', '/')
-}
-function ContainsPath([string]$parent, [string]$child) {
-  return $child.Equals($parent, [StringComparison]::OrdinalIgnoreCase) -or
-    $child.StartsWith($parent + [System.IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
-}
-function AssertNoReparseAncestor([string]$path) {
-  $cursor = $path
-  while ($cursor) {
-    if (Test-Path -LiteralPath $cursor) {
-      $entry = Get-Item -LiteralPath $cursor -Force
-      if ($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-        throw "Refusing a path through a link or junction: $cursor"
-      }
-    }
-    $parent = [System.IO.Path]::GetDirectoryName($cursor)
-    if (-not $parent -or $parent -eq $cursor) { break }
-    $cursor = $parent
-  }
-}
-
 $kit = (Resolve-Path -LiteralPath $KitRoot).Path
 $manifest = Get-Content -LiteralPath (Join-Path $kit 'manifest.json') -Raw | ConvertFrom-Json
 . (Join-Path $kit 'Assert-QualifiedHost.ps1')
 $qualifiedHost = Assert-QualifiedHost -Manifest $manifest -HostRunnerRoot $HostRunnerRoot -NodePath $NodePath
 Assert-QualifiedGraph -KitRoot $kit -NodePath $NodePath -Root $qualifiedHost.RunnerPath -Kind host
+[void](Assert-Rc31Completion -Root $qualifiedHost.RunnerPath -Kind host)
 if ($manifest.schema_version -ne 3 -or $manifest.channel -ne 'private-api-reviewer-preview' -or
     $manifest.d2_execute_gate -ne 'NOT_CLAIMED') { throw 'Kit manifest is not an API reviewer preview.' }
 $pluginFile = Join-Path $kit $manifest.plugin.file
@@ -94,15 +73,10 @@ foreach ($required in @($ConnectionPath, $PythonPath, $PnpmPath)) {
 }
 $pnpmVersion = & $PnpmPath --version
 if ($LASTEXITCODE -ne 0 -or $pnpmVersion -ne '11.25.0') { throw 'Profile installation requires pnpm 11.25.0.' }
-$homePath = FullPath $HomeRoot
-$runtimePath = FullPath $RuntimeRoot
-$connectionFile = (Resolve-Path -LiteralPath $ConnectionPath).Path
-AssertNoReparseAncestor $homePath
-AssertNoReparseAncestor $runtimePath
-if ((ContainsPath $homePath $runtimePath) -or (ContainsPath $runtimePath $homePath) -or
-    (ContainsPath $homePath $connectionFile) -or (ContainsPath $runtimePath $connectionFile)) {
-  throw 'Home, Runtime and connection file must be separate paths.'
-}
+$homePath = Get-Rc31Path $HomeRoot
+$runtimePath = Get-Rc31Path $RuntimeRoot
+$connectionFile = Get-Rc31Path $ConnectionPath
+Assert-Rc31Paths -Runner $qualifiedHost.RunnerPath -HomePath $homePath -Runtime $runtimePath -Connection $connectionFile
 $profilePath = Join-Path $homePath "profiles\$ProfileName"
 $installedPlugin = Join-Path $homePath ("plugin-artifacts\" + $manifest.plugin.file)
 foreach ($target in @($homePath, $runtimePath, $profilePath, $installedPlugin)) {
@@ -201,6 +175,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "pnpm install failed with exit code $LASTEXITCODE" }
 } finally { $env:PATH = $previousPath; Pop-Location }
 Assert-QualifiedGraph -KitRoot $kit -NodePath $NodePath -Root $profilePath -Kind profile
+Write-Rc31Completion -Root $profilePath -Kind profile -Runtime $runtimePath -Connection $connectionFile
 
 Write-Output "Installed profile=$profilePath"
 Write-Output "Runtime commit=$($manifest.runtime.commit)"

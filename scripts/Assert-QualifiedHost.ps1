@@ -61,7 +61,7 @@ function Assert-QualifiedHost {
   if ([Version]($nodeVersionText.Substring(1)) -lt [Version]'24.19.0') {
     throw 'Official Host requires Node 24.19.0 or newer.'
   }
-  $runnerPath = (Resolve-Path -LiteralPath $HostRunnerRoot).Path
+  $runnerPath = Get-Rc31Path $HostRunnerRoot
   $runnerPackage = Join-Path $runnerPath 'package.json'
   $hostPackage = Join-Path $runnerPath 'node_modules\@deepseek-ai\dsh\package.json'
   $hostEntry = Join-Path $runnerPath 'node_modules\@deepseek-ai\dsh\lib\bin.js'
@@ -93,4 +93,70 @@ function Assert-QualifiedGraph {
   $template = if ($Kind -eq 'host') { 'install\rc31\host' } else { 'install\rc31\profiles\template' }
   & $NodePath (Join-Path $KitRoot 'check-rc31-graph.mjs') (Join-Path $KitRoot $template) $Root $Kind
   if ($LASTEXITCODE -ne 0) { throw "$Kind dependency graph is not qualified." }
+}
+
+# Paths through reparse points are rejected, including ancestors of paths not yet created.
+function Get-Rc31Path([string]$Path) {
+  if (-not [IO.Path]::IsPathRooted($Path)) { throw 'Installation paths must be absolute.' }
+  $full = [IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+  if (-not $full) { throw 'A volume root is not an installation path.' }
+  $cursor = $full
+  while ($cursor) {
+    if (Test-Path -LiteralPath $cursor) {
+      if ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw "Refusing a path through a link or junction: $cursor"
+      }
+    }
+    $parent = [IO.Path]::GetDirectoryName($cursor)
+    if (-not $parent -or $parent -eq $cursor) { break }
+    $cursor = $parent
+  }
+  return $full
+}
+function Test-Rc31Contains([string]$Parent, [string]$Child) {
+  return $Child.Equals($Parent, [StringComparison]::OrdinalIgnoreCase) -or
+    $Child.StartsWith($Parent + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
+}
+function Assert-Rc31Paths([string]$Runner, [string]$HomePath, [string]$Runtime, [string]$Connection) {
+  $roots = @((Get-Rc31Path $Runner), (Get-Rc31Path $HomePath), (Get-Rc31Path $Runtime))
+  $connectionPath = Get-Rc31Path $Connection
+  for ($i = 0; $i -lt $roots.Count; $i++) {
+    for ($j = $i + 1; $j -lt $roots.Count; $j++) {
+      if ((Test-Rc31Contains $roots[$i] $roots[$j]) -or (Test-Rc31Contains $roots[$j] $roots[$i])) {
+        throw 'Host runner, Home and Runtime must be separate paths.'
+      }
+    }
+    if (Test-Rc31Contains $roots[$i] $connectionPath) { throw 'Connection must be outside all installation roots.' }
+  }
+}
+function Get-Rc31Identity([string]$Root, [string]$Kind) {
+  $identity = [ordered]@{ schema = 1; kind = $Kind; root = (Get-Rc31Path $Root) }
+  foreach ($name in @('package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml')) {
+    $identity[$name] = (Get-FileHash -LiteralPath (Join-Path $Root $name) -Algorithm SHA256).Hash
+  }
+  if ($Kind -eq 'profile') {
+    foreach ($name in @('cordis.patch.yml')) {
+      $identity[$name] = (Get-FileHash -LiteralPath (Join-Path $Root $name) -Algorithm SHA256).Hash
+    }
+  }
+  return $identity
+}
+function Write-Rc31Completion([string]$Root, [string]$Kind, [string]$Runtime = '', [string]$Connection = '') {
+  $record = Get-Rc31Identity $Root $Kind
+  if ($Kind -eq 'profile') { $record['runtime'] = $Runtime; $record['connection'] = $Connection }
+  $path = Join-Path $Root '.rc31-install-complete.json'
+  if (Test-Path -LiteralPath $path) { throw 'Completion record already exists.' }
+  [IO.File]::WriteAllText($path, (($record | ConvertTo-Json) + "`n"), [Text.UTF8Encoding]::new($false))
+}
+function Assert-Rc31Completion([string]$Root, [string]$Kind) {
+  $path = Join-Path $Root '.rc31-install-complete.json'
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "$Kind installation completion record is missing." }
+  [void](Get-Rc31Path $path)
+  try { $record = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json } catch { throw "$Kind installation completion record is invalid." }
+  $expected = Get-Rc31Identity $Root $Kind
+  foreach ($key in $expected.Keys) {
+    if ($record.$key -cne $expected[$key]) { throw "$Kind installation completion record does not match $key." }
+  }
+  if ($Kind -eq 'profile' -and (-not $record.runtime -or -not $record.connection)) { throw 'Profile completion paths are missing.' }
+  return $record
 }

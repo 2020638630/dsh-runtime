@@ -64,7 +64,8 @@ try {
   if ($OldNodePath -and (Test-Path -LiteralPath $OldNodePath -PathType Leaf)) {
     Invoke-PreflightCase 'old-node' $QualifiedRunnerRoot $OldNodePath 'requires Node 24.19.0'
   }
-  Invoke-PreflightCase 'qualified-runner' $QualifiedRunnerRoot $QualifiedNodePath 'Missing dependency'
+  $qualifiedError = if (Test-Path -LiteralPath (Join-Path $QualifiedRunnerRoot '.rc31-install-complete.json')) { 'Missing dependency' } else { 'completion record is missing' }
+  Invoke-PreflightCase 'qualified-runner' $QualifiedRunnerRoot $QualifiedNodePath $qualifiedError
 } finally {
   $resolved = [System.IO.Path]::GetFullPath($fixture)
   if ($resolved.StartsWith($temporaryRoot + [System.IO.Path]::DirectorySeparatorChar,

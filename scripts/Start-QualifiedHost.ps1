@@ -14,8 +14,12 @@ $manifest = Get-Content -LiteralPath (Join-Path $kit 'manifest.json') -Raw | Con
 . (Join-Path $kit 'Assert-QualifiedHost.ps1')
 $qualifiedHost = Assert-QualifiedHost -Manifest $manifest -HostRunnerRoot $HostRunnerRoot -NodePath $NodePath
 Assert-QualifiedGraph -KitRoot $kit -NodePath $NodePath -Root $qualifiedHost.RunnerPath -Kind host
-$homePath = (Resolve-Path -LiteralPath $HomeRoot).Path
-$installedPlugin = Join-Path $homePath 'plugin-artifacts\dsh-runtime-harness-plugin-0.1.0-rc.31.tgz'
+[void](Assert-Rc31Completion -Root $qualifiedHost.RunnerPath -Kind host)
+$homePath = Get-Rc31Path $HomeRoot
+$profilePath = Get-Rc31Path (Join-Path $homePath "profiles\$ProfileName")
+$profileRecord = Assert-Rc31Completion -Root $profilePath -Kind profile
+Assert-Rc31Paths -Runner $qualifiedHost.RunnerPath -HomePath $homePath -Runtime $profileRecord.runtime -Connection $profileRecord.connection
+$installedPlugin = Get-Rc31Path (Join-Path $homePath 'plugin-artifacts\dsh-runtime-harness-plugin-0.1.0-rc.31.tgz')
 if ($manifest.plugin.file -ne 'dsh-runtime-harness-plugin-0.1.0-rc.31.tgz' -or
     -not (Test-Path -LiteralPath $installedPlugin -PathType Leaf) -or
     (Get-FileHash -LiteralPath $installedPlugin -Algorithm SHA256).Hash -ne $manifest.plugin.sha256) {
@@ -24,7 +28,7 @@ if ($manifest.plugin.file -ne 'dsh-runtime-harness-plugin-0.1.0-rc.31.tgz' -or
 if (-not (Test-Path -LiteralPath (Join-Path $homePath "profiles\$ProfileName\package.json") -PathType Leaf)) {
   throw 'Installed Profile is missing.'
 }
-Assert-QualifiedGraph -KitRoot $kit -NodePath $NodePath -Root (Join-Path $homePath "profiles\$ProfileName") -Kind profile
+Assert-QualifiedGraph -KitRoot $kit -NodePath $NodePath -Root $profilePath -Kind profile
 $arguments = @('--profile', $ProfileName)
 if ($DumpConfig) { $arguments += '--dump-config' }
 else { $arguments += @('--no-open', '--port', "$Port") }
