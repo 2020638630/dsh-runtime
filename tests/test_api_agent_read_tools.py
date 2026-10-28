@@ -156,3 +156,30 @@ def test_read_file_rejects_excessive_json_escape_expansion(tmp_path):
     (workspace / "controls.txt").write_bytes(b"\x01" * 20_000)
     with pytest.raises(ValueError, match="response is too large"):
         read_content(WorkspaceReadBroker(workspace), "controls.txt")
+
+
+def test_hardlink_to_outside_file_is_rejected_before_read(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "private.txt"
+    outside.write_bytes(b"SYNTHETIC_PRIVATE_MARKER")
+    os.link(outside, workspace / "README.md")
+    reads = []
+    original_read = os.read
+
+    def observe_read(fd, count):
+        reads.append(fd)
+        return original_read(fd, count)
+
+    monkeypatch.setattr(os, "read", observe_read)
+    with pytest.raises(ValueError):
+        read_content(WorkspaceReadBroker(workspace), "README.md")
+    assert reads == []
+
+
+@pytest.mark.skipif(os.name != "nt", reason="NTFS alternate data streams")
+def test_sensitive_file_named_stream_is_rejected(tmp_path):
+    (tmp_path / ".env").write_bytes(b"SYNTHETIC_MAIN_STREAM")
+    Path(str(tmp_path / ".env") + ":review").write_bytes(b"SYNTHETIC_PRIVATE_STREAM")
+    with pytest.raises(ValueError):
+        read_content(WorkspaceReadBroker(tmp_path), ".env:review")

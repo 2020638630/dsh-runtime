@@ -3,6 +3,8 @@
 import asyncio
 from hashlib import sha256
 import json
+import os
+import subprocess
 
 import pytest
 
@@ -10,6 +12,40 @@ from dsh_runtime.api_agent_contract import ApiAgentConfig, ApiRole
 from dsh_runtime.api_agent_connections import ConnectionCatalog
 from dsh_runtime.api_agent_loop import ModelReply, ToolCall, run_api_agent
 from dsh_runtime.api_agent_read_tools import WorkspaceReadBroker
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction credential boundary")
+def test_connection_cannot_enter_git_subdirectory_through_junction(tmp_path):
+    repo = tmp_path / "repository"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    nested = repo / "settings"
+    nested.mkdir()
+    (nested / "local.json").write_text(json.dumps({
+        "schema_version": 1, "connections": {"trial": {
+            "provider": "openrouter", "base_url": "https://openrouter.ai/api/v1",
+            "api_key": "synthetic-test-key",
+        }},
+    }), encoding="utf-8")
+    alias = tmp_path / "alias"
+    created = subprocess.run(["cmd", "/c", "mklink", "/J", str(alias), str(nested)],
+                             capture_output=True, check=False)
+    if created.returncode:
+        pytest.skip("junction creation unavailable")
+    with pytest.raises(ValueError):
+        ConnectionCatalog.from_file(alias / "local.json")
+
+
+def test_connection_rejects_hardlink_alias(tmp_path):
+    source = tmp_path / "local.json"
+    source.write_text(json.dumps({"schema_version": 1, "connections": {"trial": {
+        "provider": "openrouter", "base_url": "https://openrouter.ai/api/v1",
+        "api_key": "synthetic-test-key",
+    }}}), encoding="utf-8")
+    alias = tmp_path / "alias.json"
+    os.link(source, alias)
+    with pytest.raises(ValueError, match="hardlink"):
+        ConnectionCatalog.from_file(alias)
 
 
 def config_document() -> dict:

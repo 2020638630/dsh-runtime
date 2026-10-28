@@ -1,5 +1,5 @@
 /** Installable official DeepSeekHarness Host entrypoint. */
-import { lstatSync, statSync } from 'node:fs'
+import { lstatSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute, dirname, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-connection'
@@ -192,11 +192,12 @@ export function validateConfig(input: Config): ResolvedConfig {
   let apiAgentConnectionsPath: string | undefined
   if (usesApi) {
     apiAgentConnectionsPath = absolutePath(input.apiAgentConnectionsPath, 'apiAgentConnectionsPath')
-    if (lstatSync(apiAgentConnectionsPath).isSymbolicLink()
-      || !statSync(apiAgentConnectionsPath).isFile()) {
+    const connectionInfo = lstatSync(apiAgentConnectionsPath)
+    if (connectionInfo.isSymbolicLink() || !connectionInfo.isFile() || connectionInfo.nlink !== 1) {
       throw new TypeError('apiAgentConnectionsPath must be a regular file')
     }
-    if (within(runtimeRoot, apiAgentConnectionsPath)) {
+    apiAgentConnectionsPath = realpathSync(apiAgentConnectionsPath)
+    if (within(realpathSync(runtimeRoot), apiAgentConnectionsPath)) {
       throw new TypeError('apiAgentConnectionsPath must be outside Runtime source')
     }
   } else if (input.apiAgentConnectionsPath !== undefined) {

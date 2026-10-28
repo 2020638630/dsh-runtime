@@ -140,3 +140,97 @@ def test_truncated_completion_is_rejected():
             )
     with pytest.raises(TransportFailure, match="provider_response_invalid"):
         asyncio.run(scenario())
+
+
+def test_response_limit_stops_stream_before_consuming_entire_body():
+    class LargeStream(httpx.AsyncByteStream):
+        chunks_read = 0
+        closed = False
+
+        async def __aiter__(self):
+            for _ in range(100):
+                self.chunks_read += 1
+                yield b"x" * 65_536
+
+        async def aclose(self):
+            self.closed = True
+
+    stream = LargeStream()
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, stream=stream)
+        )) as client:
+            transport = ChatCompletionsTransport(Connection(
+                "openrouter", "https://openrouter.ai/api/v1", "private-test-key"
+            ), client=client)
+            await transport.complete(model="vendor/model", messages=(),
+                                     allowed_tools=frozenset(), max_output_tokens=10)
+
+    with pytest.raises(TransportFailure, match="provider_response_too_large"):
+        asyncio.run(scenario())
+    assert stream.chunks_read <= 16
+    assert stream.closed
+
+
+@pytest.mark.parametrize("status,headers,expected", [
+    (302, {"location": "https://example.invalid/collect"}, "provider_http_error"),
+    (401, {}, "provider_auth_error"),
+    (200, {"content-encoding": "gzip"}, "provider_response_invalid"),
+])
+def test_rejected_response_never_reads_body_or_follows_redirect(status, headers, expected):
+    requests = []
+
+    class UnreadBody(httpx.AsyncByteStream):
+        closed = False
+
+        async def __aiter__(self):
+            raise AssertionError("rejected body must not be consumed")
+            yield b""
+
+        async def aclose(self):
+            self.closed = True
+
+    stream = UnreadBody()
+
+    def handler(request):
+        requests.append(request)
+        assert request.headers["accept-encoding"] == "identity"
+        return httpx.Response(status, headers=headers, stream=stream)
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler),
+                                     follow_redirects=True) as client:
+            transport = ChatCompletionsTransport(Connection(
+                "openrouter", "https://openrouter.ai/api/v1", "private-test-key"
+            ), client=client)
+            await transport.complete(model="vendor/model", messages=(),
+                                     allowed_tools=frozenset(), max_output_tokens=10)
+
+    with pytest.raises(TransportFailure, match=expected):
+        asyncio.run(scenario())
+    assert len(requests) == 1
+    assert stream.closed
+
+
+def test_successful_response_can_arrive_in_separate_chunks():
+    payload = __import__("json").dumps({
+        "model": "vendor/model", "choices": [{"finish_reason": "stop",
+            "message": {"content": "reviewed"}}], "usage": {"completion_tokens": 1},
+    }).encode()
+
+    class SplitBody(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            for offset in range(0, len(payload), 7):
+                yield payload[offset:offset + 7]
+
+    async def scenario():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, stream=SplitBody())
+        )) as client:
+            return await ChatCompletionsTransport(Connection(
+                "openrouter", "https://openrouter.ai/api/v1", "private-test-key"
+            ), client=client).complete(model="vendor/model", messages=(),
+                                      allowed_tools=frozenset(), max_output_tokens=10)
+
+    assert asyncio.run(scenario()).text == "reviewed"

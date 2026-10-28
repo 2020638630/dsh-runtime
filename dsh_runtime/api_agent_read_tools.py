@@ -42,7 +42,11 @@ class WorkspaceReadBroker:
         if not isinstance(relative, str) or not relative or len(relative) > 512:
             raise ValueError("path is invalid")
         path = Path(relative)
-        if path.is_absolute() or any(part in {"..", ""} or _sensitive(part) for part in path.parts):
+        # A colon can select an NTFS named stream (including on a blocked
+        # credential file); only ordinary relative file paths are supported.
+        if path.drive or path.is_absolute() or ":" in relative or any(
+            part in {"..", ""} or _sensitive(part) for part in path.parts
+        ):
             raise ValueError("path is outside allowed workspace scope")
         candidate = self.root
         for part in path.parts:
@@ -80,8 +84,8 @@ class WorkspaceReadBroker:
             raise ValueError("file could not be opened safely") from None
         try:
             before = os.fstat(fd)
-            if not stat.S_ISREG(before.st_mode):
-                raise ValueError("path must be a regular file")
+            if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+                raise ValueError("path must be a single-link regular file")
             opened_path = _opened_file_path(fd)
             if not opened_path.is_relative_to(self.root):
                 raise ValueError("opened file leaves workspace")
@@ -98,8 +102,8 @@ class WorkspaceReadBroker:
                 chunks.append(chunk)
                 remaining -= len(chunk)
             after = os.fstat(fd)
-            if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
-                after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns
+            if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_nlink) != (
+                after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_nlink
             ):
                 raise ValueError("file changed during read")
             content = b"".join(chunks)

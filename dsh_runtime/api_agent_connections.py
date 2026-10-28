@@ -45,8 +45,14 @@ class ConnectionCatalog:
     def from_file(cls, path: Path) -> "ConnectionCatalog":
         if not path.is_absolute() or path.is_symlink() or not path.is_file():
             raise ValueError("connection file must be an existing absolute regular file")
-        if any((parent / ".git").exists() for parent in path.parents):
+        # An ancestor junction can hide the Git root from lexical parents.
+        # Use the physical location for both the policy check and the read.
+        physical = path.resolve(strict=True)
+        if any((parent / ".git").exists() for parent in (*path.parents, *physical.parents)):
             raise ValueError("connection file must be outside a Git worktree")
+        if physical.stat().st_nlink != 1:
+            raise ValueError("connection file must not have hardlink aliases")
+        path = physical
         # The caller supplies this path out of band. It is never model input.
         if path.stat().st_size > _MAX_FILE_BYTES:
             raise ValueError("connection file is too large")

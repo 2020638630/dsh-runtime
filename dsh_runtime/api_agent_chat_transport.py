@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -84,29 +85,44 @@ class ChatCompletionsTransport:
             }
         url = self.connection.base_url + "/chat/completions"
         headers = {"Authorization": "Bearer " + self.connection.api_key,
-                   "Content-Type": "application/json"}
+                   "Content-Type": "application/json", "Accept-Encoding": "identity"}
+
+        async def read_response(client: Any) -> bytes:
+            # Bound consumption before buffering. Reject compression so a small
+            # compressed chunk cannot expand beyond the response budget.
+            async with client.stream("POST", url, headers=headers, json=body,
+                                     timeout=self.timeout_seconds,
+                                     follow_redirects=False) as response:
+                if response.status_code in {401, 403}:
+                    raise TransportFailure("provider_auth_error")
+                if response.status_code == 429:
+                    raise TransportFailure("provider_rate_limited")
+                if response.status_code < 200 or response.status_code >= 300:
+                    raise TransportFailure("provider_http_error")
+                if response.headers.get("content-encoding", "identity").lower() != "identity":
+                    raise TransportFailure("provider_response_invalid")
+                payload = bytearray()
+                async for chunk in response.aiter_bytes():
+                    if len(payload) + len(chunk) > _MAX_RESPONSE_BYTES:
+                        raise TransportFailure("provider_response_too_large")
+                    payload.extend(chunk)
+                return bytes(payload)
+
         try:
-            if self.client is None:
-                async with httpx.AsyncClient(
-                    timeout=self.timeout_seconds, follow_redirects=False, trust_env=False,
-                ) as client:
-                    response = await client.post(url, headers=headers, json=body)
-            else:
-                response = await self.client.post(url, headers=headers, json=body)
-        except httpx.TimeoutException:
+            async with asyncio.timeout(self.timeout_seconds):
+                if self.client is None:
+                    async with httpx.AsyncClient(
+                        timeout=self.timeout_seconds, follow_redirects=False, trust_env=False,
+                    ) as client:
+                        payload = await read_response(client)
+                else:
+                    payload = await read_response(self.client)
+        except (httpx.TimeoutException, TimeoutError):
             raise TransportFailure("provider_timeout") from None
         except httpx.HTTPError:
             raise TransportFailure("provider_network_error") from None
-        if response.status_code in {401, 403}:
-            raise TransportFailure("provider_auth_error")
-        if response.status_code == 429:
-            raise TransportFailure("provider_rate_limited")
-        if response.status_code < 200 or response.status_code >= 300:
-            raise TransportFailure("provider_http_error")
-        if len(response.content) > _MAX_RESPONSE_BYTES:
-            raise TransportFailure("provider_response_too_large")
         try:
-            document = response.json()
+            document = json.loads(payload)
             if not isinstance(document, dict):
                 raise ValueError
             choices = document["choices"]

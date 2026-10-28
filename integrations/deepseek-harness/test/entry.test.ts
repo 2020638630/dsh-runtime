@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
@@ -124,4 +124,14 @@ test('entry accepts bounded API inspector only with an external connection path'
       ...roleConfig.roles.inspector, max_requests: 13,
     } },
   }, apiAgentConnectionsPath }), /max_requests/)
+
+  if (process.platform === 'win32') {
+    const nested = join(base.runtimeRoot, 'settings')
+    mkdirSync(nested)
+    writeFileSync(join(nested, 'local.json'), '{}')
+    const alias = join(dirname(base.runtimeRoot), 'settings-alias')
+    symlinkSync(nested, alias, 'junction')
+    assert.throws(() => validateConfig({ ...base, roleConfig,
+      apiAgentConnectionsPath: join(alias, 'local.json') }), /outside Runtime source/)
+  }
 })
