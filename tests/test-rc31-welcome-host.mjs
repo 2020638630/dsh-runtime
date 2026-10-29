@@ -23,11 +23,6 @@ try {
   const cookie = initial.headers.get('set-cookie')?.split(';')[0];
   assert.ok(cookie, 'Host did not issue an authentication cookie');
   const origin = new URL(url).origin;
-  if (mode === 'restart') {
-    const page = await fetch(origin, {headers:{cookie}});
-    assert.equal(page.status, 200, 'Restarted Host page unavailable');
-    console.log('Host restarted and served authenticated page after welcome write');
-  } else {
   async function rpc(method, args) {
     const id = crypto.randomUUID();
     const response = await fetch(`${origin}/api/${method}`, {method:'POST', headers:{'content-type':'application/json', cookie}, body:JSON.stringify({type:'client-request', rpcId:id, method, payload:{args}})});
@@ -36,11 +31,25 @@ try {
     assert.equal(body.rpcId, id); assert.equal(body.result?.ok, true, `${method} failed: ${body.result?.error?.code}`);
     return body.result.value;
   }
+  if (mode === 'restart') {
+    const page = await fetch(origin, {headers:{cookie}});
+    assert.equal(page.status, 200, 'Restarted Host page unavailable');
+    const patch = await readFile(join(home, 'profiles/runtime-api-reviewer-preview/cordis.patch.yml'), 'utf8');
+    assert.match(patch, /agent-default-model/);
+    assert.match(patch, /reasoningEffort:\s*off/);
+    console.log('Host restarted after settings writes; model patch retained');
+  } else {
   const description = await rpc('settings/describe', {});
   const general = description.namespaces.find(row => row.ns === 'ui-settings-general');
   assert.ok(general, 'Welcome namespace missing');
   await rpc('settings/mutate', {ns:'ui-settings-general', ops:[{op:'set',path:['welcomeNoticeVersion'],value:'2026-09-28.1'}], expectedRevision:general.revision});
+  const refreshed = await rpc('settings/describe', {});
+  const model = refreshed.namespaces.find(row => row.ns === 'agent-default-model');
+  assert.ok(model, 'Default model namespace missing');
+  await rpc('settings/mutate', {ns:'agent-default-model', ops:[{op:'set',path:['provider'],value:'fixture-provider'},{op:'set',path:['model'],value:'fixture-model'},{op:'set',path:['reasoningEffort'],value:'off'}], expectedRevision:model.revision});
   const patch = await readFile(join(home, 'profiles/runtime-api-reviewer-preview/cordis.patch.yml'), 'utf8');
+  assert.match(patch, /agent-default-model/);
+  assert.match(patch, /reasoningEffort:\s*off/);
   assert.match(patch, /welcomeNoticeVersion:\s*2026-09-28\.1/);
   console.log('Host settings mutation wrote welcome acknowledgement');
   }

@@ -53,6 +53,42 @@ $patchPath = Join-Path $homeDir 'profiles\runtime-api-reviewer-preview\cordis.pa
 $originalPatch = [IO.File]::ReadAllText($patchPath)
 [IO.File]::WriteAllText((Join-Path $fixture 'patch-installed.yml'), $originalPatch)
 try {
+  $model = "`n- id: agent-default-model`n  name: '@deepseek-ai/dsh-agent-default-model'`n  config: { provider: deepseek-official, model: deepseek-flash, reasoningEffort: off }`n"
+  $modelUpdated = "`n- id: agent-default-model`n  name: '@deepseek-ai/dsh-agent-default-model'`n  config: { provider: example, model: other }`n"
+  $welcomeTest = "`n- id: ui-settings-general`n  name: '@deepseek-ai/dsh-client-ui-settings-general'`n  config: { welcomeNoticeVersion: '2026-09-28.1' }`n"
+  foreach ($suffix in @('', $model, $modelUpdated, $welcomeTest, ($welcomeTest + $model), ($model + $welcomeTest))) {
+    [IO.File]::WriteAllText($patchPath, $originalPatch + $suffix)
+    & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Schema 3 mutable settings failed.' }
+  }
+  foreach ($suffix in @(($model + $model), ($model + "`n- id: unknown`n  config: {}`n"), ($model.Replace('model: deepseek-flash', 'model: 42')), ($model.Replace('config: {', "insert: true`n  config: {")), ($model.Replace('reasoningEffort: off', 'reasoningEffort: off, unexpected: true')))) {
+    [IO.File]::WriteAllText($patchPath, $originalPatch + $suffix)
+    Expect-Failure { & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig } 'structural validation failed'
+  }
+  [IO.File]::WriteAllText($patchPath, $originalPatch)
+  $homePatch = Join-Path $homeDir 'cordis.patch.yml'
+  try {
+    [IO.File]::WriteAllText($homePatch, "[]`n")
+    & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Empty Home patch rejected.' }
+    [IO.File]::WriteAllText($homePatch, "- id: dsh-runtime-standalone`n  config: { enabled: false }`n")
+    Expect-Failure { & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig } 'Home patch must be absent or an empty list'
+  } finally { Remove-Item -LiteralPath $homePatch -ErrorAction SilentlyContinue }
+  Expect-Failure { & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig -UnapprovedOverlay foo } 'parameter'
+  $v2 = $originalProfile | ConvertFrom-Json
+  $v2.schema = 2
+  $v2.'cordis.patch.yml' = & $NodePath (Join-Path $kit 'check-rc31-profile.mjs') $runner $patchPath 2
+  [IO.File]::WriteAllText($profileRecord, ($v2 | ConvertTo-Json))
+  [IO.File]::WriteAllText($patchPath, $originalPatch + $welcomeTest)
+  & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Schema 2 welcome failed.' }
+  [IO.File]::WriteAllText($patchPath, $originalPatch + $model)
+  Expect-Failure { & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig } 'structural validation failed'
+  $v2.schema = 99
+  [IO.File]::WriteAllText($profileRecord, ($v2 | ConvertTo-Json))
+  Expect-Failure { & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig } 'Unknown completion record schema'
+} finally { [IO.File]::WriteAllText($patchPath, $originalPatch); [IO.File]::WriteAllText($profileRecord, $originalProfile) }
+try {
   & $NodePath (Join-Path $PSScriptRoot 'test-rc31-welcome-host.mjs') $kit $runner $homeDir $NodePath
   if ($LASTEXITCODE -ne 0) { throw 'Real Host welcome write failed.' }
   Copy-Item -LiteralPath $patchPath -Destination (Join-Path $fixture 'patch-after-host.yml')
@@ -110,4 +146,3 @@ try {
 & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Second dump config failed: $LASTEXITCODE" }
 Write-Output "Completion and path boundary regression PASS; preserved fixture=$fixture"
-

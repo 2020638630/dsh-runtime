@@ -141,17 +141,17 @@ function Get-Rc31Identity([string]$Root, [string]$Kind) {
   }
   return $identity
 }
-function Get-Rc31ProfileDigest([string]$Root, [string]$KitRoot, [string]$NodePath, [string]$HostRunnerRoot) {
+function Get-Rc31ProfileDigest([string]$Root, [string]$KitRoot, [string]$NodePath, [string]$HostRunnerRoot, [int]$Schema = 2) {
   $patch = Get-Rc31Path (Join-Path $Root 'cordis.patch.yml')
-  $digest = & $NodePath (Join-Path $KitRoot 'check-rc31-profile.mjs') $HostRunnerRoot $patch
+  $digest = & $NodePath (Join-Path $KitRoot 'check-rc31-profile.mjs') $HostRunnerRoot $patch $Schema
   if ($LASTEXITCODE -ne 0 -or $digest -cnotmatch '^[A-F0-9]{64}$') { throw 'Profile patch structural validation failed.' }
   return $digest
 }
 function Write-Rc31Completion([string]$Root, [string]$Kind, [string]$Runtime = '', [string]$Connection = '', [string]$KitRoot = '', [string]$NodePath = '', [string]$HostRunnerRoot = '') {
   $record = Get-Rc31Identity $Root $Kind
   if ($Kind -eq 'profile') {
-    $record.schema = 2
-    $record['cordis.patch.yml'] = Get-Rc31ProfileDigest $Root $KitRoot $NodePath $HostRunnerRoot
+    $record.schema = 3
+    $record['cordis.patch.yml'] = Get-Rc31ProfileDigest $Root $KitRoot $NodePath $HostRunnerRoot 3
     $record['runtime'] = $Runtime; $record['connection'] = $Connection
   }
   $path = Join-Path $Root '.rc31-install-complete.json'
@@ -164,9 +164,11 @@ function Assert-Rc31Completion([string]$Root, [string]$Kind, [string]$KitRoot = 
   [void](Get-Rc31Path $path)
   try { $record = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json } catch { throw "$Kind installation completion record is invalid." }
   $expected = Get-Rc31Identity $Root $Kind
-  if ($Kind -eq 'profile' -and $record.schema -eq 2) {
-    $expected.schema = 2
-    $expected['cordis.patch.yml'] = Get-Rc31ProfileDigest $Root $KitRoot $NodePath $HostRunnerRoot
+  if ($record.schema -isnot [int] -and $record.schema -isnot [long]) { throw 'Unknown completion record schema.' }
+  if (($Kind -eq 'host' -and $record.schema -ne 1) -or ($Kind -eq 'profile' -and $record.schema -notin @(1, 2, 3))) { throw 'Unknown completion record schema.' }
+  if ($Kind -eq 'profile' -and $record.schema -in @(2, 3)) {
+    $expected.schema = $record.schema
+    $expected['cordis.patch.yml'] = Get-Rc31ProfileDigest $Root $KitRoot $NodePath $HostRunnerRoot $record.schema
   }
   foreach ($key in $expected.Keys) {
     if ($record.$key -cne $expected[$key]) { throw "$Kind installation completion record does not match $key." }

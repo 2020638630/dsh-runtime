@@ -67,7 +67,7 @@ jobs:
           node ../../tests/test-rc31-install.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Exercise Windows completion and path boundaries with keyless fixtures
+      - name: Exercise schema 3, legacy completion, Host settings and path boundaries
         working-directory: .
         run: |
           $ErrorActionPreference = 'Stop'
