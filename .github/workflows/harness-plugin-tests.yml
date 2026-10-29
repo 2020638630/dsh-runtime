@@ -106,6 +106,8 @@ jobs:
           name: rc31-completion-log
           path: |
             ${{ runner.temp }}/rc31-completion.log
+            ${{ runner.temp }}/rc31-completion-fixture/patch-installed.yml
+            ${{ runner.temp }}/rc31-completion-fixture/patch-after-host.yml
             ${{ runner.temp }}/rc31-web-fetch.log
             ${{ runner.temp }}/rc31-host-mcp.log
             ${{ runner.temp }}/rc31-host-mcp/**/host.log

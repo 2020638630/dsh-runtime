@@ -20,7 +20,7 @@ foreach ($wheel in $manifest.python_wheels) {
 $plugin = Join-Path $source 'install\rc31\plugin-artifacts\dsh-runtime-harness-plugin-0.1.0-rc.31.tgz'
 $manifest.plugin.sha256 = (Get-FileHash -LiteralPath $plugin -Algorithm SHA256).Hash
 New-Item -ItemType Directory -Path $OutputRoot | Out-Null
-foreach ($script in @('Install-Rc31Host.ps1','Install-ApiReviewerPreview.ps1','Assert-QualifiedHost.ps1','Start-QualifiedHost.ps1','check-rc31-graph.mjs')) {
+foreach ($script in @('Install-Rc31Host.ps1','Install-ApiReviewerPreview.ps1','Assert-QualifiedHost.ps1','Start-QualifiedHost.ps1','check-rc31-graph.mjs','check-rc31-profile.mjs')) {
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot $script) -Destination $OutputRoot
 }
 New-Item -ItemType Directory -Path (Join-Path $OutputRoot 'install') | Out-Null

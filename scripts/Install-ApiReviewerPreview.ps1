@@ -175,7 +175,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "pnpm install failed with exit code $LASTEXITCODE" }
 } finally { $env:PATH = $previousPath; Pop-Location }
 Assert-QualifiedGraph -KitRoot $kit -NodePath $NodePath -Root $profilePath -Kind profile
-Write-Rc31Completion -Root $profilePath -Kind profile -Runtime $runtimePath -Connection $connectionFile
+Write-Rc31Completion -Root $profilePath -Kind profile -Runtime $runtimePath -Connection $connectionFile -KitRoot $kit -NodePath $NodePath -HostRunnerRoot $qualifiedHost.RunnerPath
 
 Write-Output "Installed profile=$profilePath"
 Write-Output "Runtime commit=$($manifest.runtime.commit)"

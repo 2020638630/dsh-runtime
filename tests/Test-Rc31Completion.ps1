@@ -49,6 +49,56 @@ try {
   Expect-Failure { & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig } 'completion record does not match root'
 } finally { [IO.File]::WriteAllText($hostRecord, $original) }
 $originalProfile = [IO.File]::ReadAllText($profileRecord)
+$patchPath = Join-Path $homeDir 'profiles\runtime-api-reviewer-preview\cordis.patch.yml'
+$originalPatch = [IO.File]::ReadAllText($patchPath)
+[IO.File]::WriteAllText((Join-Path $fixture 'patch-installed.yml'), $originalPatch)
+try {
+  & $NodePath (Join-Path $PSScriptRoot 'test-rc31-welcome-host.mjs') $kit $runner $homeDir $NodePath
+  if ($LASTEXITCODE -ne 0) { throw 'Real Host welcome write failed.' }
+  Copy-Item -LiteralPath $patchPath -Destination (Join-Path $fixture 'patch-after-host.yml')
+  & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Restart after Host welcome write failed.' }
+  $welcome = "`n- id: ui-settings-general`n  name: '@deepseek-ai/dsh-client-ui-settings-general'`n  config:`n    welcomeNoticeVersion: 2026-09-28.1`n"
+  [IO.File]::WriteAllText($patchPath, $originalPatch + $welcome)
+  & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Welcome state restart failed.' }
+  $reordered = "`n- name: '@deepseek-ai/dsh-client-ui-settings-general'`n  config: { welcomeNoticeVersion: '2026-09-28.1' }`n  id: ui-settings-general`n"
+  $lines = $originalPatch -split "`n"
+  $runtimeLine = [Array]::FindIndex($lines, [Predicate[string]]{ param($line) $line.TrimStart().StartsWith('runtimeRoot:') })
+  $pythonLine = [Array]::FindIndex($lines, [Predicate[string]]{ param($line) $line.TrimStart().StartsWith('python:') })
+  if ($runtimeLine -lt 0 -or $pythonLine -lt 0) { throw 'Expected installed config keys missing.' }
+  $swap = $lines[$runtimeLine]; $lines[$runtimeLine] = $lines[$pythonLine]; $lines[$pythonLine] = $swap
+  [IO.File]::WriteAllText($patchPath, ($lines -join "`n") + $reordered)
+  & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Reordered YAML restart failed.' }
+  foreach ($pair in @(
+    @('runtimeRoot:', 'runtimeRoot: altered #'),
+    @('apiAgentConnectionsPath:', 'apiAgentConnectionsPath: altered #'),
+    @('expectedPolicyHash:', 'expectedPolicyHash: altered #'),
+    @('max_requests: 5', 'max_requests: 6')
+  )) {
+    [IO.File]::WriteAllText($patchPath, $originalPatch.Replace($pair[0], $pair[1]) + $welcome)
+    Expect-Failure { & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig } 'completion record does not match cordis.patch.yml'
+  }
+  [IO.File]::WriteAllText($patchPath, $originalPatch + $welcome + '    otherSetting: true' + "`n")
+  Expect-Failure { & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig } 'structural validation failed'
+  [IO.File]::WriteAllText($patchPath, $originalPatch + $welcome + '    welcomeNoticeVersion: duplicate' + "`n")
+  Expect-Failure { & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig } 'structural validation failed'
+  [IO.File]::WriteAllText($patchPath, '- invalid: [' + "`n")
+  Expect-Failure { & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig } 'structural validation failed'
+  [IO.File]::WriteAllText($patchPath, $originalPatch)
+  $legacy = $originalProfile | ConvertFrom-Json
+  $legacy.schema = 1
+  $legacy.'cordis.patch.yml' = (Get-FileHash -LiteralPath $patchPath -Algorithm SHA256).Hash
+  [IO.File]::WriteAllText($profileRecord, ($legacy | ConvertTo-Json))
+  & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Unchanged legacy record failed.' }
+  [IO.File]::WriteAllText($patchPath, $originalPatch + $welcome)
+  Expect-Failure { & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig } 'completion record does not match cordis.patch.yml'
+  [IO.File]::WriteAllText($patchPath, $originalPatch)
+  Remove-Item -LiteralPath $profileRecord
+  Expect-Failure { & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig } 'completion record is missing'
+} finally { [IO.File]::WriteAllText($patchPath, $originalPatch); [IO.File]::WriteAllText($profileRecord, $originalProfile) }
 try {
   $changed = $originalProfile | ConvertFrom-Json
   $changed.'cordis.patch.yml' = 'invalid'

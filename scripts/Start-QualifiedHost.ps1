@@ -17,7 +17,7 @@ Assert-QualifiedGraph -KitRoot $kit -NodePath $NodePath -Root $qualifiedHost.Run
 [void](Assert-Rc31Completion -Root $qualifiedHost.RunnerPath -Kind host)
 $homePath = Get-Rc31Path $HomeRoot
 $profilePath = Get-Rc31Path (Join-Path $homePath "profiles\$ProfileName")
-$profileRecord = Assert-Rc31Completion -Root $profilePath -Kind profile
+$profileRecord = Assert-Rc31Completion -Root $profilePath -Kind profile -KitRoot $kit -NodePath $NodePath -HostRunnerRoot $qualifiedHost.RunnerPath
 Assert-Rc31Paths -Runner $qualifiedHost.RunnerPath -HomePath $homePath -Runtime $profileRecord.runtime -Connection $profileRecord.connection
 $installedPlugin = Get-Rc31Path (Join-Path $homePath 'plugin-artifacts\dsh-runtime-harness-plugin-0.1.0-rc.31.tgz')
 if ($manifest.plugin.file -ne 'dsh-runtime-harness-plugin-0.1.0-rc.31.tgz' -or
