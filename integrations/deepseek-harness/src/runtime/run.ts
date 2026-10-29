@@ -151,6 +151,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function expectsApiRole(env: Record<string, string>, role: 'inspector' | 'reviewer'): boolean {
+  const raw = env.DSH_RUNTIME_ROLE_CONFIG_JSON
+  if (raw === undefined || raw.length > 16_384) return false
+  try {
+    const config: unknown = JSON.parse(raw)
+    const roles = isRecord(config) ? config.roles : undefined
+    const selected = isRecord(roles) ? roles[role] : undefined
+    return isRecord(config) && config.schema_version === 2
+      && isRecord(selected) && selected.adapter === 'api_agent'
+  } catch {
+    return false
+  }
+}
+
+function workerAdapter(env: Record<string, string>): 'codebuddy' | 'codex' {
+  const raw = env.DSH_RUNTIME_ROLE_CONFIG_JSON
+  if (raw === undefined || raw.length > 16_384) return 'codebuddy'
+  try {
+    const config: unknown = JSON.parse(raw)
+    const roles = isRecord(config) ? config.roles : undefined
+    const worker = isRecord(roles) ? roles.worker : undefined
+    return isRecord(worker) && worker.adapter === 'codex' ? 'codex' : 'codebuddy'
+  } catch {
+    return 'codebuddy'
+  }
+}
+
 /** Check the nullable text fields emitted in every production TaskState. */
 function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string'
@@ -347,7 +374,11 @@ async function createDshRuntimeRun(
       && !fromWorkspace.startsWith(`..${sep}`) && !isAbsolute(fromWorkspace))) {
       throw new Error('subagent-dsh-runtime: evidenceRoot must be outside the user workspace')
     }
-    for (const key of ['DSH_RUNTIME_RUN_ID', 'DSH_RUNTIME_CALL_TRACE_PATH', 'DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR']) {
+    for (const key of [
+      'DSH_RUNTIME_RUN_ID', 'DSH_RUNTIME_CALL_TRACE_PATH',
+      'DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR', 'DSH_CODEX_SAFE_EVENT_TRACE_DIR',
+      'DSH_API_AGENT_SAFE_EVENT_TRACE_DIR',
+    ]) {
       if (Object.hasOwn(spec.env, key)) {
         throw new Error(`subagent-dsh-runtime: ${key} conflicts with Host-owned evidence paths`)
       }
@@ -365,6 +396,8 @@ async function createDshRuntimeRun(
       // Host-generated evidence filename crosses the legacy MAX_PATH limit.
       DSH_RUNTIME_CALL_TRACE_PATH: toNamespacedPath(callTracePath),
       DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR: toNamespacedPath(safeTraceDir),
+      DSH_CODEX_SAFE_EVENT_TRACE_DIR: toNamespacedPath(safeTraceDir),
+      DSH_API_AGENT_SAFE_EVENT_TRACE_DIR: toNamespacedPath(safeTraceDir),
     }
     evidencePaths = {
       runId, runDir, safeTraceDir,
@@ -465,6 +498,9 @@ async function createDshRuntimeRun(
               taskKind: spec.taskKind,
               task, exitCode: outcome.exitCode, stdout,
               durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+              expectedApiInspector: expectsApiRole(spec.env, 'inspector'),
+              expectedApiReviewer: expectsApiRole(spec.env, 'reviewer'),
+              expectedWorkerAdapter: workerAdapter(spec.env),
               maxTurnsConfig: (() => {
                 const raw = spec.env.DSH_CODEBUDDY_MAX_TURNS
                 if (raw === undefined) return 12

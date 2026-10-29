@@ -1,0 +1,5 @@
+{
+  "name": "dsh-rc31-host-runner",
+  "private": true,
+  "dependencies": { "@deepseek-ai/dsh": "0.2.1-rc.4" }
+}

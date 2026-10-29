@@ -8,6 +8,8 @@ from pathlib import Path
 from dsh_runtime.codex_runtime_home import CodexRuntimeHome, ManagedCodexPlugin
 from dsh_runtime.controller import DSHController
 from dsh_runtime.planner import SimplePlanner
+from dsh_runtime.api_agent_connections import ConnectionCatalog
+from dsh_runtime.plugins.api_agent import ApiAgentPlugin
 from dsh_runtime.role_config import RoleConfig
 from dsh_runtime.plugins.codebuddy import (
     CodeBuddyPlugin,
@@ -23,6 +25,7 @@ from dsh_runtime.workspace.manager import WorkspaceManager
 CODEBUDDY_QUALIFICATION_TRACE_DIR_ENV = "DSH_CODEBUDDY_QUALIFICATION_TRACE_DIR"
 CODEBUDDY_MAX_STREAM_CHARS_ENV = MAX_STREAM_CHARS_ENV
 CODEX_QUALIFICATION_TRACE_DIR_ENV = "DSH_CODEX_QUALIFICATION_TRACE_DIR"
+API_AGENT_CONNECTIONS_PATH_ENV = "DSH_API_AGENT_CONNECTIONS_PATH"
 
 
 def _qualification_trace_dir_from_environment(environment_name: str) -> Path | None:
@@ -84,6 +87,14 @@ def build_controller(
             )
         )
     )
+    if any(
+        selection.adapter == "api_agent"
+        for selection in (roles.worker, roles.reviewer, roles.inspector)
+    ):
+        raw_path = os.environ.get(API_AGENT_CONNECTIONS_PATH_ENV)
+        if not raw_path:
+            raise ValueError(f"{API_AGENT_CONNECTIONS_PATH_ENV} is required for api_agent")
+        registry.register(ApiAgentPlugin(ConnectionCatalog.from_file(Path(raw_path))))
     return DSHController(
         registry,
         planner=SimplePlanner(roles),

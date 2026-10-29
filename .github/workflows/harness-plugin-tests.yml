@@ -1,0 +1,119 @@
+name: Harness plugin tests
+
+on:
+  push:
+    branches:
+      - master
+      - codex/**
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-harness-plugin-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plugin:
+    name: plugin / windows-latest
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: integrations/deepseek-harness
+        shell: pwsh
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '24.22.1'
+
+      - name: Install pinned pnpm
+        run: |
+          npm install -g pnpm@11.25.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm.cmd --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install exact lockfile dependencies without lifecycle scripts
+        run: |
+          pnpm.cmd install --frozen-lockfile --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Typecheck, build and keyless regressions
+        run: |
+          $checks = @(
+            'typecheck', 'build',
+            'test:admission', 'test:worker', 'test:pin-store', 'test:provider',
+            'test:launcher', 'test:host-core', 'test:tool', 'test:entry',
+            'test:api-agent-trace', 'test:client-evidence-scope',
+            'test:host-compat-report', 'test:check-evidence-home',
+            'test:terminal-evidence', 'test:copy-terminal-evidence', 'test:dependency-proxy'
+          )
+          foreach ($check in $checks) {
+            pnpm.cmd run $check
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Reproduce relocated rc.31 installations and rejection cases
+        run: |
+          node ../../tests/test-rc31-install.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Exercise schema 3, legacy completion, Host settings and path boundaries
+        working-directory: .
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $assets = Join-Path $env:RUNNER_TEMP 'rc31-test-assets'
+          $kit = Join-Path $env:RUNNER_TEMP 'rc31-test-kit'
+          $fixture = Join-Path $env:RUNNER_TEMP 'rc31-completion-fixture'
+          python tests/build_rc31_completion_fixture.py $assets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/New-Rc31InstallKit.ps1 -AssetRoot $assets -OutputRoot $kit
+          ./tests/Test-Rc31Completion.ps1 -KitRoot $kit -NodePath (Get-Command node.exe).Source -PnpmPath (Get-Command pnpm.cmd).Source -PythonPath (Get-Command python.exe).Source -FixtureRoot $fixture *>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'rc31-completion.log')
+
+      - name: Exercise installed web-fetch consumer
+        working-directory: .
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $modules = Join-Path $env:RUNNER_TEMP 'rc31-completion-fixture/host/node_modules/.pnpm'
+          $matches = @(Get-ChildItem -Force $modules -Directory | Where-Object { $_.Name -like '@deepseek-ai+dsh-web-fetch-*' -and (Test-Path (Join-Path $_.FullName 'node_modules/@deepseek-ai/dsh-web-fetch-http/lib/index.js')) })
+          if ($matches.Count -ne 1) { throw "Expected one installed web-fetch consumer; got $($matches.Count)" }
+          $consumer = Join-Path $matches[0].FullName 'node_modules/@deepseek-ai/dsh-web-fetch-http/lib/index.js'
+          node tests/test-rc31-web-fetch.mjs $consumer 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'rc31-web-fetch.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise installed Host MCP registration and redirect rejection
+        working-directory: .
+        run: |
+          node tests/test-rc31-host-mcp.mjs (Join-Path $env:RUNNER_TEMP 'rc31-completion-fixture/host') (Join-Path $env:RUNNER_TEMP 'rc31-host-mcp') 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'rc31-host-mcp.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise fixed ZIP64 regression
+        working-directory: .
+        run: |
+          node tests/test-rc31-zip64.mjs run (Join-Path $env:RUNNER_TEMP 'rc31-completion-fixture/host') (Join-Path $env:RUNNER_TEMP 'rc31-zip64') 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'rc31-zip64.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Retain completion and Host regression logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: rc31-completion-log
+          path: |
+            ${{ runner.temp }}/rc31-completion.log
+            ${{ runner.temp }}/rc31-completion-fixture/patch-installed.yml
+            ${{ runner.temp }}/rc31-completion-fixture/patch-after-host.yml
+            ${{ runner.temp }}/rc31-web-fetch.log
+            ${{ runner.temp }}/rc31-host-mcp.log
+            ${{ runner.temp }}/rc31-host-mcp/**/host.log
+            ${{ runner.temp }}/rc31-host-mcp/**/requests.json
+            ${{ runner.temp }}/rc31-host-mcp/**/result.json
+            ${{ runner.temp }}/rc31-host-mcp/**/patch.yml
+            ${{ runner.temp }}/rc31-zip64.log
+            ${{ runner.temp }}/rc31-zip64/*.json
+          if-no-files-found: error

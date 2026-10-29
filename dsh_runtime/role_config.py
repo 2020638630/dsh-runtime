@@ -13,6 +13,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from dsh_runtime.api_agent_contract import ApiAgentConfig, ApiRole, CliRole
+
 
 ROLE_CONFIG_ENV = "DSH_RUNTIME_ROLE_CONFIG_JSON"
 _MAX_CONFIG_CHARS = 16_384
@@ -33,11 +35,27 @@ def _object_without_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 class RoleSelection:
     adapter: str
     model: str | None = None
+    provider: str | None = None
+    connection_ref: str | None = None
+    max_requests: int | None = None
+    max_tool_calls: int | None = None
+    max_output_tokens: int | None = None
 
-    def params(self, prompt: str) -> dict[str, str]:
-        result = {"prompt": prompt}
+    def params(self, prompt: str, *, role_name: str | None = None) -> dict[str, Any]:
+        result: dict[str, Any] = {"prompt": prompt}
         if self.model is not None:
             result["model"] = self.model
+        if self.adapter == "api_agent":
+            if role_name is None:
+                raise ValueError("api_agent requires a role name")
+            result.update(
+                role_name=role_name,
+                provider=self.provider,
+                connection_ref=self.connection_ref,
+                max_requests=self.max_requests,
+                max_tool_calls=self.max_tool_calls,
+                max_output_tokens=self.max_output_tokens,
+            )
         return result
 
 
@@ -75,6 +93,22 @@ class RoleConfig:
     def from_document(cls, document: Any) -> "RoleConfig":
         if not isinstance(document, dict) or set(document) != {"schema_version", "roles"}:
             raise ValueError("role config requires only schema_version and roles")
+        if type(document["schema_version"]) is int and document["schema_version"] == 2:
+            api_config = ApiAgentConfig.from_document(document)
+            if isinstance(api_config.worker, ApiRole):
+                raise ValueError("api_agent worker is unavailable until write tools are qualified")
+            def selection(value: ApiRole | CliRole) -> RoleSelection:
+                if isinstance(value, CliRole):
+                    return RoleSelection(value.adapter, value.model)
+                return RoleSelection(
+                    "api_agent", value.model, value.provider, value.connection_ref,
+                    value.max_requests, value.max_tool_calls, value.max_output_tokens,
+                )
+            return cls(
+                worker=selection(api_config.worker),
+                reviewer=selection(api_config.reviewer),
+                inspector=selection(api_config.inspector),
+            )
         if type(document["schema_version"]) is not int or document["schema_version"] != 1:
             raise ValueError("role config schema_version must be 1")
         roles = document["roles"]

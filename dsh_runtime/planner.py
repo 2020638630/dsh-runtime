@@ -25,28 +25,28 @@ class SimplePlanner:
         self.roles = roles or RoleConfig.defaults()
 
     @staticmethod
-    def _role_decision(role: RoleSelection, prompt: str, *, allow_write: bool) -> Decision:
+    def _role_decision(role: RoleSelection, prompt: str, *, role_name: str, allow_write: bool) -> Decision:
         return Decision(
             plugin=role.adapter,
-            params=role.params(prompt),
+            params=role.params(prompt, role_name=role_name),
             allow_workspace_write=allow_write,
         )
 
     def next_action(self, task: TaskState) -> Decision:
         if task.task_kind is TaskKind.REPOSITORY_CHANGE:
             if task.iteration == 0:
-                return self._role_decision(self.roles.worker, task.goal, allow_write=True)
+                return self._role_decision(self.roles.worker, task.goal, role_name="worker", allow_write=True)
             if task.iteration == 1:
                 return self._role_decision(
-                    self.roles.reviewer, _verification_prompt(task), allow_write=False
+                    self.roles.reviewer, _verification_prompt(task), role_name="reviewer", allow_write=False
                 )
-            return _verification_decision(task.last_invocation_result)
+            return _verification_decision(task.last_invocation_result, self.roles.reviewer.adapter)
         if (
             task.task_kind is TaskKind.REPOSITORY_INSPECTION
             and task.iteration == 0
         ):
             return self._role_decision(
-                self.roles.inspector, _inspection_prompt(task), allow_write=False
+                self.roles.inspector, _inspection_prompt(task), role_name="inspector", allow_write=False
             )
         if task.iteration > 0:
             return Decision(plugin=None)
@@ -85,7 +85,7 @@ def _verification_prompt(task: TaskState) -> str:
     )
 
 
-def _verification_decision(result: Any) -> Decision:
+def _verification_decision(result: Any, reviewer_adapter: str = "codex") -> Decision:
     if not isinstance(result, str):
         return Decision(
             plugin=None,
@@ -101,7 +101,9 @@ def _verification_decision(result: Any) -> Decision:
         return Decision(
             plugin=None,
             terminal_success=False,
-            terminal_error="Codex verification reported FAIL",
+            terminal_error=("API reviewer verification reported FAIL"
+                            if reviewer_adapter == "api_agent"
+                            else "Codex verification reported FAIL"),
         )
     return Decision(
         plugin=None,

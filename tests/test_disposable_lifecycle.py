@@ -146,19 +146,45 @@ class SubprocessPlugin:
 
 def test_timeout_delivers_cancel_and_waits_for_async_cleanup() -> None:
     async def scenario():
-        plugin = CleanupProbe()
-        started = time.perf_counter()
-        result = await executor_with(plugin).execute("probe", CTX, {}, 0.005)
-        elapsed = time.perf_counter() - started
-        return plugin, result, elapsed
+        class GatedCleanupProbe:
+            name = "probe"
 
-    plugin, result, elapsed = asyncio.run(scenario())
+            def __init__(self):
+                self.events = []
+                self.cleanup_started = asyncio.Event()
+                self.release_cleanup = asyncio.Event()
+
+            async def execute(self, ctx, params):
+                try:
+                    self.events.append("running")
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    self.events.append("cancelled")
+                    raise
+                finally:
+                    self.events.append("cleanup_started")
+                    self.cleanup_started.set()
+                    await self.release_cleanup.wait()
+                    self.events.append("cleanup_finished")
+
+        plugin = GatedCleanupProbe()
+        task = asyncio.create_task(executor_with(plugin).execute("probe", CTX, {}, 0.005))
+        try:
+            await asyncio.wait_for(plugin.cleanup_started.wait(), timeout=5)
+            # Give the executor a turn to return if it abandoned the cleanup.
+            await asyncio.sleep(0)
+            assert plugin.events == ["running", "cancelled", "cleanup_started"]
+            assert not task.done()
+        finally:
+            plugin.release_cleanup.set()
+        result = await asyncio.wait_for(task, timeout=5)
+        return plugin, result
+
+    plugin, result = asyncio.run(scenario())
 
     assert result.success is False
     assert result.error == "plugin execution timed out"
     assert plugin.events == ["running", "cancelled", "cleanup_started", "cleanup_finished"]
-    assert plugin.cleanup_done.is_set()
-    assert elapsed >= 0.02
 
 
 def test_cleanup_exception_is_observable_and_replaces_timeout_result() -> None:

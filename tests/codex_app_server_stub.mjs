@@ -41,6 +41,20 @@ input.on('line', (line) => {
       send({ jsonrpc: '2.0', method: 'turn/completed', params: { threadId, turn: { id: turnId, status: 'failed' } } })
       return
     }
+    if (mode === 'unsupported-model') {
+      send({ jsonrpc: '2.0', method: 'turn/completed', params: {
+        threadId,
+        turn: { id: turnId, status: 'failed', error: { message: 'model is not supported; sensitive request detail' } },
+      } })
+      return
+    }
+    if (mode === 'tool-success') {
+      for (const type of ['commandExecution', 'fileChange']) {
+        send({ jsonrpc: '2.0', method: 'item/completed', params: {
+          threadId, turnId, item: { type, status: 'completed', rawSensitiveArgument: 'do not persist' },
+        } })
+      }
+    }
     const prompt = params.input?.[0]?.text ?? ''
     const cwd = process.cwd()
     send({

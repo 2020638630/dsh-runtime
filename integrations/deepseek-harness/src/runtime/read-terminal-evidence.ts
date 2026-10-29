@@ -2,6 +2,7 @@
 
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, sep } from 'node:path'
+import { verifyEvidenceRelocation } from './verify-evidence-relocation.ts'
 
 const RUN_ID = /^dsh-runtime-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u
 const MAX_MANIFEST_BYTES = 1_048_576
@@ -27,7 +28,8 @@ export async function readTerminalEvidence(input: {
   readonly evidenceRoot: string
   readonly runId: string
   readonly workspaceId: string
-}): Promise<{ readonly manifest: Record<string, unknown>; readonly diff: string } | null> {
+}): Promise<{ readonly manifest: Record<string, unknown>; readonly diff: string;
+  readonly relocation?: { readonly status: 'verified_copy'; readonly createdAt: string } } | null> {
   const { evidenceRoot, runId, workspaceId } = input
   if (!isAbsolute(evidenceRoot) || !RUN_ID.test(runId) || workspaceId.length === 0) {
     throw new Error('terminal evidence read requires an absolute root and valid identities')
@@ -71,10 +73,14 @@ export async function readTerminalEvidence(input: {
   const referencedDiff = record(manifest?.workspace_changes)?.diff_content_ref
   if (manifest?.schema_version !== '1' || manifest.run_id !== runId
     || manifest.workspace_id !== workspaceId || typeof referencedDiff !== 'string'
-    || !isAbsolute(referencedDiff) || await realpath(referencedDiff) !== physicalDiff) {
+    || !isAbsolute(referencedDiff)) {
     throw new Error('terminal evidence identities do not match this run and workspace')
   }
-  return { manifest, diff: diffBytes.toString('utf8') }
+  const originalPathMatches = await realpath(referencedDiff).then(path => path === physicalDiff, () => false)
+  if (originalPathMatches) return { manifest, diff: diffBytes.toString('utf8') }
+  const relocation = await verifyEvidenceRelocation({ runDir: physicalRunDir, runId,
+    workspaceId, manifestBytes, diffBytes, originalDiffRef: referencedDiff })
+  return { manifest, diff: diffBytes.toString('utf8'), relocation }
 }
 
 /** Read the Host's run lifecycle marker when a terminal Manifest is absent.
