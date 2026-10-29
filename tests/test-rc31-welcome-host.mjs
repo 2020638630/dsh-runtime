@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 
-const [kit, host, home, node] = process.argv.slice(2);
+const [kit, host, home, node, mode] = process.argv.slice(2);
 assert.ok(node, 'Expected kit, host, home and Node paths');
 const child = spawn('pwsh', ['-NoProfile', '-File', join(kit, 'Start-QualifiedHost.ps1'), '-KitRoot', kit, '-HostRunnerRoot', host, '-HomeRoot', home, '-NodePath', node, '-Port', '0'], {stdio:['ignore','pipe','pipe'], windowsHide:true});
 let output = '', launchError;
@@ -23,6 +23,11 @@ try {
   const cookie = initial.headers.get('set-cookie')?.split(';')[0];
   assert.ok(cookie, 'Host did not issue an authentication cookie');
   const origin = new URL(url).origin;
+  if (mode === 'restart') {
+    const page = await fetch(origin, {headers:{cookie}});
+    assert.equal(page.status, 200, 'Restarted Host page unavailable');
+    console.log('Host restarted and served authenticated page after welcome write');
+  } else {
   async function rpc(method, args) {
     const id = crypto.randomUUID();
     const response = await fetch(`${origin}/api/${method}`, {method:'POST', headers:{'content-type':'application/json', cookie}, body:JSON.stringify({type:'client-request', rpcId:id, method, payload:{args}})});
@@ -38,6 +43,7 @@ try {
   const patch = await readFile(join(home, 'profiles/runtime-api-reviewer-preview/cordis.patch.yml'), 'utf8');
   assert.match(patch, /welcomeNoticeVersion:\s*2026-09-28\.1/);
   console.log('Host settings mutation wrote welcome acknowledgement');
+  }
 } finally {
   if (child.pid && child.exitCode === null) spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], {stdio:'ignore', windowsHide:true});
 }

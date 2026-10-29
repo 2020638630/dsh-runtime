@@ -56,6 +56,8 @@ try {
   & $NodePath (Join-Path $PSScriptRoot 'test-rc31-welcome-host.mjs') $kit $runner $homeDir $NodePath
   if ($LASTEXITCODE -ne 0) { throw 'Real Host welcome write failed.' }
   Copy-Item -LiteralPath $patchPath -Destination (Join-Path $fixture 'patch-after-host.yml')
+  & $NodePath (Join-Path $PSScriptRoot 'test-rc31-welcome-host.mjs') $kit $runner $homeDir $NodePath restart
+  if ($LASTEXITCODE -ne 0) { throw 'Host server restart after welcome write failed.' }
   & $start -KitRoot $kit -HostRunnerRoot $runner -HomeRoot $homeDir -NodePath $NodePath -DumpConfig | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'Restart after Host welcome write failed.' }
   $welcome = "`n- id: ui-settings-general`n  name: '@deepseek-ai/dsh-client-ui-settings-general'`n  config:`n    welcomeNoticeVersion: 2026-09-28.1`n"
