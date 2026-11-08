@@ -36,6 +36,7 @@
   "scripts": {
     "build": "node ./scripts/clean-lib.mjs && tsc -p tsconfig.build.json && node ./scripts/build-client.mjs",
     "prepack": "pnpm build",
+    "pack:desktop-rc1": "pnpm build && node ./scripts/pack-desktop-rc1.mjs",
     "typecheck": "tsc --noEmit",
     "test:admission": "tsc -p tsconfig.test.json && node .build/test/admission.test.js",
     "test:worker": "tsc -p tsconfig.test.json && node .build/test/worker.test.js",

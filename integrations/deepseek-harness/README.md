@@ -27,6 +27,20 @@ Run `pnpm build` and `pnpm pack`. The tarball contains the Host entry, `lib/clie
 
 The Runtime root and policy file must exist. The audit parent, pin directory and evidence directory must exist. The worker confirms policy identity before either provider or the tool is registered. The Host-owned pin store writes one immutable policy identity per Session before evaluating a Runtime start; the official Session log receives no private event type. The caller's parent Session supplies the target workspace. Workspaces overlapping Runtime control state are rejected. Profile paths never redirect a task into either source checkout. No D2 ExecuteGate claim is made.
 
+## Desktop 0.2.2-rc.1 preview
+
+Run `pnpm install --frozen-lockfile --ignore-scripts` and then
+`pnpm run pack:desktop-rc1 ABS_OUTPUT_DIRECTORY` in this package. The output
+directory must already exist. This builds the `0.1.0-rc.32` Desktop bundle,
+which declares its exact Harness version and uses the host's shared packages.
+The frozen RC.31 tarball targets the earlier Web setup. Installing that
+tarball in Desktop 0.2.2-rc.1 can replace core host dependencies and leave the
+window blank even while the bundle is disabled.
+
+Import the RC.32 tarball by its absolute `file:` path in an isolated Desktop
+Profile. Apply the Profile configuration above before enabling the bundle.
+Start with only `repository_inspection` enabled for a read-only smoke test.
+
 ## Role and model selection (preview)
 
 The optional `roleConfig` belongs in the plugin's Profile config, alongside `runtimeRoot`. It is frozen into one Runtime child invocation. Omit it to keep the existing CodeBuddy write stage and Codex review/inspection stages:
