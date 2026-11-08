@@ -11,6 +11,7 @@ from dsh_runtime.codex_runtime_home import CodexRuntimeHome
 from dsh_runtime.entrypoint import _serialize_task
 from dsh_runtime.plugins.codebuddy import CodeBuddyPlugin
 from dsh_runtime.plugins.codex import CodexPlugin
+from dsh_runtime.role_config import RoleConfig, RoleSelection
 from dsh_runtime.runtime.plugin import PluginResult
 from dsh_runtime.state import TaskStatus
 from dsh_runtime.workspace.manager import Workspace, WorkspaceManager
@@ -196,6 +197,41 @@ def test_failed_reviewer_does_not_bind_the_previous_worker_output(
     assert evidence.stop_reason == ("timed_out" if timeout else "failed")
     assert evidence.output_bytes is None
     assert evidence.output_sha256 is None
+    assert task.model_observations == []
+
+
+def test_codex_model_observations_keep_both_phases(tmp_path: Path, monkeypatch) -> None:
+    async def fake_codex(self, ctx, params):
+        if ctx.allow_workspace_write:
+            assert params["model"] == "worker-request"
+            return PluginResult(True, "worker settled", reported_model="worker-return")
+        assert "model" not in params
+        return PluginResult(True, "DSH_VERIFICATION: PASS", reported_model="review-return")
+
+    controller = _controller_for(tmp_path)
+    controller.planner.roles = RoleConfig(
+        worker=RoleSelection("codex", "worker-request"),
+        reviewer=RoleSelection("codex"),
+        inspector=RoleSelection("codex"),
+    )
+    task = build_repository_change_task("review target", "workspace.m5")
+    with patch.object(CodexPlugin, "execute", new=fake_codex):
+        asyncio.run(controller.run(task))
+    monkeypatch.setenv("DSH_RUNTIME_RUN_ID", "dsh-runtime-fixture")
+    monkeypatch.delenv("DSH_RUNTIME_INVOCATION_EVIDENCE", raising=False)
+    assert "model_observations" not in _serialize_task(task)
+    monkeypatch.setenv("DSH_RUNTIME_INVOCATION_EVIDENCE", "1")
+    assert task.status is TaskStatus.COMPLETED
+    assert _serialize_task(task)["model_observations"] == {
+        "version": 1, "run_id": "dsh-runtime-fixture",
+        "task_id": task.task_id, "workspace_id": task.workspace_id,
+        "entries": [
+            {"role": "worker", "adapter": "codex", "invocation_index": 1,
+             "requested_model": "worker-request", "reported_model": "worker-return"},
+            {"role": "reviewer", "adapter": "codex", "invocation_index": 2,
+             "requested_model": None, "reported_model": "review-return"},
+        ],
+    }
 
 
 def test_codebuddy_failure_short_circuits_before_codex(tmp_path: Path) -> None:

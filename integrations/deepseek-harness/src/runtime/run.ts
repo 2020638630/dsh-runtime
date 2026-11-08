@@ -71,6 +71,7 @@ export interface RuntimeTaskState {
   readonly error: string | null
   readonly last_invocation_result: string | null
   readonly invocation_evidence?: unknown
+  readonly model_observations?: unknown
 }
 
 /**

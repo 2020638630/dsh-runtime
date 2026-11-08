@@ -15,6 +15,55 @@ const TRACE_NAME = /^codebuddy-safe-worker-[0-9a-f]{32}\.jsonl$/u
 const CODEX_TRACE_NAME = /^codex-safe-worker-[0-9a-f]{32}\.jsonl$/u
 const API_TRACE_NAME = /^api-agent-safe-role-[0-9a-f]{32}\.jsonl$/u
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u
+const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,127}$/u
+
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function modelId(value: unknown): value is string | null {
+  return value === null || (typeof value === 'string' && MODEL_ID.test(value))
+}
+
+function modelObservations(
+  task: RuntimeTaskState, runId: string, taskKind: DshRuntimeTaskKind,
+  expectedWorkerAdapter: 'codebuddy' | 'codex', expectedApiReviewer: boolean,
+) {
+  const evidence = task.model_observations
+  if (taskKind !== 'repository_change' || !Number.isInteger(task.iteration)
+    || task.iteration < 1 || task.iteration > 2 || !record(evidence)
+    || evidence.version !== 1 || evidence.run_id !== runId
+    || evidence.task_id !== task.task_id || evidence.workspace_id !== task.workspace_id
+    || !Array.isArray(evidence.entries) || evidence.entries.length === 0
+    || evidence.entries.length > 2) return undefined
+
+  let previousIndex = 0
+  const entries = []
+  for (const entry of evidence.entries as unknown[]) {
+    if (!record(entry) || entry.adapter !== 'codex'
+      || !modelId(entry.requested_model) || !modelId(entry.reported_model)) return undefined
+    const index = entry.invocation_index
+    const role = entry.role
+    const expectedRole = index === 1 && expectedWorkerAdapter === 'codex' ? 'worker'
+      : index === 2 && !expectedApiReviewer ? 'reviewer' : undefined
+    if (expectedRole === undefined || role !== expectedRole || typeof index !== 'number'
+      || index <= previousIndex || index > task.iteration) return undefined
+    if (index === task.iteration) {
+      const current = task.invocation_evidence
+      if (!record(current) || current.version !== 1 || current.run_id !== runId
+        || current.task_id !== task.task_id || current.workspace_id !== task.workspace_id
+        || current.adapter !== 'codex' || current.role !== role || current.invocation_index !== index
+        || current.stop_reason !== 'completed' || current.success !== true
+        || current.cleanup_ok !== true) return undefined
+    }
+    previousIndex = index
+    entries.push({
+      role, adapter: 'codex', invocation_index: index,
+      requested_model: entry.requested_model, reported_model: entry.reported_model,
+    })
+  }
+  return { version: 1, source: 'codex_thread_start', entries }
+}
 
 function verification(
   task: RuntimeTaskState, runId: string, taskKind: DshRuntimeTaskKind,
@@ -28,13 +77,11 @@ function verification(
   if (task.invocation_evidence === undefined) {
     return { ...unavailable, invocation_binding: 'missing' }
   }
-  const binding = task.invocation_evidence
+  const evidence = task.invocation_evidence
   const output = task.last_invocation_result
-  if (binding === null || typeof binding !== 'object' || Array.isArray(binding)
-    || typeof output !== 'string') {
+  if (!record(evidence) || typeof output !== 'string') {
     return { ...unavailable, invocation_binding: 'invalid' }
   }
-  const evidence = binding as Record<string, unknown>
   const bytes = Buffer.from(output, 'utf8')
   if (evidence.version !== 1 || evidence.run_id !== runId
     || evidence.task_id !== task.task_id || evidence.workspace_id !== task.workspace_id
@@ -150,6 +197,8 @@ export async function writeTerminalEvidence(input: {
     exitCode: input.exitCode, stdout: input.stdout, taskStatus: task.status,
   })
   const diffPath = join(runDir, 'diff.patch')
+  const models = modelObservations(task, runId, input.taskKind,
+    input.expectedWorkerAdapter ?? 'codebuddy', input.expectedApiReviewer === true)
   const manifest = {
     schema_version: '1', task_id: task.task_id, run_id: runId,
     workspace_id: task.workspace_id, task_kind: input.taskKind, status: task.status,
@@ -198,6 +247,7 @@ export async function writeTerminalEvidence(input: {
     },
     verification: verification(task, runId, input.taskKind,
       input.expectedApiReviewer === true ? 'api_agent' : 'codex', reviewVerified),
+    ...(models === undefined ? {} : { model_observations: models }),
     audit: {
       source: 'call_trace', status: audit.status, call_id: audit.callId,
       call_trace_path: input.callTracePath, stdout_bytes: audit.stdoutBytes,

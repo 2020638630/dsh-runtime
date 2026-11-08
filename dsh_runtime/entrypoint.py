@@ -114,15 +114,21 @@ def _serialize_task(task: TaskState) -> dict[str, Any]:
     if (
         os.environ.get("DSH_RUNTIME_INVOCATION_EVIDENCE") == "1"
         and run_id
-        and task.invocation_evidence is not None
     ):
-        payload["invocation_evidence"] = {
-            "version": 1,
-            "run_id": run_id,
-            "task_id": task.task_id,
-            "workspace_id": task.workspace_id,
-            **asdict(task.invocation_evidence),
+        identity = {
+            "version": 1, "run_id": run_id,
+            "task_id": task.task_id, "workspace_id": task.workspace_id,
         }
+        if task.invocation_evidence is not None:
+            payload["invocation_evidence"] = {
+                **identity,
+                **asdict(task.invocation_evidence),
+            }
+        if task.model_observations:
+            payload["model_observations"] = {
+                **identity,
+                "entries": [asdict(observation) for observation in task.model_observations],
+            }
     return payload
 
 

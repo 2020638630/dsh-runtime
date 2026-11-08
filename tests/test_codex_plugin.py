@@ -96,6 +96,27 @@ def test_qualification_trace_is_opt_in(tmp_path: Path) -> None:
     assert not (tmp_path / "trace").exists()
 
 
+@pytest.mark.parametrize(("mode", "requested", "reported"), [
+    ("reported-model", None, "reported-model"),
+    ("reported-model", "requested-model", "reported-model"),
+    ("success", "requested-model", None),
+    ("malformed-model", None, None),
+    ("long-model", None, None),
+])
+def test_model_observation_comes_from_thread_start_response(
+    tmp_path: Path, monkeypatch, mode: str, requested: str | None, reported: str | None,
+) -> None:
+    monkeypatch.setenv("DSH_CODEX_STUB_MODE", mode)
+    params = {"prompt": "model evidence"}
+    if requested is not None:
+        params["model"] = requested
+    result = asyncio.run(executor_with(plugin()).execute(
+        "codex", context(tmp_path), params, 1.0,
+    ))
+    assert result.success
+    assert result.reported_model == reported
+
+
 def test_codex_worker_safe_trace_records_only_tool_metadata(
     tmp_path: Path, monkeypatch
 ) -> None:

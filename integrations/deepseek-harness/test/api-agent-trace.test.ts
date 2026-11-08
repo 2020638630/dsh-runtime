@@ -399,6 +399,43 @@ function emptyReviewTraceDir(): string {
   return traceDir
 }
 
+test('model evidence preserves both Codex roles and rejects misbound or invalid records', async () => {
+  const worker = { role: 'worker', adapter: 'codex', invocation_index: 1,
+    requested_model: 'worker-request', reported_model: 'worker-return' }
+  const reviewer = { role: 'reviewer', adapter: 'codex', invocation_index: 2,
+    requested_model: null, reported_model: 'review-return' }
+  const valid = {
+    version: 1, run_id: RUN_ID, task_id: CHANGE_TASK_ID, workspace_id: CHANGE_WORKSPACE_ID,
+    entries: [worker, reviewer],
+  }
+  const invocation = completedReview('checked\nDSH_VERIFICATION: PASS', 'codex')
+  const build = (model_observations: unknown, invocation_evidence: unknown = invocation) =>
+    changeManifest(emptyReviewTraceDir(), 2, 'codex', {
+      expectedApiReviewer: false,
+      task: { invocation_evidence, model_observations },
+    })
+  const manifest = await build(valid)
+  assert.deepEqual(manifest.model_observations, {
+    version: 1, source: 'codex_thread_start', entries: valid.entries,
+  })
+  assert.equal(manifest.verification.verdict, 'PASS')
+  for (const value of [
+    undefined, { ...valid, run_id: 'wrong-run' }, { ...valid, task_id: 'wrong-task' },
+    { ...valid, workspace_id: 'wrong-workspace' }, { ...valid, entries: [reviewer, reviewer] },
+    { ...valid, entries: [{ ...worker, invocation_index: 2 }] },
+    { ...valid, entries: [{ ...reviewer, adapter: 'api_agent' }] },
+    { ...valid, entries: [{ ...reviewer, reported_model: '<script>' }] },
+    { ...valid, entries: [{ ...reviewer, reported_model: 'x'.repeat(129) }] },
+  ]) {
+    const degraded = await build(value)
+    assert.equal(degraded.model_observations, undefined)
+    assert.equal(degraded.verification.verdict, 'PASS')
+  }
+  const failed = { ...invocation, success: false, stop_reason: 'failed' }
+  assert.equal((await build(valid, failed)).model_observations, undefined)
+  assert.deepEqual((await build({ ...valid, entries: [worker] }, failed)).model_observations.entries, [worker])
+})
+
 test('reviewer failure or timeout cannot display a stale worker verdict', async () => {
   for (const status of ['failed', 'timed_out']) {
     for (const verdict of ['PASS', 'FAIL']) {

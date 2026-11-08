@@ -33,6 +33,7 @@ class PluginResult:
     error: str | None = None
     stop_reason: StopReason | None = None
     cleanup_error: str | None = None
+    reported_model: str | None = None
 
 
 class Plugin(Protocol):

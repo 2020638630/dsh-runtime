@@ -32,6 +32,7 @@ class _CodexProtocolError(Exception):
 
 
 _QUALIFICATION_OBSERVABILITY_FAILURE = "QUALIFICATION OBSERVABILITY FAILURE"
+_MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+-]{0,127}\Z")
 
 
 def _utc_timestamp() -> str:
@@ -216,6 +217,7 @@ class _CodexSession:
         self.safe_trace = safe_trace
         self._next_id = 1
         self.thread_id: str | None = None
+        self.reported_model: str | None = None
         self.turn_id: str | None = None
         self.final_answer: str | None = None
         self.unphased_answer: str | None = None
@@ -447,6 +449,9 @@ class _CodexSession:
         if thread.get("ephemeral") is not True:
             raise _CodexProtocolError("Codex thread was not ephemeral")
         self.thread_id = thread["id"]
+        model = result.get("model")
+        if isinstance(model, str) and _MODEL_ID.fullmatch(model):
+            self.reported_model = model
         if self.trace is not None:
             self.trace.event(
                 "thread_start_response",
@@ -755,7 +760,9 @@ class CodexPlugin:
             await session.initialize()
             await session.start_thread()
             output = await session.run_turn(prompt.strip())
-            result = PluginResult(success=True, output=output)
+            result = PluginResult(
+                success=True, output=output, reported_model=session.reported_model
+            )
         except asyncio.CancelledError:
             cancelled = True
             if trace is not None:

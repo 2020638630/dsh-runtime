@@ -38,6 +38,17 @@ class InvocationEvidence:
     output_sha256: str | None = None
 
 
+@dataclass(frozen=True)
+class ModelObservation:
+    """Codex thread-start metadata for one completed workflow phase."""
+
+    role: str
+    adapter: str
+    invocation_index: int
+    requested_model: str | None
+    reported_model: str | None
+
+
 @dataclass
 class TaskState:
     goal: str
@@ -55,6 +66,7 @@ class TaskState:
     allow_workspace_write: bool = False
     task_kind: TaskKind = TaskKind.DEFAULT
     invocation_evidence: InvocationEvidence | None = field(default=None, init=False)
+    model_observations: list[ModelObservation] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.task_kind, TaskKind):

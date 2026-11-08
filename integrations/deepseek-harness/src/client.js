@@ -6,6 +6,7 @@ window.__ModuleLoader__.load({
     const { createPortal } = require('react-dom')
     const h = React.createElement
     const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
+    const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,127}$/
     const labels = { trajectory: '执行轨迹', changes: '实际变动', audit: '审计' }
 
     function startedChild(props) {
@@ -40,6 +41,28 @@ window.__ModuleLoader__.load({
     const button = { border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', padding: '6px 9px' }
     const pre = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 }
     const line = (label, value) => h('p', { key: label }, `${label}：${value ?? '未知'}`)
+
+    function modelLines(manifest) {
+      if (manifest.task_kind !== 'repository_change') return []
+      const models = manifest.model_observations
+      const entries = models?.version === 1 && models.source === 'codex_thread_start'
+        && Array.isArray(models.entries) && models.entries.length <= 2 ? models.entries : []
+      const validId = value => value === null || (typeof value === 'string' && MODEL_ID.test(value))
+      return ['worker', 'reviewer'].map((role, index) => {
+        const title = index === 0 ? '执行阶段模型' : '审查阶段模型'
+        const matches = entries.filter(entry => entry?.role === role)
+        const entry = matches[0]
+        if (matches.length !== 1 || entry.adapter !== 'codex' || entry.invocation_index !== index + 1
+          || !validId(entry.requested_model) || !validId(entry.reported_model)) {
+          return line(title, '未记录')
+        }
+        const requested = entry.requested_model ?? 'CLI 默认'
+        const reported = entry.reported_model ?? '未知'
+        const mismatch = entry.requested_model !== null && entry.reported_model !== null
+          && entry.requested_model !== entry.reported_model ? '（与请求不同）' : ''
+        return line(title, `Codex · 请求 ${requested} · CLI 启动返回 ${reported}${mismatch}`)
+      })
+    }
 
     function EvidenceRow(props) {
       const id = startedChild(props)
@@ -120,6 +143,7 @@ window.__ModuleLoader__.load({
       if (ready && tab === 'trajectory') {
         const trajectory = manifest.execution_trajectory
         body = [line('轨迹状态', trajectory.status), line('轮次', trajectory.turns_used ?? '未记录'),
+          ...modelLines(manifest),
           h('ul', { key: 'tools' }, Object.entries(trajectory.tool_operations_summary ?? {})
             .map(([name, count]) => h('li', { key: name }, `${name}：${count}`)))]
       } else if (ready && tab === 'changes') {

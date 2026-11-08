@@ -28,7 +28,11 @@ input.on('line', (line) => {
     return
   } else if (method === 'thread/start') {
     if (capture) fs.writeFileSync(capture, JSON.stringify(params))
-    send({ jsonrpc: '2.0', id, result: { thread: { id: threadId, ephemeral: true } } })
+    const result = { thread: { id: threadId, ephemeral: true, model: 'nested-model' } }
+    if (mode === 'reported-model') result.model = 'reported-model'
+    if (mode === 'malformed-model') result.model = '<script>'
+    if (mode === 'long-model') result.model = 'x'.repeat(129)
+    send({ jsonrpc: '2.0', id, result })
   } else if (method === 'turn/start') {
     send({ jsonrpc: '2.0', id, result: { turn: { id: turnId } } })
     if (mode === 'eof') {

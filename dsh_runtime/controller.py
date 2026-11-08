@@ -9,7 +9,7 @@ from .planner import SimplePlanner
 from .runtime.executor import Executor
 from .runtime.plugin import ExecutionContext, StopReason
 from .runtime.registry import PluginRegistry
-from .state import InvocationEvidence, TaskState, TaskStatus
+from .state import InvocationEvidence, ModelObservation, TaskKind, TaskState, TaskStatus
 from .workspace.manager import WorkspaceManager, WorkspaceResolutionError
 
 
@@ -28,6 +28,7 @@ class DSHController:
         started = time.perf_counter()
         task.status = TaskStatus.RUNNING
         task.invocation_evidence = None
+        task.model_observations.clear()
         record("task_started", task_id=task.task_id, workspace_id=task.workspace_id)
 
         # Invocation budget is checked before the initial Planner evaluation.
@@ -90,6 +91,19 @@ class DSHController:
             )
             task.iteration += 1
             completed = result.stop_reason is StopReason.COMPLETED and result.success
+            if (
+                completed and result.cleanup_error is None
+                and task.task_kind is TaskKind.REPOSITORY_CHANGE
+                and decision.plugin == "codex"
+                and (decision.role, task.iteration) in {("worker", 1), ("reviewer", 2)}
+            ):
+                task.model_observations.append(ModelObservation(
+                    role=decision.role,
+                    adapter=decision.plugin,
+                    invocation_index=task.iteration,
+                    requested_model=decision.params.get("model"),
+                    reported_model=result.reported_model,
+                ))
             if task.invocation_evidence is not None:
                 output_bytes = None
                 if (

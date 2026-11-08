@@ -7,7 +7,7 @@ import { runInNewContext } from 'node:vm'
 const source = readFileSync(join(import.meta.dirname, '..', '..', 'src', 'client.js'), 'utf8')
 
 function render(tab: string, changes: Record<string, unknown>, scope?: Record<string, unknown>,
-  relocation?: { status: 'verified_copy'; createdAt: string }): string {
+  relocation?: { status: 'verified_copy'; createdAt: string }, modelObservations?: unknown): string {
   let registered: ((props: Record<string, unknown>) => unknown) | undefined
   const react = {
     createElement: (type: unknown, props: unknown, ...children: unknown[]) => ({ type, props, children }),
@@ -17,6 +17,7 @@ function render(tab: string, changes: Record<string, unknown>, scope?: Record<st
         const values = [
           { manifest: {
             status: 'completed', duration_ms: 1, workspace_changes: changes,
+            task_kind: 'repository_change', model_observations: modelObservations,
             evidence_scope: scope,
             verification: { verdict: 'PASS', evidence_text: 'model report' },
             execution_trajectory: { status: 'available', turns_used: null },
@@ -82,4 +83,28 @@ test('drawer does not present a file list as confirmed without snapshot metadata
   assert.match(text, /文件范围证据：不可用/u)
   assert.match(text, /变动归属：未知/u)
   assert.doesNotMatch(text, /新增：unverified\.txt/u)
+})
+
+test('drawer separates requested and returned model by role and degrades old or invalid evidence', () => {
+  const changes = { added_files: [], modified_files: [], deleted_files: [] }
+  const models = {
+    version: 1, source: 'codex_thread_start',
+    entries: [
+      { role: 'worker', adapter: 'codex', invocation_index: 1,
+        requested_model: 'worker-request', reported_model: 'worker-return' },
+      { role: 'reviewer', adapter: 'codex', invocation_index: 2,
+        requested_model: null, reported_model: null },
+    ],
+  }
+  const text = render('trajectory', changes, undefined, undefined, models)
+  assert.match(text, /执行阶段模型：Codex · 请求 worker-request · CLI 启动返回 worker-return（与请求不同）/u)
+  assert.match(text, /审查阶段模型：Codex · 请求 CLI 默认 · CLI 启动返回 未知/u)
+  const old = render('trajectory', changes)
+  assert.match(old, /执行阶段模型：未记录/u)
+  assert.match(old, /审查阶段模型：未记录/u)
+  const invalid = render('trajectory', changes, undefined, undefined, {
+    ...models, entries: [{ ...models.entries[0], reported_model: '<script>' }],
+  })
+  assert.match(invalid, /执行阶段模型：未记录/u)
+  assert.doesNotMatch(invalid, /<script>/u)
 })
