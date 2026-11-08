@@ -60,7 +60,7 @@ export type DshRuntimeTaskKind =
   | 'repository_change'
   | 'repository_inspection'
 
-/** The frozen A1 terminal TaskState JSON envelope (production serialization). */
+/** A1 terminal TaskState with optional Runtime-owned invocation evidence. */
 export interface RuntimeTaskState {
   readonly task_id: string
   readonly task_kind: string
@@ -70,6 +70,7 @@ export interface RuntimeTaskState {
   readonly result: string | null
   readonly error: string | null
   readonly last_invocation_result: string | null
+  readonly invocation_evidence?: unknown
 }
 
 /**
@@ -376,6 +377,7 @@ async function createDshRuntimeRun(
     }
     for (const key of [
       'DSH_RUNTIME_RUN_ID', 'DSH_RUNTIME_CALL_TRACE_PATH',
+      'DSH_RUNTIME_INVOCATION_EVIDENCE',
       'DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR', 'DSH_CODEX_SAFE_EVENT_TRACE_DIR',
       'DSH_API_AGENT_SAFE_EVENT_TRACE_DIR',
     ]) {
@@ -392,6 +394,7 @@ async function createDshRuntimeRun(
     const callTracePath = join(runDir, `${runId}-runtime-call-trace.jsonl`)
     evidenceEnv = {
       DSH_RUNTIME_RUN_ID: runId,
+      DSH_RUNTIME_INVOCATION_EVIDENCE: '1',
       // Python's Windows file APIs need the extended path form once the
       // Host-generated evidence filename crosses the legacy MAX_PATH limit.
       DSH_RUNTIME_CALL_TRACE_PATH: toNamespacedPath(callTracePath),
@@ -461,6 +464,7 @@ async function createDshRuntimeRun(
   request.signal.addEventListener('abort', onAbort, { once: true })
 
   let diagnostic: string | undefined
+  let manifestPublished = false
   const settledResult: Promise<SubagentResult> = settleRunResult({
     attempt: async () => {
       try {
@@ -497,6 +501,7 @@ async function createDshRuntimeRun(
               ...evidencePaths, before, workspace: spec.cwd, workspaceId: spec.workspaceId,
               taskKind: spec.taskKind,
               task, exitCode: outcome.exitCode, stdout,
+              signal: request.signal,
               durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
               expectedApiInspector: expectsApiRole(spec.env, 'inspector'),
               expectedApiReviewer: expectsApiRole(spec.env, 'reviewer'),
@@ -508,8 +513,9 @@ async function createDshRuntimeRun(
                 return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
               })(),
             })
+            manifestPublished = true
           } catch (error: unknown) {
-            spec.onEvidenceError?.(toError(error))
+            if (!request.signal.aborted) spec.onEvidenceError?.(toError(error))
           }
         }
         return mapTaskState(task)
@@ -525,7 +531,10 @@ async function createDshRuntimeRun(
     },
     collectOutput: () => [],
     collectDiagnostic: () => diagnostic,
-    cancelled: () => request.signal.aborted,
+    // A completed manifest rename is the publication boundary. Cancellation
+    // before that boundary leaves no terminal verdict; a later abort does not
+    // reclassify the already published result.
+    cancelled: () => request.signal.aborted && !manifestPublished,
     onError: spec.onError,
     signal: request.signal,
     onAbort,

@@ -14,6 +14,7 @@ class Decision:
     terminal_success: bool = True
     terminal_error: str | None = None
     allow_workspace_write: bool | None = None
+    role: str | None = None
 
     @property
     def is_terminal(self) -> bool:
@@ -30,6 +31,7 @@ class SimplePlanner:
             plugin=role.adapter,
             params=role.params(prompt, role_name=role_name),
             allow_workspace_write=allow_write,
+            role=role_name,
         )
 
     def next_action(self, task: TaskState) -> Decision:

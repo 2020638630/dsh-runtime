@@ -23,6 +23,21 @@ class TaskKind(str, Enum):
     REPOSITORY_CHANGE = "repository_change"
 
 
+@dataclass(frozen=True)
+class InvocationEvidence:
+    """Runtime-owned metadata for the current invocation, without output text."""
+
+    role: str
+    adapter: str
+    invocation_index: int
+    allow_workspace_write: bool
+    stop_reason: str | None = None
+    success: bool = False
+    cleanup_ok: bool = False
+    output_bytes: int | None = None
+    output_sha256: str | None = None
+
+
 @dataclass
 class TaskState:
     goal: str
@@ -39,6 +54,7 @@ class TaskState:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     allow_workspace_write: bool = False
     task_kind: TaskKind = TaskKind.DEFAULT
+    invocation_evidence: InvocationEvidence | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.task_kind, TaskKind):

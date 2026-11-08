@@ -130,6 +130,7 @@ def test_simple_planner_routes_repository_change_to_codebuddy_then_codex() -> No
         plugin="codebuddy",
         params={"prompt": task.goal},
         allow_workspace_write=True,
+        role="worker",
     )
 
     task.iteration = 1

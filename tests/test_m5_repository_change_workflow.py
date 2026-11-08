@@ -1,10 +1,14 @@
 import asyncio
+import hashlib
 import logging
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from dsh_runtime.bootstrap import build_controller, build_repository_change_task
 from dsh_runtime.codex_runtime_home import CodexRuntimeHome
+from dsh_runtime.entrypoint import _serialize_task
 from dsh_runtime.plugins.codebuddy import CodeBuddyPlugin
 from dsh_runtime.plugins.codex import CodexPlugin
 from dsh_runtime.runtime.plugin import PluginResult
@@ -100,6 +104,7 @@ def test_golden_repository_change_runs_codebuddy_then_codex_in_same_workspace(
 
 def test_codebuddy_success_then_codex_fail_is_terminal_without_repair(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     target = tmp_path / "target.txt"
     target.write_text("before", encoding="utf-8")
@@ -137,6 +142,60 @@ def test_codebuddy_success_then_codex_fail_is_terminal_without_repair(
     assert task.status is TaskStatus.FAILED
     assert task.result is None
     assert task.error == "Codex verification reported FAIL"
+    monkeypatch.setenv("DSH_RUNTIME_RUN_ID", "dsh-runtime-fixture")
+    monkeypatch.delenv("DSH_RUNTIME_INVOCATION_EVIDENCE", raising=False)
+    assert "invocation_evidence" not in _serialize_task(task)
+    monkeypatch.setenv("DSH_RUNTIME_INVOCATION_EVIDENCE", "1")
+    output = b"observed changed\nDSH_VERIFICATION: FAIL"
+    assert _serialize_task(task)["invocation_evidence"] == {
+        "version": 1,
+        "run_id": "dsh-runtime-fixture",
+        "task_id": task.task_id,
+        "workspace_id": task.workspace_id,
+        "role": "reviewer",
+        "adapter": "codex",
+        "invocation_index": 2,
+        "allow_workspace_write": False,
+        "stop_reason": "completed",
+        "success": True,
+        "cleanup_ok": True,
+        "output_bytes": len(output),
+        "output_sha256": hashlib.sha256(output).hexdigest(),
+    }
+
+
+@pytest.mark.parametrize("timeout", [False, True])
+def test_failed_reviewer_does_not_bind_the_previous_worker_output(
+    tmp_path: Path, timeout: bool,
+) -> None:
+    worker_output = "worker finished\nDSH_VERIFICATION: PASS"
+
+    async def fake_codebuddy(self, ctx, params):
+        return PluginResult(success=True, output=worker_output)
+
+    async def fake_codex(self, ctx, params):
+        if timeout:
+            await asyncio.Event().wait()
+        return PluginResult(success=False, error="reviewer unavailable")
+
+    controller = _controller_for(tmp_path)
+    task = build_repository_change_task("review target", "workspace.m5")
+    task.timeout_seconds = 0.05
+    with (
+        patch.object(CodeBuddyPlugin, "execute", new=fake_codebuddy),
+        patch.object(CodexPlugin, "execute", new=fake_codex),
+    ):
+        asyncio.run(controller.run(task))
+
+    assert task.status is (TaskStatus.TIMED_OUT if timeout else TaskStatus.FAILED)
+    assert task.last_invocation_result == worker_output
+    evidence = task.invocation_evidence
+    assert evidence is not None
+    assert evidence.role == "reviewer"
+    assert evidence.invocation_index == 2
+    assert evidence.stop_reason == ("timed_out" if timeout else "failed")
+    assert evidence.output_bytes is None
+    assert evidence.output_sha256 is None
 
 
 def test_codebuddy_failure_short_circuits_before_codex(tmp_path: Path) -> None:

@@ -12,10 +12,11 @@ const source = fileURLToPath(new URL('..', import.meta.url))
 const destination = realpathSync(outputDirectory)
 const manifest = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8'))
 const hostVersion = '0.2.2-rc.1'
+const pluginVersion = '0.1.0-rc.33'
 
 // Shared runtime packages must resolve from the Desktop host. Installing copies
 // into its Profile can replace core services even while this bundle is disabled.
-manifest.version = '0.1.0-rc.32'
+manifest.version = pluginVersion
 manifest.engines.dsh = hostVersion
 manifest.peerDependencies = {
   '@deepseek-ai/dsh-brand': hostVersion,
@@ -27,7 +28,7 @@ manifest.dependencies = { zod: manifest.dependencies.zod }
 delete manifest.devDependencies
 delete manifest.scripts
 
-const archive = 'dsh-runtime-harness-plugin-0.1.0-rc.32.tgz'
+const archive = `dsh-runtime-harness-plugin-${pluginVersion}.tgz`
 if (existsSync(join(destination, archive))) throw new Error(`Archive already exists: ${archive}`)
 
 const stage = mkdtempSync(join(destination, 'dsh-runtime-desktop-pack-'))

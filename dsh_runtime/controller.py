@@ -1,13 +1,15 @@
 """DSH-owned bounded task loop."""
 
+import hashlib
 import time
+from dataclasses import replace
 
 from .observability.logger import record
 from .planner import SimplePlanner
 from .runtime.executor import Executor
 from .runtime.plugin import ExecutionContext, StopReason
 from .runtime.registry import PluginRegistry
-from .state import TaskState, TaskStatus
+from .state import InvocationEvidence, TaskState, TaskStatus
 from .workspace.manager import WorkspaceManager, WorkspaceResolutionError
 
 
@@ -25,6 +27,7 @@ class DSHController:
     async def run(self, task: TaskState) -> TaskState:
         started = time.perf_counter()
         task.status = TaskStatus.RUNNING
+        task.invocation_evidence = None
         record("task_started", task_id=task.task_id, workspace_id=task.workspace_id)
 
         # Invocation budget is checked before the initial Planner evaluation.
@@ -45,6 +48,7 @@ class DSHController:
             return task
 
         while True:
+            task.invocation_evidence = None
             try:
                 cwd = self.workspace_manager.resolve_cwd(task.workspace_id)
             except WorkspaceResolutionError as exc:
@@ -65,6 +69,13 @@ class DSHController:
                     task.allow_workspace_write
                     and decision.allow_workspace_write
                 )
+            if decision.role is not None:
+                task.invocation_evidence = InvocationEvidence(
+                    role=decision.role,
+                    adapter=decision.plugin,
+                    invocation_index=task.iteration + 1,
+                    allow_workspace_write=allow_workspace_write,
+                )
             result = await self.executor.execute(
                 decision.plugin,
                 ExecutionContext(
@@ -78,9 +89,31 @@ class DSHController:
                 task.timeout_seconds,
             )
             task.iteration += 1
+            completed = result.stop_reason is StopReason.COMPLETED and result.success
+            if task.invocation_evidence is not None:
+                output_bytes = None
+                if (
+                    completed and result.cleanup_error is None
+                    and isinstance(result.output, str)
+                ):
+                    try:
+                        output_bytes = result.output.encode("utf-8")
+                    except UnicodeEncodeError:
+                        pass  # Leave output unbound if it cannot be encoded exactly.
+                task.invocation_evidence = replace(
+                    task.invocation_evidence,
+                    stop_reason=result.stop_reason.value if result.stop_reason else None,
+                    success=result.success,
+                    cleanup_ok=result.cleanup_error is None,
+                    output_bytes=len(output_bytes) if output_bytes is not None else None,
+                    output_sha256=(
+                        hashlib.sha256(output_bytes).hexdigest()
+                        if output_bytes is not None else None
+                    ),
+                )
             record("plugin_executed", task_id=task.task_id, plugin=decision.plugin,
                    iteration=task.iteration, success=result.success)
-            if result.stop_reason is StopReason.COMPLETED and result.success:
+            if completed:
                 task.last_invocation_result = result.output
             else:
                 error = result.error or "plugin execution failed"

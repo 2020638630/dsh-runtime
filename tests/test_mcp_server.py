@@ -66,6 +66,7 @@ def test_tool_runs_one_entrypoint_process_with_explicit_change_request(
         )
 
     monkeypatch.setattr(mcp_server.subprocess, "run", fake_run)
+    monkeypatch.setenv("DSH_RUNTIME_INVOCATION_EVIDENCE", "1")
 
     result = mcp_server.dsh_runtime(_arguments())
 
@@ -86,6 +87,7 @@ def test_tool_runs_one_entrypoint_process_with_explicit_change_request(
     assert invocation["capture_output"] is True
     assert invocation["check"] is False
     assert CALL_TRACE_PATH_ENV not in invocation["env"]
+    assert "DSH_RUNTIME_INVOCATION_EVIDENCE" not in invocation["env"]
 
 
 def test_tool_request_escapes_surrogates_before_utf8_subprocess_encoding(

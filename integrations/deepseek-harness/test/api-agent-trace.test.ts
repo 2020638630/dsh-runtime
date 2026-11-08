@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,6 +8,7 @@ import test from 'node:test'
 import { inspectApiAgentTrace } from '../src/runtime/api-agent-trace-evidence.ts'
 import { inspectCodexTrace } from '../src/runtime/codex-trace-evidence.ts'
 import { writeTerminalEvidence } from '../src/runtime/evidence-manifest.ts'
+import { parseTaskState, type RuntimeTaskState } from '../src/runtime/run.ts'
 import { captureWorkspace } from '../src/runtime/workspace-evidence.ts'
 
 const RUN_ID = 'dsh-runtime-00000000-0000-4000-8000-000000000005'
@@ -260,29 +262,54 @@ test('inspection Manifest rejects a reviewer trace in the same run', async () =>
   assert.equal(manifest.execution_trajectory.trace_complete, false)
 })
 
+const CHANGE_TASK_ID = '00000000-0000-4000-8000-000000000008'
+const CHANGE_WORKSPACE_ID = 'api.review.fixture'
+
+function completedReview(output: string, adapter: 'api_agent' | 'codex') {
+  return {
+    version: 1, run_id: RUN_ID, task_id: CHANGE_TASK_ID, workspace_id: CHANGE_WORKSPACE_ID,
+    role: 'reviewer', adapter, invocation_index: 2, allow_workspace_write: false,
+    stop_reason: 'completed', success: true, cleanup_ok: true,
+    output_bytes: Buffer.byteLength(output),
+    output_sha256: createHash('sha256').update(output).digest('hex'),
+  }
+}
+
 async function changeManifest(
   traceDir: string, iteration = 2, expectedWorkerAdapter: 'codebuddy' | 'codex' = 'codebuddy',
+  options: {
+    task?: Partial<RuntimeTaskState>
+    expectedApiReviewer?: boolean
+    abortDuringEvidence?: AbortController
+  } = {},
 ) {
   const runDir = join(traceDir, '..')
   const workspace = mkdtempSync(join(tmpdir(), 'dsh-api-review-workspace-'))
   execFileSync('git', ['init', '-q', workspace])
   writeFileSync(join(workspace, 'README.md'), 'isolated review\n')
   const before = await captureWorkspace(workspace)
+  const reviewOutput = 'checked\nDSH_VERIFICATION: PASS'
+  const task = parseTaskState(JSON.stringify({
+    task_id: CHANGE_TASK_ID, task_kind: 'repository_change', workspace_id: CHANGE_WORKSPACE_ID,
+    status: iteration === 2 ? 'completed' : 'failed', iteration,
+    result: iteration === 2 ? 'done' : null,
+    error: iteration === 2 ? null : 'worker failed',
+    last_invocation_result: iteration === 2 ? reviewOutput : null,
+    ...(iteration === 2 ? { invocation_evidence: completedReview(reviewOutput, 'api_agent') } : {}),
+    ...options.task,
+  }))
+  assert.ok(task)
+  const abort = options.abortDuringEvidence
+  if (abort !== undefined) setImmediate(() => abort.abort())
   await writeTerminalEvidence({
     runId: RUN_ID, runDir, safeTraceDir: traceDir,
     callTracePath: join(runDir, `${RUN_ID}-runtime-call-trace.jsonl`),
-    workspace, workspaceId: 'api.review.fixture', before,
+    workspace, workspaceId: CHANGE_WORKSPACE_ID, before,
     taskKind: 'repository_change',
-    task: {
-      task_id: '00000000-0000-4000-8000-000000000008',
-      task_kind: 'repository_change', workspace_id: 'api.review.fixture',
-      status: iteration === 2 ? 'completed' : 'failed', iteration,
-      result: iteration === 2 ? 'done' : null,
-      error: iteration === 2 ? null : 'worker failed',
-      last_invocation_result: iteration === 2 ? 'checked\nDSH_VERIFICATION: PASS' : null,
-    },
+    task,
+    ...(abort === undefined ? {} : { signal: abort.signal }),
     exitCode: 0, durationMs: 1, stdout: '{}\n', maxTurnsConfig: 12,
-    expectedApiReviewer: true,
+    expectedApiReviewer: options.expectedApiReviewer ?? true,
     expectedWorkerAdapter,
   })
   return JSON.parse(readFileSync(join(runDir, 'evidence-manifest.v1.json'), 'utf8'))
@@ -364,4 +391,82 @@ test('configured API reviewer is not marked missing when worker failed first', a
   assert.equal(manifest.review_trajectory.status, 'not_applicable')
   assert.equal(manifest.authority_phases.phase_2_codex_effective_write, null)
   assert.equal(manifest.authority_phases.phase_2_api_agent_effective_write, null)
+})
+
+function emptyReviewTraceDir(): string {
+  const traceDir = join(mkdtempSync(join(tmpdir(), 'dsh-review-binding-')), RUN_ID, `safe-trace-${RUN_ID}`)
+  mkdirSync(traceDir, { recursive: true })
+  return traceDir
+}
+
+test('reviewer failure or timeout cannot display a stale worker verdict', async () => {
+  for (const status of ['failed', 'timed_out']) {
+    for (const verdict of ['PASS', 'FAIL']) {
+      const output = `worker text\nDSH_VERIFICATION: ${verdict}`
+      const { verification } = await changeManifest(emptyReviewTraceDir(), 2, 'codebuddy', {
+        expectedApiReviewer: false,
+        task: { status, last_invocation_result: output, invocation_evidence: {
+          ...completedReview(output, 'codex'), stop_reason: status, success: false,
+          output_bytes: null, output_sha256: null,
+        } },
+      })
+      assert.equal(verification.verdict, 'UNAVAILABLE')
+      assert.equal(verification.verdict_raw_line, null)
+      assert.equal(verification.evidence_text, null)
+    }
+  }
+})
+
+test('a completed Codex reviewer can supply PASS or FAIL, but only on the exact last line', async () => {
+  for (const verdict of ['PASS', 'FAIL', 'UNAVAILABLE']) {
+    const output = '差异已核对\r\nDSH_VERIFICATION: ' + (verdict === 'UNAVAILABLE' ? 'unknown' : verdict)
+    const { verification } = await changeManifest(emptyReviewTraceDir(), 2, 'codebuddy', {
+      expectedApiReviewer: false,
+      task: { status: verdict === 'PASS' ? 'completed' : 'failed', last_invocation_result: output,
+        invocation_evidence: completedReview(output, 'codex') },
+    })
+    assert.equal(verification.verdict, verdict)
+    assert.equal(verification.evidence_text, verdict === 'UNAVAILABLE' ? null : '差异已核对')
+  }
+})
+
+test('a complete API trace cannot replace missing or invalid Runtime binding', async () => {
+  const output = 'checked\nDSH_VERIFICATION: PASS'
+  const valid = completedReview(output, 'api_agent')
+  const invalid = [
+    undefined, null, { ...valid, version: 2 }, { ...valid, run_id: 'other' },
+    { ...valid, task_id: 'other' }, { ...valid, workspace_id: 'other' },
+    { ...valid, invocation_index: 1 }, { ...valid, role: 'worker' },
+    { ...valid, adapter: 'codex' }, { ...valid, allow_workspace_write: true },
+    { ...valid, cleanup_ok: false }, { ...valid, output_bytes: 1 },
+    { ...valid, output_sha256: '0'.repeat(64) },
+  ]
+  for (const invocation_evidence of invalid) {
+    const { traceDir } = fixture('reviewer')
+    const { verification } = await changeManifest(traceDir, 2, 'codebuddy', {
+      task: { invocation_evidence },
+    })
+    assert.equal(verification.verdict, 'UNAVAILABLE')
+    assert.equal(verification.evidence_text, null)
+  }
+})
+
+test('cancellation during evidence assembly leaves no published verdict', async () => {
+  const { traceDir } = fixture('reviewer')
+  const runDir = join(traceDir, '..')
+  await assert.rejects(changeManifest(traceDir, 2, 'codebuddy', {
+    abortDuringEvidence: new AbortController(),
+  }), { name: 'AbortError' })
+  assert.equal(existsSync(join(runDir, 'evidence-manifest.v1.json')), false)
+  assert.equal(existsSync(join(runDir, 'evidence-manifest.v1.pending')), false)
+})
+
+test('failed manifest publication removes the pending verdict', async () => {
+  const { traceDir } = fixture('reviewer')
+  const runDir = join(traceDir, '..')
+  const destination = join(runDir, 'evidence-manifest.v1.json')
+  mkdirSync(destination)
+  await assert.rejects(changeManifest(traceDir))
+  assert.deepEqual(readdirSync(destination), [])
+  assert.equal(existsSync(join(runDir, 'evidence-manifest.v1.pending')), false)
 })

@@ -17,6 +17,7 @@ import os
 import sys
 import time
 from contextlib import redirect_stdout
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -99,7 +100,7 @@ async def _run_request(request: dict[str, Any]) -> TaskState:
 
 
 def _serialize_task(task: TaskState) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "task_id": task.task_id,
         "task_kind": task.task_kind.value,
         "workspace_id": task.workspace_id,
@@ -109,6 +110,20 @@ def _serialize_task(task: TaskState) -> dict[str, Any]:
         "error": task.error,
         "last_invocation_result": task.last_invocation_result,
     }
+    run_id = os.environ.get("DSH_RUNTIME_RUN_ID")
+    if (
+        os.environ.get("DSH_RUNTIME_INVOCATION_EVIDENCE") == "1"
+        and run_id
+        and task.invocation_evidence is not None
+    ):
+        payload["invocation_evidence"] = {
+            "version": 1,
+            "run_id": run_id,
+            "task_id": task.task_id,
+            "workspace_id": task.workspace_id,
+            **asdict(task.invocation_evidence),
+        }
+    return payload
 
 
 def _trace_timestamp() -> str:

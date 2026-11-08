@@ -1,6 +1,8 @@
 /** Assemble one terminal manifest from independent Host and Runtime evidence. */
 
-import { readdir, rename, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { renameSync } from 'node:fs'
+import { readdir, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { inspectCallTrace } from './call-trace-evidence.ts'
 import { inspectApiAgentTrace } from './api-agent-trace-evidence.ts'
@@ -14,24 +16,49 @@ const CODEX_TRACE_NAME = /^codex-safe-worker-[0-9a-f]{32}\.jsonl$/u
 const API_TRACE_NAME = /^api-agent-safe-role-[0-9a-f]{32}\.jsonl$/u
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u
 
-function verification(task: RuntimeTaskState, taskKind: DshRuntimeTaskKind) {
-  if (taskKind !== 'repository_change' || task.iteration < 2) {
-    return {
-      source: 'runtime_terminal_json', verdict: 'UNAVAILABLE', verdict_raw_line: null,
-      evidence_text: null, evidence_truncated: false, stage_duration_ms: null,
-    }
+function verification(
+  task: RuntimeTaskState, runId: string, taskKind: DshRuntimeTaskKind,
+  expectedAdapter: 'codex' | 'api_agent', reviewTraceVerified: boolean,
+) {
+  const unavailable = {
+    source: 'runtime_terminal_json', verdict: 'UNAVAILABLE', verdict_raw_line: null,
+    evidence_text: null, evidence_truncated: false, stage_duration_ms: null,
   }
-  const lines = task.last_invocation_result?.split(/\r?\n/u) ?? []
+  if (taskKind !== 'repository_change') return unavailable
+  if (task.invocation_evidence === undefined) {
+    return { ...unavailable, invocation_binding: 'missing' }
+  }
+  const binding = task.invocation_evidence
+  const output = task.last_invocation_result
+  if (binding === null || typeof binding !== 'object' || Array.isArray(binding)
+    || typeof output !== 'string') {
+    return { ...unavailable, invocation_binding: 'invalid' }
+  }
+  const evidence = binding as Record<string, unknown>
+  const bytes = Buffer.from(output, 'utf8')
+  if (evidence.version !== 1 || evidence.run_id !== runId
+    || evidence.task_id !== task.task_id || evidence.workspace_id !== task.workspace_id
+    || evidence.role !== 'reviewer' || evidence.adapter !== expectedAdapter
+    || task.iteration !== 2 || evidence.invocation_index !== task.iteration
+    || evidence.allow_workspace_write !== false || evidence.stop_reason !== 'completed'
+    || evidence.success !== true || evidence.cleanup_ok !== true
+    || evidence.output_bytes !== bytes.length
+    || evidence.output_sha256 !== createHash('sha256').update(bytes).digest('hex')) {
+    return { ...unavailable, invocation_binding: 'invalid' }
+  }
+  if (!reviewTraceVerified) return { ...unavailable, invocation_binding: 'matched' }
+  const lines = output.split(/\r?\n/u)
   const nonEmpty = lines.filter(line => line.trim().length > 0)
   const last = nonEmpty.at(-1)?.trim()
-  const verdict = last === 'DSH_VERIFICATION: PASS' ? 'PASS'
-    : last === 'DSH_VERIFICATION: FAIL' ? 'FAIL' : 'UNAVAILABLE'
-  const evidence = verdict === 'UNAVAILABLE' ? null : nonEmpty.slice(0, -1).join('\n')
+  const verdict = last === 'DSH_VERIFICATION: PASS' && task.status === 'completed' ? 'PASS'
+    : last === 'DSH_VERIFICATION: FAIL' && task.status === 'failed' ? 'FAIL' : 'UNAVAILABLE'
+  if (verdict === 'UNAVAILABLE') return { ...unavailable, invocation_binding: 'matched' }
+  const evidenceText = nonEmpty.slice(0, -1).join('\n')
   return {
-    source: 'runtime_terminal_json', verdict,
-    verdict_raw_line: verdict === 'UNAVAILABLE' ? null : last,
-    evidence_text: evidence === null ? null : evidence.slice(0, 20_000),
-    evidence_truncated: evidence !== null && evidence.length > 20_000,
+    source: 'runtime_terminal_json', verdict, invocation_binding: 'matched',
+    verdict_raw_line: last,
+    evidence_text: evidenceText.slice(0, 20_000),
+    evidence_truncated: evidenceText.length > 20_000,
     stage_duration_ms: null,
   }
 }
@@ -52,12 +79,14 @@ export async function writeTerminalEvidence(input: {
   readonly exitCode: number
   readonly durationMs: number
   readonly stdout: string
+  readonly signal?: AbortSignal
   readonly maxTurnsConfig: number | null
   readonly expectedApiInspector?: boolean
   readonly expectedApiReviewer?: boolean
   readonly expectedWorkerAdapter?: 'codebuddy' | 'codex'
 }): Promise<void> {
   const { task, runId, runDir } = input
+  input.signal?.throwIfAborted()
   if (!UUID.test(task.task_id) || task.task_kind !== input.taskKind
     || task.workspace_id !== input.workspaceId || task.iteration < 0) {
     throw new Error('Runtime TaskState cannot be bound to a terminal Evidence Manifest')
@@ -167,10 +196,8 @@ export async function writeTerminalEvidence(input: {
       failure_code: reviewStatus === 'available'
         ? rawReviewTrajectory?.failureCode : null,
     },
-    verification: reviewVerified ? verification(task, input.taskKind) : {
-      source: 'runtime_terminal_json', verdict: 'UNAVAILABLE', verdict_raw_line: null,
-      evidence_text: null, evidence_truncated: false, stage_duration_ms: null,
-    },
+    verification: verification(task, runId, input.taskKind,
+      input.expectedApiReviewer === true ? 'api_agent' : 'codex', reviewVerified),
     audit: {
       source: 'call_trace', status: audit.status, call_id: audit.callId,
       call_trace_path: input.callTracePath, stdout_bytes: audit.stdoutBytes,
@@ -180,5 +207,11 @@ export async function writeTerminalEvidence(input: {
   await writeFile(diffPath, changes.diff, { flag: 'wx' })
   const pending = join(runDir, 'evidence-manifest.v1.pending')
   await writeFile(pending, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' })
-  await rename(pending, join(runDir, 'evidence-manifest.v1.json'))
+  try {
+    input.signal?.throwIfAborted()
+    renameSync(pending, join(runDir, 'evidence-manifest.v1.json'))
+  } catch (error) {
+    await unlink(pending).catch(() => {})
+    throw error
+  }
 }

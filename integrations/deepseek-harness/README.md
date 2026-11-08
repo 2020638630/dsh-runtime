@@ -31,15 +31,17 @@ The Runtime root and policy file must exist. The audit parent, pin directory and
 
 Run `pnpm install --frozen-lockfile --ignore-scripts` and then
 `pnpm run pack:desktop-rc1 ABS_OUTPUT_DIRECTORY` in this package. The output
-directory must already exist. This builds the `0.1.0-rc.32` Desktop bundle,
+directory must already exist. This builds the `0.1.0-rc.33` Desktop bundle,
 which declares its exact Harness version and uses the host's shared packages.
 The frozen RC.31 tarball targets the earlier Web setup. Installing that
 tarball in Desktop 0.2.2-rc.1 can replace core host dependencies and leave the
 window blank even while the bundle is disabled.
 
-Import the RC.32 tarball by its absolute `file:` path in an isolated Desktop
+Import the RC.33 tarball by its absolute `file:` path in an isolated Desktop
 Profile. Apply the Profile configuration above before enabling the bundle.
 Start with only `repository_inspection` enabled for a read-only smoke test.
+Use the matching Runtime source to display repository-change review verdicts.
+With an older Runtime, tasks can still run and the verdict is shown as unavailable.
 
 ## Role and model selection (preview)
 

@@ -249,12 +249,11 @@ def dsh_runtime(arguments: object) -> dict[str, Any]:
             input=request_bytes,
             capture_output=True,
             check=False,
-            # The MCP adapter records this invocation around the child process.
-            # Do not let the product entrypoint append a duplicate lifecycle.
+            # MCP owns call tracing and keeps its legacy TaskState envelope.
             env={
                 key: value
                 for key, value in os.environ.items()
-                if key != CALL_TRACE_PATH_ENV
+                if key not in {CALL_TRACE_PATH_ENV, "DSH_RUNTIME_INVOCATION_EVIDENCE"}
             },
         )
     except Exception as exc:
