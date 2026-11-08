@@ -40,7 +40,7 @@ class InvocationEvidence:
 
 @dataclass(frozen=True)
 class ModelObservation:
-    """Codex thread-start metadata for one completed workflow phase."""
+    """CLI model metadata for one completed workflow phase."""
 
     role: str
     adapter: str

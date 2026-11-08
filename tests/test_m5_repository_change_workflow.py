@@ -115,7 +115,7 @@ def test_codebuddy_success_then_codex_fail_is_terminal_without_repair(
     async def fake_codebuddy(self, ctx, params):
         events.append("codebuddy")
         Path(ctx.cwd, "target.txt").write_text("changed", encoding="utf-8")
-        return PluginResult(success=True, output="builder settled")
+        return PluginResult(success=True, output="builder settled", reported_model="worker-model")
 
     async def fake_codex(self, ctx, params):
         events.append("codex")
@@ -163,6 +163,17 @@ def test_codebuddy_success_then_codex_fail_is_terminal_without_repair(
         "output_bytes": len(output),
         "output_sha256": hashlib.sha256(output).hexdigest(),
     }
+    assert _serialize_task(task)["model_observations"] == {
+        "version": 2, "run_id": "dsh-runtime-fixture",
+        "task_id": task.task_id, "workspace_id": task.workspace_id,
+        "entries": [
+            {"role": "worker", "adapter": "codebuddy", "invocation_index": 1,
+             "requested_model": None, "reported_model": "worker-model",
+             "source": "codebuddy_json_assistant"},
+            {"role": "reviewer", "adapter": "codex", "invocation_index": 2,
+             "requested_model": None, "reported_model": None, "source": "codex_thread_start"},
+        ],
+    }
 
 
 @pytest.mark.parametrize("timeout", [False, True])
@@ -197,7 +208,9 @@ def test_failed_reviewer_does_not_bind_the_previous_worker_output(
     assert evidence.stop_reason == ("timed_out" if timeout else "failed")
     assert evidence.output_bytes is None
     assert evidence.output_sha256 is None
-    assert task.model_observations == []
+    assert [(entry.role, entry.reported_model) for entry in task.model_observations] == [
+        ("worker", None),
+    ]
 
 
 def test_codex_model_observations_keep_both_phases(tmp_path: Path, monkeypatch) -> None:

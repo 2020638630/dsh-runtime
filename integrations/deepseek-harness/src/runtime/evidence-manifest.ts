@@ -32,37 +32,44 @@ function modelObservations(
   const evidence = task.model_observations
   if (taskKind !== 'repository_change' || !Number.isInteger(task.iteration)
     || task.iteration < 1 || task.iteration > 2 || !record(evidence)
-    || evidence.version !== 1 || evidence.run_id !== runId
+    || (evidence.version !== 1 && evidence.version !== 2) || evidence.run_id !== runId
     || evidence.task_id !== task.task_id || evidence.workspace_id !== task.workspace_id
     || !Array.isArray(evidence.entries) || evidence.entries.length === 0
     || evidence.entries.length > 2) return undefined
 
+  const version = evidence.version
   let previousIndex = 0
   const entries = []
   for (const entry of evidence.entries as unknown[]) {
-    if (!record(entry) || entry.adapter !== 'codex'
+    if (!record(entry)
       || !modelId(entry.requested_model) || !modelId(entry.reported_model)) return undefined
     const index = entry.invocation_index
     const role = entry.role
-    const expectedRole = index === 1 && expectedWorkerAdapter === 'codex' ? 'worker'
-      : index === 2 && !expectedApiReviewer ? 'reviewer' : undefined
-    if (expectedRole === undefined || role !== expectedRole || typeof index !== 'number'
+    if (typeof index !== 'number' || (index !== 1 && index !== 2)
       || index <= previousIndex || index > task.iteration) return undefined
+    const adapter = index === 1 ? expectedWorkerAdapter : expectedApiReviewer ? undefined : 'codex'
+    if (adapter === undefined || entry.adapter !== adapter
+      || role !== (index === 1 ? 'worker' : 'reviewer')) return undefined
+    const source = version === 1 ? 'codex_thread_start' : entry.source
+    const expectedSource = adapter === 'codex' ? 'codex_thread_start'
+      : entry.reported_model === null ? 'unobserved' : 'codebuddy_json_assistant'
+    if (source !== expectedSource) return undefined
     if (index === task.iteration) {
       const current = task.invocation_evidence
       if (!record(current) || current.version !== 1 || current.run_id !== runId
         || current.task_id !== task.task_id || current.workspace_id !== task.workspace_id
-        || current.adapter !== 'codex' || current.role !== role || current.invocation_index !== index
+        || current.adapter !== adapter || current.role !== role || current.invocation_index !== index
         || current.stop_reason !== 'completed' || current.success !== true
         || current.cleanup_ok !== true) return undefined
     }
     previousIndex = index
     entries.push({
-      role, adapter: 'codex', invocation_index: index,
+      role, adapter, invocation_index: index,
       requested_model: entry.requested_model, reported_model: entry.reported_model,
+      ...(version === 2 ? { source } : {}),
     })
   }
-  return { version: 1, source: 'codex_thread_start', entries }
+  return version === 1 ? { version, source: 'codex_thread_start', entries } : { version, entries }
 }
 
 function verification(

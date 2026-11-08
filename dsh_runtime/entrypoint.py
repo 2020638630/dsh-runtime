@@ -125,9 +125,20 @@ def _serialize_task(task: TaskState) -> dict[str, Any]:
                 **asdict(task.invocation_evidence),
             }
         if task.model_observations:
+            entries = [asdict(observation) for observation in task.model_observations]
+            includes_codebuddy = any(entry["adapter"] == "codebuddy" for entry in entries)
+            if includes_codebuddy:
+                for entry in entries:
+                    if entry["adapter"] == "codex":
+                        entry["source"] = "codex_thread_start"
+                    elif entry["reported_model"] is None:
+                        entry["source"] = "unobserved"
+                    else:
+                        entry["source"] = "codebuddy_json_assistant"
             payload["model_observations"] = {
                 **identity,
-                "entries": [asdict(observation) for observation in task.model_observations],
+                "version": 2 if includes_codebuddy else 1,
+                "entries": entries,
             }
     return payload
 

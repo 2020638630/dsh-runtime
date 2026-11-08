@@ -2,6 +2,7 @@
 
 import asyncio
 import ctypes
+import io
 import json
 import logging
 import os
@@ -71,6 +72,13 @@ elif mode == "hold-tree":
     time.sleep(60)
 elif mode == "malformed":
     print("not json")
+elif mode == "large-json":
+    print(json.dumps([
+        {"type": "reasoning", "rawContent": "private-history-" * 12_000},
+        {"type": "message", "role": "assistant", "status": "completed",
+         "providerData": {"model": "fake-large-json-model"}},
+        {"type": "result", "subtype": "success", "is_error": False, "result": "done"},
+    ]))
 elif mode == "truncated-array":
     sys.stdout.write('[{"type":"message"}')
     sys.stdout.flush()
@@ -104,7 +112,8 @@ elif mode in {"trace-events", "trace-stream"}:
         f"Successfully wrote {len(content.encode('utf-8'))} bytes",
     )
     events = [
-        {"type": "message", "providerData": {"model": "fake-trace-model"}},
+        {"type": "message", "role": "assistant", "status": "completed",
+         "providerData": {"model": "fake-trace-model"}},
         {
             "type": "function_call",
             "name": "Write",
@@ -622,12 +631,98 @@ def test_explicit_model_uses_cli_flag_and_records_requested_model(tmp_path: Path
         {"prompt": "bounded prompt", "model": "glm-5.3-flash"},
     )
     assert result.success is True
+    assert result.reported_model == "fake-trace-model"
     argv = json.loads(capture.read_text(encoding="utf-8"))["argv"]
     assert argv[argv.index("--model") + 1] == "glm-5.3-flash"
     assert argv[-1] == "bounded prompt"
     trace = json.loads(next(trace_dir.glob("codebuddy-worker-*.json")).read_text())
     assert trace["requested_model"] == "glm-5.3-flash"
     assert trace["observed_models"] == ["fake-trace-model"]
+
+
+@pytest.mark.parametrize(("models", "expected"), [
+    ([], None),
+    (["provider/model", "provider/model"], "provider/model"),
+    (["provider/model", "other-model"], None),
+    (["provider/model", "<script>"], None),
+    (["x" * 129], None),
+    (["unknown"], None),
+])
+def test_json_model_observation_only_uses_completed_assistant_metadata(models, expected):
+    events = [
+        {"type": "message", "role": "user", "status": "completed",
+         "providerData": {"model": "user-injected"}},
+        {"type": "message", "role": "assistant", "status": "in_progress",
+         "providerData": {"model": "in-progress"}},
+        {"type": "message", "role": "assistant", "status": "completed",
+         "content": {"providerData": {"model": "content-injected"}}},
+        *[
+            {"type": "message", "role": "assistant", "status": "completed",
+             "providerData": {"model": model}}
+            for model in models
+        ],
+        {"type": "result", "subtype": "success", "is_error": False,
+         "result": "done", "providerData": {"model": "terminal-injected"}},
+    ]
+    result = asyncio.run(codebuddy_module._normalize_output(
+        io.BytesIO(json.dumps(events).encode()), b"", 0, max_output_chars=4096,
+    ))
+    assert result.success
+    assert result.reported_model == expected
+
+
+def test_large_json_transcript_only_returns_final_output_and_model(tmp_path: Path) -> None:
+    trace_dir = tmp_path / "safe-trace"
+    result = run(plugin(tmp_path, mode="large-json", safe_trace_dir=trace_dir), context(tmp_path))
+
+    assert result.success
+    assert result.output == "done"
+    assert result.reported_model == "fake-large-json-model"
+    trace_path, records = _safe_trace_records(trace_dir)
+    assert records[-1]["trace_complete"] is True
+    assert "private-history-" not in trace_path.read_text(encoding="utf-8")
+
+
+def test_native_json_read_limit_rejects_bytes_after_a_valid_result() -> None:
+    final = b'[{"type":"result","subtype":"success","is_error":false,"result":"done"}]'
+    limit = codebuddy_module._MAX_JSON_TRANSCRIPT_BYTES
+    at_limit = final.ljust(limit, b" ")
+
+    accepted = asyncio.run(codebuddy_module._normalize_output(
+        io.BytesIO(at_limit), b"", 0, max_output_chars=4,
+    ))
+    rejected = asyncio.run(codebuddy_module._normalize_output(
+        io.BytesIO(at_limit + b" "), b"", 0, max_output_chars=4,
+    ))
+
+    assert accepted.success
+    assert not rejected.success
+    assert rejected.error == f"CodeBuddy native JSON transcript exceeded {limit} bytes"
+
+
+@pytest.mark.parametrize("suffix", [b",]", b"]{}", b""])
+def test_native_json_rejects_invalid_suffix_after_result(suffix: bytes) -> None:
+    final = b'[{"type":"result","subtype":"success","is_error":false,"result":"done"}'
+    with pytest.raises(ValueError, match="malformed JSON output"):
+        asyncio.run(codebuddy_module._normalize_output(
+            io.BytesIO(final + suffix), b"", 0, max_output_chars=4,
+        ))
+
+
+def test_final_output_limit_counts_characters_across_utf8_chunks(monkeypatch) -> None:
+    monkeypatch.setattr(codebuddy_module, "_JSON_READ_CHUNK", 1)
+    stdout = '[{"type":"result","subtype":"success","is_error":false,"result":"验收"}]'.encode()
+
+    accepted = asyncio.run(codebuddy_module._normalize_output(
+        io.BytesIO(stdout), b"", 0, max_output_chars=2,
+    ))
+    rejected = asyncio.run(codebuddy_module._normalize_output(
+        io.BytesIO(stdout), b"", 0, max_output_chars=1,
+    ))
+
+    assert accepted.output == "验收"
+    assert not rejected.success
+    assert rejected.error == "CodeBuddy final assistant output exceeded the configured bound"
 
 
 def test_invalid_model_fails_before_codebuddy_spawn(tmp_path: Path) -> None:
@@ -1933,11 +2028,16 @@ def test_stream_json_model_uses_same_cli_flag(monkeypatch, tmp_path: Path) -> No
     capture = tmp_path / "stream-capture.json"
     cb = _stream_json_plugin(
         tmp_path,
-        chunks=[_stream_json_line(_stream_success_event())],
+        chunks=[
+            _stream_json_line({"type": "system", "subtype": "init", "model": "init-model"}),
+            _stream_json_line({"type": "assistant", "message": {"model": "assistant-model"}}),
+            _stream_json_line(_stream_success_event()),
+        ],
         capture=capture,
     )
     result = run(cb, context(tmp_path), {"prompt": "work", "model": "glm-5.3-flash"})
     assert result.success is True
+    assert result.reported_model is None
     assert json.loads(capture.read_text(encoding="utf-8"))["model"] == "glm-5.3-flash"
 
 

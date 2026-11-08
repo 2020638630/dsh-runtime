@@ -12,7 +12,7 @@ const source = fileURLToPath(new URL('..', import.meta.url))
 const destination = realpathSync(outputDirectory)
 const manifest = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8'))
 const hostVersion = '0.2.2-rc.1'
-const pluginVersion = '0.1.0-rc.33'
+const pluginVersion = '0.1.0-rc.34'
 
 // Shared runtime packages must resolve from the Desktop host. Installing copies
 // into its Profile can replace core services even while this bundle is disabled.

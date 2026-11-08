@@ -436,6 +436,41 @@ test('model evidence preserves both Codex roles and rejects misbound or invalid 
   assert.deepEqual((await build({ ...valid, entries: [worker] }, failed)).model_observations.entries, [worker])
 })
 
+test('mixed model evidence binds each CLI source to its own role', async () => {
+  const worker = { role: 'worker', adapter: 'codebuddy', invocation_index: 1,
+    requested_model: 'worker-request', reported_model: 'worker-return',
+    source: 'codebuddy_json_assistant' }
+  const reviewer = { role: 'reviewer', adapter: 'codex', invocation_index: 2,
+    requested_model: null, reported_model: 'review-return', source: 'codex_thread_start' }
+  const evidence = {
+    version: 2, run_id: RUN_ID, task_id: CHANGE_TASK_ID, workspace_id: CHANGE_WORKSPACE_ID,
+    entries: [worker, reviewer],
+  }
+  const invocation = completedReview('checked\nDSH_VERIFICATION: PASS', 'codex')
+  const build = (model_observations: unknown, adapter: 'codebuddy' | 'codex' = 'codebuddy') =>
+    changeManifest(emptyReviewTraceDir(), 2, adapter, {
+      expectedApiReviewer: false,
+      task: { invocation_evidence: invocation, model_observations },
+    })
+  const { model_observations, verification } = await build(evidence)
+  assert.deepEqual(model_observations, { version: 2, entries: [worker, reviewer] })
+  assert.equal(verification.verdict, 'PASS')
+
+  const unobserved = { ...worker, reported_model: null, source: 'unobserved' }
+  assert.deepEqual((await build({ ...evidence, entries: [unobserved, reviewer] }))
+    .model_observations.entries, [unobserved, reviewer])
+  for (const invalid of [
+    { ...evidence, version: 1 },
+    { ...evidence, entries: [{ ...worker, source: 'unobserved' }, reviewer] },
+    { ...evidence, entries: [worker, { ...reviewer, source: 'codebuddy_json_assistant' }] },
+  ]) {
+    const manifest = await build(invalid)
+    assert.equal(manifest.model_observations, undefined)
+    assert.equal(manifest.verification.verdict, 'PASS')
+  }
+  assert.equal((await build(evidence, 'codex')).model_observations, undefined)
+})
+
 test('reviewer failure or timeout cannot display a stale worker verdict', async () => {
   for (const status of ['failed', 'timed_out']) {
     for (const verdict of ['PASS', 'FAIL']) {

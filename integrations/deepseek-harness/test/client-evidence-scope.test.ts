@@ -108,3 +108,18 @@ test('drawer separates requested and returned model by role and degrades old or 
   assert.match(invalid, /执行阶段模型：未记录/u)
   assert.doesNotMatch(invalid, /<script>/u)
 })
+
+test('drawer labels CodeBuddy JSON evidence and unknown separately from Codex', () => {
+  const changes = { added_files: [], modified_files: [], deleted_files: [] }
+  const worker = { role: 'worker', adapter: 'codebuddy', invocation_index: 1,
+    requested_model: null, reported_model: 'provider/model', source: 'codebuddy_json_assistant' }
+  const reviewer = { role: 'reviewer', adapter: 'codex', invocation_index: 2,
+    requested_model: null, reported_model: 'review-return', source: 'codex_thread_start' }
+  const draw = (workerEvidence: unknown) => render('trajectory', changes, undefined, undefined,
+    { version: 2, entries: [workerEvidence, reviewer] })
+  assert.match(draw(worker), /执行阶段模型：CodeBuddy · 请求 CLI 默认 · CLI JSON 报告 provider\/model/u)
+  assert.match(draw(worker), /审查阶段模型：Codex · 请求 CLI 默认 · CLI 启动返回 review-return/u)
+  assert.match(draw({ ...worker, requested_model: 'worker-request', reported_model: null, source: 'unobserved' }),
+    /执行阶段模型：CodeBuddy · 请求 worker-request · CLI 报告 未知/u)
+  assert.match(draw({ ...worker, source: 'codex_thread_start' }), /执行阶段模型：未记录/u)
+})

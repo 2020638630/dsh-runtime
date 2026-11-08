@@ -18,10 +18,10 @@ import subprocess
 import tempfile
 import time
 from datetime import datetime, timezone
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 from uuid import uuid4
 
 from ..runtime.plugin import ExecutionContext, PluginResult
@@ -35,6 +35,9 @@ _SETTINGS = {
 }
 _DEFAULT_MAX_TURNS = 12
 _DEFAULT_MAX_OUTPUT_CHARS = 100_000
+_MAX_JSON_TRANSCRIPT_BYTES = 1_000_000
+_JSON_READ_CHUNK = 65_536
+_JSON_WHITESPACE = " \t\r\n"
 _DEFAULT_MAX_DIAGNOSTIC_CHARS = 1_000
 _MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+-]{0,127}\Z")
 MAX_STREAM_CHARS_ENV = "DSH_CODEBUDDY_MAX_STREAM_CHARS"
@@ -54,7 +57,6 @@ _SAFE_TRACE_MAX_BYTES = 1_048_576
 _SAFE_TRACE_MAX_EVENTS = 2_048
 _SAFE_TRACE_TERMINAL_RESERVE_BYTES = 2_048
 _SAFE_OBSERVER_MAX_EVENTS_PER_FEED = 128
-_SAFE_JSON_ARRAY_MAX_BUFFER_CHARS = _DEFAULT_MAX_OUTPUT_CHARS * 4 + 1
 _SAFE_TRACE_TOOL_NAMES = frozenset({"Read", "Edit", "Write", "Bash"})
 _SAFE_TRACE_TOOL_STATUSES = frozenset(
     {
@@ -83,6 +85,10 @@ _WINDOWS_NODE_PATTERN = re.compile(
 
 class _CodeBuddyOutputError(ValueError):
     """Raised for native output that cannot be normalized."""
+
+
+class _JsonTranscriptLimitExceeded(_CodeBuddyOutputError):
+    """Raised when ordinary JSON extends beyond the transcript read limit."""
 
 
 class CodeBuddyLaunchConfigurationError(RuntimeError):
@@ -556,7 +562,7 @@ class _SafeJsonArrayEventObserver:
         sink: _SafeCodeBuddyEventSink,
         *,
         max_events_per_feed: int = _SAFE_OBSERVER_MAX_EVENTS_PER_FEED,
-        max_buffer_chars: int = _SAFE_JSON_ARRAY_MAX_BUFFER_CHARS,
+        max_buffer_chars: int = _MAX_JSON_TRANSCRIPT_BYTES,
     ) -> None:
         if max_events_per_feed <= 0 or max_buffer_chars <= 0:
             raise ValueError("safe JSON-array observer bounds must be positive")
@@ -1309,19 +1315,68 @@ def _tool_failure(event: Mapping[str, Any]) -> str | None:
     return None
 
 
-def _final_result(events: Any) -> Mapping[str, Any]:
-    if not isinstance(events, list) or not events:
-        raise _CodeBuddyOutputError("unexpected native event root")
-    if not all(isinstance(event, Mapping) for event in events):
-        raise _CodeBuddyOutputError("unexpected native event shape")
-    final = events[-1]
-    if final.get("type") != "result":
-        raise _CodeBuddyOutputError("missing final result event")
-    return final
+async def _iter_json_events(stdout: BinaryIO) -> AsyncIterator[dict[str, Any]]:
+    """Read one event at a time from a bounded, complete native JSON array."""
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    json_decoder = json.JSONDecoder()
+    buffer = ""
+    remaining = _MAX_JSON_TRANSCRIPT_BYTES
+    eof = False
+
+    async def fill() -> None:
+        nonlocal buffer, remaining, eof
+        chunk = stdout.read(min(_JSON_READ_CHUNK, remaining + 1))
+        remaining -= len(chunk)
+        if remaining < 0:
+            raise _JsonTranscriptLimitExceeded
+        eof = not chunk
+        buffer += decoder.decode(chunk, final=eof)
+        await asyncio.sleep(0)
+
+    async def peek() -> str:
+        nonlocal buffer
+        while True:
+            buffer = buffer.lstrip(_JSON_WHITESPACE)
+            if buffer or eof:
+                return buffer[:1]
+            await fill()
+
+    start = await peek()
+    if not start:
+        return
+    if start != "[":
+        raise _CodeBuddyOutputError("malformed JSON output: expected native event array")
+    buffer = buffer[1:]
+    if await peek() == "]":
+        raise _CodeBuddyOutputError("unexpected empty native event array")
+
+    while True:
+        if await peek() != "{":
+            raise _CodeBuddyOutputError("malformed JSON output: expected native event object")
+        while True:
+            try:
+                event, end = json_decoder.raw_decode(buffer)
+            except json.JSONDecodeError as exc:
+                if eof:
+                    raise _CodeBuddyOutputError("malformed JSON output") from exc
+                await fill()
+            else:
+                break
+        buffer = buffer[end:]
+        yield event
+        separator = await peek()
+        if separator == "]":
+            buffer = buffer[1:]
+            if await peek():
+                raise _CodeBuddyOutputError("malformed JSON output: data after native event array")
+            return
+        if separator != ",":
+            raise _CodeBuddyOutputError("malformed JSON output: missing native event separator")
+        buffer = buffer[1:]
 
 
-def _normalize_output(
-    stdout: bytes,
+async def _normalize_output(
+    stdout: BinaryIO,
     stderr: bytes,
     returncode: int | None,
     *,
@@ -1335,13 +1390,40 @@ def _normalize_output(
             error=f"CodeBuddy process exited with code {returncode}{suffix}",
         )
 
-    stdout_text = stdout.decode("utf-8", errors="replace")
-    if len(stdout_text) > max_output_chars:
+    final = None
+    event_seen = False
+    tool_failure = None
+    models: set[str | None] = set()
+    try:
+        async for event in _iter_json_events(stdout):
+            event_seen = True
+            final = event if event.get("type") == "result" else None
+            for mapping in _walk_mappings(event):
+                if _is_tool_result(mapping):
+                    failure = _tool_failure(mapping)
+                    if failure is not None:
+                        tool_failure = failure
+            if (
+                event.get("type") == "message"
+                and event.get("role") == "assistant"
+                and event.get("status") == "completed"
+            ):
+                metadata = event.get("providerData")
+                if isinstance(metadata, Mapping) and "model" in metadata and len(models) < 2:
+                    model = metadata["model"]
+                    if isinstance(model, str) and _MODEL_ID.fullmatch(model) and model.lower() != "unknown":
+                        models.add(model)
+                    else:
+                        models.add(None)
+    except _JsonTranscriptLimitExceeded:
         return PluginResult(
             success=False,
-            error="CodeBuddy output exceeded the configured bound",
+            error=f"CodeBuddy native JSON transcript exceeded {_MAX_JSON_TRANSCRIPT_BYTES} bytes",
         )
-    if not stdout_text.strip():
+    except RecursionError as exc:
+        raise _CodeBuddyOutputError("malformed JSON output: native event is too deeply nested") from exc
+
+    if not event_seen:
         diagnostic = _bounded(stderr.decode("utf-8", errors="replace"))
         return PluginResult(
             success=False,
@@ -1351,12 +1433,8 @@ def _normalize_output(
             ),
         )
 
-    try:
-        events = json.loads(stdout_text)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise _CodeBuddyOutputError("malformed JSON output") from exc
-
-    final = _final_result(events)
+    if final is None:
+        raise _CodeBuddyOutputError("missing final result event")
     if final.get("subtype") != "success" or final.get("is_error") is not False:
         detail = final.get("error") or final.get("result") or final.get("subtype")
         detail_text = f": {_bounded(str(detail))}" if detail else ""
@@ -1365,17 +1443,10 @@ def _normalize_output(
             error=f"CodeBuddy native session failed{detail_text}",
         )
 
-    tool_errors = [
-        failure
-        for event in _walk_mappings(events)
-        if _is_tool_result(event)
-        for failure in [_tool_failure(event)]
-        if failure is not None
-    ]
-    if tool_errors:
+    if tool_failure is not None:
         return PluginResult(
             success=False,
-            error=f"CodeBuddy native tool failed: {_bounded(tool_errors[-1])}",
+            error=f"CodeBuddy native tool failed: {_bounded(tool_failure)}",
         )
 
     output = final.get("result")
@@ -1386,7 +1457,8 @@ def _normalize_output(
             success=False,
             error="CodeBuddy final assistant output exceeded the configured bound",
         )
-    return PluginResult(success=True, output=output)
+    reported_model = next(iter(models)) if len(models) == 1 else None
+    return PluginResult(success=True, output=output, reported_model=reported_model)
 
 
 def _windows_process_descendants(root_pid: int) -> set[int]:
@@ -2124,7 +2196,7 @@ class CodeBuddyPlugin:
                         stdout_path,
                         process,
                         safe_event_observer,
-                        max_bytes=self.max_output_chars * 4 + 1,
+                        max_bytes=_MAX_JSON_TRANSCRIPT_BYTES,
                     )
                 )
             wait_task = asyncio.create_task(asyncio.to_thread(process.wait))
@@ -2135,14 +2207,14 @@ class CodeBuddyPlugin:
                 except Exception:
                     if safe_event_sink is not None:
                         safe_event_sink.mark_incomplete()
-            stdout = _read_bounded(stdout_path, self.max_output_chars * 4)
             stderr = _read_bounded(stderr_path, _DEFAULT_MAX_DIAGNOSTIC_CHARS)
-            result = _normalize_output(
-                stdout,
-                stderr,
-                process.returncode,
-                max_output_chars=self.max_output_chars,
-            )
+            with stdout_path.open("rb") as stdout:
+                result = await _normalize_output(
+                    stdout,
+                    stderr,
+                    process.returncode,
+                    max_output_chars=self.max_output_chars,
+                )
         except asyncio.CancelledError:
             cancelled = True
             raise

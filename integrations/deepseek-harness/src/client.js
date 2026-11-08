@@ -45,22 +45,31 @@ window.__ModuleLoader__.load({
     function modelLines(manifest) {
       if (manifest.task_kind !== 'repository_change') return []
       const models = manifest.model_observations
-      const entries = models?.version === 1 && models.source === 'codex_thread_start'
+      const legacy = models?.version === 1 && models.source === 'codex_thread_start'
+      const entries = (legacy || models?.version === 2)
         && Array.isArray(models.entries) && models.entries.length <= 2 ? models.entries : []
       const validId = value => value === null || (typeof value === 'string' && MODEL_ID.test(value))
       return ['worker', 'reviewer'].map((role, index) => {
         const title = index === 0 ? '执行阶段模型' : '审查阶段模型'
         const matches = entries.filter(entry => entry?.role === role)
         const entry = matches[0]
-        if (matches.length !== 1 || entry.adapter !== 'codex' || entry.invocation_index !== index + 1
+        if (matches.length !== 1 || entry.invocation_index !== index + 1
           || !validId(entry.requested_model) || !validId(entry.reported_model)) {
           return line(title, '未记录')
         }
+        const source = legacy ? models.source : entry.source
+        const codex = entry.adapter === 'codex' && source === 'codex_thread_start'
+        const codebuddy = index === 0 && entry.adapter === 'codebuddy' && source ===
+          (entry.reported_model === null ? 'unobserved' : 'codebuddy_json_assistant')
+        if (!codex && !codebuddy) return line(title, '未记录')
         const requested = entry.requested_model ?? 'CLI 默认'
         const reported = entry.reported_model ?? '未知'
         const mismatch = entry.requested_model !== null && entry.reported_model !== null
           && entry.requested_model !== entry.reported_model ? '（与请求不同）' : ''
-        return line(title, `Codex · 请求 ${requested} · CLI 启动返回 ${reported}${mismatch}`)
+        const adapter = codex ? 'Codex' : 'CodeBuddy'
+        const reportLabel = codex ? 'CLI 启动返回'
+          : source === 'codebuddy_json_assistant' ? 'CLI JSON 报告' : 'CLI 报告'
+        return line(title, `${adapter} · 请求 ${requested} · ${reportLabel} ${reported}${mismatch}`)
       })
     }
 

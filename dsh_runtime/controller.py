@@ -94,8 +94,9 @@ class DSHController:
             if (
                 completed and result.cleanup_error is None
                 and task.task_kind is TaskKind.REPOSITORY_CHANGE
-                and decision.plugin == "codex"
-                and (decision.role, task.iteration) in {("worker", 1), ("reviewer", 2)}
+                and (decision.role, decision.plugin, task.iteration) in {
+                    ("worker", "codex", 1), ("worker", "codebuddy", 1), ("reviewer", "codex", 2),
+                }
             ):
                 task.model_observations.append(ModelObservation(
                     role=decision.role,
