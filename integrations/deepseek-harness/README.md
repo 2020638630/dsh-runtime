@@ -64,7 +64,9 @@ With the matching Runtime source, a running tool card shows the current stage, i
 
 ### API connections on Windows Desktop
 
-Use **插件 → DSH Runtime → API 连接** with a matching Runtime source that includes the connection administration module. The plugin uses the Profile's existing `apiAgentConnectionsPath` when configured. Otherwise it saves to the file named by appending `.api-connections.json` to `auditPath`. To use a new reference in a task, set the existing v2 role's `connection_ref` and point `apiAgentConnectionsPath` at that catalog. The plugin page preserves the Profile's role selections, models and budgets.
+Use **插件 → DSH Runtime → API 连接** with a matching Runtime source that includes the connection administration module. The plugin uses the Profile's existing `apiAgentConnectionsPath` when configured. Otherwise it saves to the file named by appending `.api-connections.json` to `auditPath`. To use a new reference in a task, set the existing v2 role's `connection_ref` and point `apiAgentConnectionsPath` at that catalog.
+
+On Desktop, the model field supports manual IDs and a searchable catalog for Codex and existing OpenRouter or SiliconFlow roles. An API role's model can be edited without changing its provider, connection reference or budgets. Refresh uses the saved connection and sends a model catalog request without generating a response. Listed models are candidates and their invocation permissions may vary. CodeBuddy uses manual IDs or its CLI default.
 
 Each new connection has a reference, a provider and a key. OpenRouter and SiliconFlow use their fixed official endpoints. A saved reference and its provider are fixed. Leave the key field empty to keep the existing key. Saving changes only the connection catalog. The stored key is never returned to the form.
 

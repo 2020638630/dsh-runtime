@@ -5,6 +5,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import { z } from 'zod'
+import { MODEL_OUTPUT_BYTES, modelCatalogReply } from './model-catalog.ts'
 
 const PATH = '/api/dsh-runtime.api-connections'
 const REQUEST_LIMIT = 2048
@@ -13,6 +14,7 @@ const reference = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/u)
 const revision = z.string().regex(/^[0-9a-f]{64}$/u)
 const requestBody = z.union([
   z.strictObject({ action: z.literal('list') }),
+  z.strictObject({ action: z.literal('models'), reference, provider, revision }),
   z.strictObject({
     action: z.enum(['save', 'test']), reference, provider, revision,
     key: z.string().regex(/^[\x21-\x7e]{8,512}$/u).nullable(),
@@ -28,6 +30,10 @@ const trialReply = z.enum([
   'redirect_rejected', 'http_error', 'invalid_response', 'timeout', 'network_error', 'client_unavailable',
 ])
 const statusReply = z.strictObject({ status: z.union([failures, trialReply]) })
+const modelFailureReply = z.strictObject({ status: z.enum([
+  'invalid', 'conflict', 'unavailable', 'missing_connection', 'auth_rejected', 'rate_limited',
+  'redirect_rejected', 'http_error', 'invalid_response', 'timeout', 'network_error', 'client_unavailable',
+]) })
 
 interface Config {
   readonly python: string
@@ -50,6 +56,7 @@ export function registerApiConnectionsRoute(ctx: Context, config: Config): () =>
   const lifetime = new AbortController()
   const catalog = config.apiAgentConnectionsPath ?? config.auditPath + '.api-connections.json'
   const secret = randomBytes(32).toString('hex')
+  let activeModelRequests = 0
   const response = (body: unknown, status = 200) => Response.json(body, {
     status, headers: { 'cache-control': 'no-store' },
   })
@@ -74,6 +81,9 @@ export function registerApiConnectionsRoute(ctx: Context, config: Config): () =>
       } catch {
         return response({ status: 'invalid' }, 400)
       }
+      const readingModels = action.action === 'models'
+      if (readingModels && activeModelRequests >= 3) return response({ status: 'busy' }, 429)
+      if (readingModels) activeModelRequests += 1
       try {
         if (inEvidence(catalog, config.evidenceRoot)) return response({ status: 'unavailable' }, 503)
         const signal = AbortSignal.any([
@@ -86,7 +96,7 @@ export function registerApiConnectionsRoute(ctx: Context, config: Config): () =>
           argv: [config.python, '-B', '-m', 'dsh_runtime.api_agent_connection_admin', catalog],
           cwd: config.runtimeRoot,
           stdio: { stdin: { data: JSON.stringify({ request: action, secret }) },
-            stdout: { maxBytes: 65_536 }, stderr: { maxBytes: 1 } },
+            stdout: { maxBytes: readingModels ? MODEL_OUTPUT_BYTES : 65_536 }, stderr: { maxBytes: 1 } },
           env: { PYTHONPATH: config.runtimeRoot, ...config.env },
           graceMs: config.disposeGraceMs,
           signal,
@@ -95,7 +105,12 @@ export function registerApiConnectionsRoute(ctx: Context, config: Config): () =>
         const output = child.collected.stdout?.readFrom(0)
         if (result.exitCode === 0 && !signal.aborted && output?.lossy === false) {
           const value: unknown = JSON.parse(output.text)
-          if (action.action !== 'test') {
+          if (readingModels) {
+            const parsed = modelCatalogReply.safeParse(value)
+            if (parsed.success) return response(parsed.data)
+            const failure = modelFailureReply.safeParse(value)
+            if (failure.success) return response(failure.data, failure.data.status === 'conflict' ? 409 : 200)
+          } else if (action.action !== 'test') {
             const parsed = catalogReply.safeParse(value)
             if (parsed.success) return response(parsed.data)
           }
@@ -110,6 +125,8 @@ export function registerApiConnectionsRoute(ctx: Context, config: Config): () =>
         }
       } catch {
         // Do not echo exception, provider response, request body or filesystem paths.
+      } finally {
+        if (readingModels) activeModelRequests -= 1
       }
       return response({ status: 'unavailable' }, 503)
     },

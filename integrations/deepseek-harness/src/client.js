@@ -40,6 +40,19 @@ window.__ModuleLoader__.load({
       network_error: '试连未建立网络连接。',
       client_unavailable: 'Runtime 缺少 API 请求依赖。',
     }
+    const modelMessages = {
+      signed_out: '请先在插件页登录 Codex。',
+      running: 'CLI 登录窗口仍在运行，请关闭后再刷新。',
+      unsupported: '当前 CLI 版本未提供可读取的模型列表。',
+      missing_connection: '请先保存此角色绑定的 API 连接。',
+      conflict: '连接已更新，请先重新读取 API 连接。',
+      busy: '正在读取其他模型列表，请稍后刷新。',
+      auth_rejected: apiMessages.auth_rejected,
+      rate_limited: apiMessages.rate_limited,
+      timeout: '读取模型列表超时。',
+      network_error: '未能连接服务商读取模型列表。',
+    }
+    const MODEL_CACHE_MS = 5 * 60 * 1000
 
     function startedChild(props) {
       if (props.phase !== 'result') return null
@@ -73,6 +86,97 @@ window.__ModuleLoader__.load({
     const button = { border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', padding: '6px 9px' }
     const pre = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 }
     const line = (label, value) => h('p', { key: label }, `${label}：${value ?? '未知'}`)
+    const settingsCss = `
+      .dsh-runtime-settings {
+        --rt-surface: var(--dsw-alias-bg-base, Canvas);
+        --rt-subtle: var(--dsw-alias-bg-module-platform, color-mix(in srgb, CanvasText 5%, Canvas));
+        --rt-line: var(--dsw-alias-border-l3, color-mix(in srgb, CanvasText 18%, transparent));
+        --rt-control-line: color-mix(in srgb, var(--dsw-alias-label-primary, CanvasText) 46%, var(--rt-surface));
+        --rt-muted: var(--dsw-alias-label-secondary, CanvasText);
+        --rt-fill: var(--dsw-alias-button-primary-fill, CanvasText);
+        --rt-on-fill: var(--dsw-alias-label-primary-foreground, Canvas);
+        --rt-focus: var(--dsw-alias-link, Highlight);
+        container: dsh-runtime-settings / inline-size;
+        display: grid; gap: 16px; width: 100%; max-width: 760px; padding-block: 8px 16px;
+        line-height: 1.45; overflow-wrap: anywhere;
+      }
+      .dsh-runtime-settings :where(p, h3, h4) { margin: 0; }
+      .dsh-runtime-settings .rt-card {
+        min-width: 0; padding: 18px 20px; border: 1px solid var(--rt-line);
+        border-radius: 14px; background: var(--rt-surface); display: grid; gap: 14px;
+      }
+      .dsh-runtime-settings .rt-card h3 { font-size: 16px; font-weight: 650; }
+      .dsh-runtime-settings .rt-card h4 { font-size: 14px; font-weight: 650; }
+      .dsh-runtime-settings .rt-note { color: var(--rt-muted); font-size: 12px; }
+      .dsh-runtime-settings .rt-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+      .dsh-runtime-settings .rt-head p { margin-top: 4px; }
+      .dsh-runtime-settings .rt-chip {
+        display: inline-flex; align-items: center; gap: 6px; width: fit-content;
+        max-width: 100%; padding: 3px 8px; border-radius: 7px; font-size: 12px; background: var(--rt-subtle);
+      }
+      .dsh-runtime-settings .rt-status-dot {
+        width: 8px; height: 8px; box-sizing: border-box; border: 1.5px solid currentColor;
+        border-radius: 50%; flex: none;
+      }
+      .dsh-runtime-settings .rt-chip[data-ready] .rt-status-dot {
+        color: var(--dsw-alias-state-success-primary, currentColor); background: currentColor;
+      }
+      .dsh-runtime-settings .rt-role {
+        display: grid; grid-template-columns: minmax(120px, .75fr) minmax(0, 1.65fr);
+        align-items: start; gap: 12px 20px; padding-block: 13px; border-top: 1px solid var(--rt-line);
+      }
+      .dsh-runtime-settings .rt-stack { min-width: 0; display: grid; gap: 6px; }
+      .dsh-runtime-settings .rt-field { min-width: 0; display: grid; gap: 5px; font-size: 12px; font-weight: 550; }
+      .dsh-runtime-settings .rt-control {
+        box-sizing: border-box; width: 100%; min-width: 0; min-height: 34px;
+        padding: 6px 9px; border: 1px solid var(--rt-control-line); border-radius: 8px;
+        background: var(--rt-surface); color: inherit; font: inherit; font-size: 13px; font-weight: 400;
+      }
+      .dsh-runtime-settings .rt-control[aria-invalid="true"] { border-color: var(--dsw-alias-state-error-primary, currentColor); }
+      .dsh-runtime-settings :where(.rt-control, .rt-btn, summary):focus-visible {
+        outline: 2px solid var(--rt-focus); outline-offset: 2px;
+      }
+      .dsh-runtime-settings .rt-control::placeholder { color: var(--rt-muted); opacity: 1; }
+      .dsh-runtime-settings .rt-control:disabled {
+        opacity: 1; color: var(--rt-muted); -webkit-text-fill-color: var(--rt-muted);
+        background: var(--rt-subtle);
+      }
+      .dsh-runtime-settings .rt-btn {
+        min-height: 32px; padding: 5px 11px; border: 1px solid var(--rt-control-line); border-radius: 8px;
+        background: var(--rt-surface); color: inherit; font: inherit; font-size: 12px; font-weight: 550;
+        cursor: pointer; text-align: center;
+      }
+      .dsh-runtime-settings .rt-btn-primary {
+        border-color: transparent; background: var(--rt-fill); color: var(--rt-on-fill);
+      }
+      .dsh-runtime-settings .rt-btn-quiet { border-color: transparent; background: transparent; color: var(--rt-muted); }
+      .dsh-runtime-settings .rt-btn:hover:not(:disabled) { filter: brightness(.93); }
+      .dsh-runtime-settings .rt-btn:disabled { cursor: default; opacity: .55; }
+      .dsh-runtime-settings .rt-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+      .dsh-runtime-settings .rt-actions-end { justify-content: flex-end; }
+      .dsh-runtime-settings .rt-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+      .dsh-runtime-settings .rt-login { padding-block: 10px; border-top: 1px solid var(--rt-line); }
+      .dsh-runtime-settings .rt-login-name { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+      .dsh-runtime-settings .rt-grid {
+        min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px;
+      }
+      .dsh-runtime-settings .rt-span { grid-column: 1 / -1; }
+      .dsh-runtime-settings .rt-directory {
+        min-width: 0; border: 1px solid var(--rt-line); border-radius: 8px; background: var(--rt-subtle);
+      }
+      .dsh-runtime-settings .rt-directory summary { padding: 6px 9px; cursor: pointer; font-size: 12px; }
+      .dsh-runtime-settings .rt-directory-body { padding: 3px 9px 9px; }
+      .dsh-runtime-settings .rt-notice { padding: 7px 9px; border-radius: 8px; background: var(--rt-subtle); font-size: 12px; }
+      .dsh-runtime-settings .rt-notice:empty { display: none; }
+      @container dsh-runtime-settings (max-width: 500px) {
+        .dsh-runtime-settings .rt-card { padding: 14px; }
+        .dsh-runtime-settings .rt-role, .dsh-runtime-settings .rt-grid { grid-template-columns: minmax(0, 1fr); }
+      }
+    `
+    const settingsHeader = (title, help, status) => h('header', { className: 'rt-head' },
+      h('div', null, h('h3', null, title), h('p', { className: 'rt-note' }, help)), status)
+    const field = (label, control, full = false) =>
+      h('label', { className: full ? 'rt-field rt-span' : 'rt-field' }, label, control)
 
     function drawer(title, close, ...children) {
       return createPortal(h('div', {
@@ -85,7 +189,7 @@ window.__ModuleLoader__.load({
       ...children)), document.body)
     }
 
-    function CliLogin({ cli, label }) {
+    function CliLogin({ cli, label, invalidateModels }) {
       const [status, setStatus] = React.useState(null)
       const [busy, setBusy] = React.useState(false)
       const [message, setMessage] = React.useState('')
@@ -121,10 +225,12 @@ window.__ModuleLoader__.load({
       }, [cli])
 
       async function login() {
+        invalidateModels()
         setBusy(true)
         setMessage(cli === 'codex' ? '请在打开的窗口中完成 Codex 登录。'
           : '请在打开的 CodeBuddy 窗口中按提示登录，或输入 /login。完成后关闭窗口。')
         const result = await request('login')
+        invalidateModels()
         setMessage(result === 'closed' ? '窗口已关闭，正在重新检查登录状态。'
           : result === 'running' ? '已有登录窗口，请在该窗口继续。' : '未能确认登录窗口正常结束，请检查状态后再试。')
         await refresh()
@@ -133,22 +239,29 @@ window.__ModuleLoader__.load({
       }
 
       const canLogin = status && !['unavailable', 'unsupported', 'running'].includes(status)
-      return h('div', { style: { margin: '8px 0' } },
-        h('p', { role: 'status' }, label + ' · ' + (status === null ? '正在检查…' : loginLabels[status])),
-        h('button', { type: 'button', disabled: busy || !canLogin, onClick: login }, '打开 ' + label + ' 登录'),
-        h('button', { type: 'button', style: button, disabled: busy || status === null,
-          onClick: () => { setMessage(''); void refresh() } }, '刷新 ' + label + ' 状态'),
-        message && h('p', { role: 'status' }, message))
+      const loginLabel = status === 'signed_in' ? '管理 ' + label + ' 登录' : '打开 ' + label + ' 登录'
+      return h('div', { className: 'rt-login rt-stack' },
+        h('div', { className: 'rt-footer' },
+          h('div', { className: 'rt-login-name' }, h('h4', null, label),
+            h('span', { className: 'rt-chip', role: 'status', 'data-ready': status === 'signed_in' ? '' : undefined },
+              h('span', { className: 'rt-status-dot', 'aria-hidden': 'true' }),
+              status === null ? '正在检查…' : loginLabels[status])),
+          h('div', { className: 'rt-actions' },
+            h('button', { type: 'button', className: 'rt-btn', disabled: busy || !canLogin, onClick: login }, loginLabel),
+            h('button', { type: 'button', className: 'rt-btn rt-btn-quiet', disabled: busy || status === null,
+              'aria-label': '刷新 ' + label + ' 状态',
+              onClick: () => { invalidateModels(); setMessage(''); void refresh() } }, '刷新状态'))),
+        h('p', { className: 'rt-notice', role: 'status' }, message))
     }
 
-    function ApiConnections({ roles, inputStyle }) {
+    function ApiConnections({ roles, onRevision }) {
       const [catalog, setCatalog] = React.useState(null)
       const [selected, setSelected] = React.useState('')
       const [draftRef, setDraftRef] = React.useState('')
       const [draftProvider, setDraftProvider] = React.useState('openrouter')
       const [busy, setBusy] = React.useState(false)
       const [stale, setStale] = React.useState(false)
-      const [message, setMessage] = React.useState('')
+      const [notice, setNotice] = React.useState(null)
       const password = React.useRef(null)
       const existing = catalog?.connections.find(item => item.reference === selected)
       const reference = existing?.reference ?? draftRef
@@ -167,89 +280,172 @@ window.__ModuleLoader__.load({
         }
       }
 
-      async function refresh(signal) {
+      async function refresh({ signal, announce = false } = {}) {
+        onRevision(null)
         setBusy(true)
+        setNotice(announce ? { section: 'catalog', text: '正在重新读取连接…' } : null)
         const result = await send({ action: 'list' }, signal)
         if (signal?.aborted) return
         setBusy(false)
         if (result?.status !== 'ok') {
           setStale(true)
-          setMessage(apiMessages.unavailable)
+          setNotice({ section: 'catalog', text: apiMessages.unavailable })
           return
         }
         if (password.current) password.current.value = ''
         setSelected('')
         setDraftRef('')
         setCatalog(result)
+        onRevision(result.revision)
         setStale(false)
-        setMessage('')
+        setNotice(announce ? { section: 'catalog', text: `已读取 ${result.connections.length} 条连接。` } : null)
       }
 
       React.useEffect(() => {
         const lifetime = new AbortController()
-        void refresh(lifetime.signal)
+        void refresh({ signal: lifetime.signal })
         return () => lifetime.abort()
       }, [])
 
       async function submit(action) {
         const key = password.current?.value || null
         if (!catalog || busy || stale) return
+        const report = text => setNotice({ section: 'actions', text })
         if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/u.test(reference)
           || (key !== null && !/^[\x21-\x7e]{8,512}$/u.test(key))) {
-          setMessage(apiMessages.invalid)
+          report(apiMessages.invalid)
           return
         }
         if (!existing && catalog.connections.some(item => item.reference === reference)) {
-          setMessage('该连接引用已存在，请从列表选择它再编辑。')
+          report('该连接引用已存在，请从列表选择它再编辑。')
           return
         }
         if (!existing && key === null) {
-          setMessage('新连接需要填写 API Key。')
+          report('新连接需要填写 API Key。')
           return
         }
         setBusy(true)
-        setMessage(action === 'test' ? '正在试连…' : '正在保存…')
+        report(action === 'test' ? '正在试连…' : '正在保存…')
         const result = await send({ action, reference, provider, key, revision: catalog.revision })
         setBusy(false)
         if (action === 'save' && result?.status === 'ok') {
           if (password.current) password.current.value = ''
           setCatalog(result)
+          onRevision(result.revision)
           setSelected(reference)
           setDraftRef('')
-          setMessage('连接已保存。新任务会读取更新后的凭据。')
+          report('连接已保存。新任务会读取更新后的凭据。')
           return
         }
-        if (result?.status === 'conflict') setStale(true)
-        setMessage(apiMessages[result?.status] ?? apiMessages.unavailable)
+        if (result?.status === 'conflict') {
+          setStale(true)
+          onRevision(null)
+        }
+        report(apiMessages[result?.status] ?? apiMessages.unavailable)
       }
 
       const disabled = !catalog || busy || stale
       const attached = Object.entries(roles)
         .filter(([, role]) => role.adapter === 'api_agent' && role.connection_ref === reference)
         .map(([role, value]) => cliRoles[role] + ' · ' + value.model)
-      return h('section', { 'aria-label': 'API 连接', style: { paddingTop: 18 } },
-        h('strong', null, 'API 连接'),
-        h('p', null, '试连使用当前表单，不会保存或发起推理。角色继续使用 Profile 中的连接引用和模型。'),
-        h('label', null, '已保存的 API 连接', h('select', { style: inputStyle, value: selected,
-          disabled, onChange: event => { setSelected(event.target.value); setDraftRef(''); setMessage('') },
+      return h('section', { 'aria-label': 'API 连接', className: 'rt-card' },
+        settingsHeader('API 连接', '管理连接与密钥。试连使用当前表单，不会保存或发起推理。',
+          h('button', { type: 'button', className: 'rt-btn rt-btn-quiet', disabled: busy,
+            onClick: () => void refresh({ announce: true }) }, '重新读取连接')),
+        h('p', { className: 'rt-notice', role: 'status' }, notice?.section === 'catalog' ? notice.text
+          : !catalog && busy ? '正在读取 API 连接…' : ''),
+        h('div', { className: 'rt-grid' },
+        field('已保存的 API 连接', h('select', { className: 'rt-control', value: selected,
+          disabled, onChange: event => { setSelected(event.target.value); setDraftRef(''); setNotice(null) },
         }, h('option', { value: '' }, '新建 API 连接'),
         ...(catalog?.connections ?? []).map(item => h('option', { key: item.reference, value: item.reference },
-          item.reference + ' · ' + apiProviders[item.provider].label)))),
-        h('label', null, '连接引用', h('input', { style: inputStyle, value: reference, maxLength: 64,
+          item.reference + ' · ' + apiProviders[item.provider].label))), true),
+        field('连接引用', h('input', { className: 'rt-control', value: reference, maxLength: 64,
           disabled: disabled || Boolean(existing), spellCheck: false, autoComplete: 'off',
           onChange: event => setDraftRef(event.target.value) })),
-        h('label', null, 'API 服务商', h('select', { style: inputStyle, value: provider,
-          disabled: disabled || Boolean(existing), onChange: event => { setDraftProvider(event.target.value); setMessage('') },
+        field('API 服务商', h('select', { className: 'rt-control', value: provider,
+          disabled: disabled || Boolean(existing), onChange: event => { setDraftProvider(event.target.value); setNotice(null) },
         }, ...Object.entries(apiProviders).map(([id, item]) => h('option', { key: id, value: id }, item.label)))),
-        h('p', null, '服务地址：' + apiProviders[provider].url),
-        existing && h('p', null, 'API Key 已设置。留空保留已保存的密钥。'),
-        attached.length > 0 && h('p', null, '使用此连接的角色与模型：' + attached.join('，')),
-        h('label', null, 'API Key', h('input', { key: selected + provider, ref: password, type: 'password',
-          maxLength: 512, autoComplete: 'new-password', spellCheck: false, style: inputStyle, disabled })),
-        h('button', { type: 'button', disabled, onClick: () => void submit('save') }, '保存 API 连接'),
-        h('button', { type: 'button', disabled, style: button, onClick: () => void submit('test') }, '试连 API'),
-        h('button', { type: 'button', disabled: busy, style: button, onClick: () => void refresh() }, '重新读取 API 连接'),
-        h('p', { role: 'status' }, message || (!catalog && busy ? '正在读取 API 连接…' : '')))
+        h('p', { className: 'rt-note rt-span' }, apiProviders[provider].url),
+        field(existing ? 'API Key（已设置）' : 'API Key', h('input', { key: selected + provider, ref: password, type: 'password',
+          maxLength: 512, autoComplete: 'new-password', spellCheck: false, className: 'rt-control',
+          'aria-describedby': existing ? 'dsh-rt-key-help' : undefined,
+          placeholder: existing ? '输入新密钥' : '输入密钥', disabled }), true),
+        existing && h('p', { className: 'rt-note rt-span', id: 'dsh-rt-key-help' }, '留空保留已保存的密钥。'),
+        attached.length > 0 && h('p', { className: 'rt-note rt-span' }, '已绑定 ' + attached.join('，'))),
+        h('p', { className: 'rt-notice', role: 'status' }, notice?.section === 'actions' ? notice.text : ''),
+        h('div', { className: 'rt-actions rt-actions-end' },
+          h('button', { type: 'button', className: 'rt-btn', disabled, onClick: () => void submit('test') }, '试连 API'),
+          h('button', { type: 'button', className: 'rt-btn rt-btn-primary', disabled,
+            onClick: () => void submit('save') }, '保存 API 连接')))
+    }
+
+    function ModelOptions({ selected, label, revision, disabled, onSelect }) {
+      const [state, setState] = React.useState(null)
+      const [search, setSearch] = React.useState('')
+      const pending = React.useRef(null)
+      React.useEffect(() => () => { pending.current?.abort(); pending.current = null }, [])
+      const api = selected.adapter === 'api_agent'
+      const canRead = selected.adapter === 'codex' || (api && typeof revision === 'string')
+      const caption = api ? '浏览 ' + apiProviders[selected.provider].label + ' 候选' : '浏览 Codex 候选'
+
+      async function load(force) {
+        if (!canRead || pending.current || (state?.status === 'ok' && !force
+          && Date.now() - state.at < MODEL_CACHE_MS)) return
+        const controller = new AbortController()
+        pending.current = controller
+        setState({ status: 'loading' })
+        let result
+        try {
+          const response = api
+            ? await fetch('api/dsh-runtime.api-connections', { method: 'POST', cache: 'no-store',
+              headers: { 'content-type': 'application/json', 'x-dsh-runtime-api': '1' }, signal: controller.signal,
+              body: JSON.stringify({ action: 'models', revision, reference: selected.connection_ref,
+                provider: selected.provider }) })
+            : await fetch('api/dsh-runtime.cli-login?cli=codex&operation=models', { method: 'POST', cache: 'no-store',
+              headers: { 'x-dsh-runtime-cli': '1' }, signal: controller.signal })
+          result = await response.json()
+        } catch { result = { status: 'unavailable' } }
+        if (pending.current !== controller || controller.signal.aborted) return
+        pending.current = null
+        if (result?.status === 'ok' && Array.isArray(result.models) && result.models.length <= 512
+          && result.models.every(model => typeof model === 'string' && MODEL_ID.test(model))) {
+          setState({ status: 'ok', models: [...new Set(result.models)], at: Date.now(), truncated: result.truncated === true })
+        } else {
+          setState({ status: Object.hasOwn(modelMessages, result?.status) ? result.status : 'unavailable' })
+        }
+      }
+
+      if (selected.adapter === 'codebuddy') {
+        return h('p', { className: 'rt-note' }, '手填模型 ID，或留空使用 CLI 默认。')
+      }
+      const models = state?.status === 'ok' ? state.models : []
+      const query = search.trim().toLowerCase()
+      const matches = models.filter(id => id.toLowerCase().includes(query))
+      const detail = !canRead ? '请先保存或重新读取此角色绑定的 API 连接。'
+        : state?.status === 'loading' ? '正在读取模型列表…'
+          : state?.status === 'ok' ? (models.length ? `已读取 ${models.length} 个候选 · ${new Date(state.at).toLocaleTimeString()}`
+            + (state.truncated ? ' · 仅显示部分候选' : '') : '模型列表为空。')
+            : state ? (modelMessages[state.status] ?? '暂时无法读取模型列表。') + ' 可继续手填。' : ''
+      return h('details', { className: 'rt-directory', onToggle: event => {
+        if (event.currentTarget.open) void load(false)
+      } }, h('summary', null, caption),
+      h('div', { className: 'rt-directory-body rt-stack' },
+      h('div', { className: 'rt-footer' },
+        h('p', { className: 'rt-note', role: 'status' }, detail),
+        h('button', { type: 'button', className: 'rt-btn', disabled: !canRead || state?.status === 'loading',
+          onClick: () => void load(true) }, '刷新模型列表')),
+      api && h('p', { className: 'rt-note' }, '服务商目录仅供选型参考，调用权限以实际账户为准。'),
+      state?.status === 'ok' && selected.model && !models.includes(selected.model)
+        && h('p', { className: 'rt-note' }, '当前配置未在列表中找到，已保留。'),
+      models.length > 0 && h('div', { className: 'rt-grid' },
+        field('搜索' + label + '阶段模型', h('input', { type: 'search', className: 'rt-control',
+          value: search, onChange: event => setSearch(event.target.value) })),
+        field('选择' + label + '阶段模型', h('select', { className: 'rt-control', value: '',
+          disabled: disabled || matches.length === 0,
+          onChange: event => { if (matches.includes(event.target.value)) onSelect(event.target.value) } },
+        h('option', { value: '' }, matches.length ? '请选择模型' : '没有匹配的候选'),
+        ...matches.map(id => h('option', { key: id, value: id }, id)))))))
     }
 
     function RoleDefaults({ form, mirror }) {
@@ -258,6 +454,9 @@ window.__ModuleLoader__.load({
       const [edit, setEdit] = React.useState(null)
       const [saving, setSaving] = React.useState(false)
       const [message, setMessage] = React.useState('')
+      const [catalogRevision, setCatalogRevision] = React.useState(null)
+      const [cliEpoch, setCliEpoch] = React.useState(0)
+      const desktop = window.location?.protocol === 'dsh-app:'
       const configured = entry?.value?.roleConfig
       const current = configured === undefined ? { schema_version: 1, roles: {
         worker: { adapter: 'codebuddy', model: null },
@@ -266,9 +465,6 @@ window.__ModuleLoader__.load({
       } } : configured
       const roles = edit?.roles ?? current?.roles
       const stale = edit !== null && edit.revision !== entry?.revision
-      const inputStyle = { display: 'block', width: '100%', maxWidth: 420, margin: '4px 0 8px',
-        boxSizing: 'border-box', padding: '6px 8px', borderRadius: 4,
-        border: '1px solid var(--dsw-alias-border-normal, #888)', background: 'var(--dsw-alias-bg-base, white)', color: 'inherit' }
 
       if (!entry || !entry.value || typeof entry.revision !== 'number') {
         return h('p', null, snapshot.view ? '当前宿主未提供模型配置。' : '正在读取 Runtime 默认配置…')
@@ -276,12 +472,13 @@ window.__ModuleLoader__.load({
       if (!roles || !current || ![1, 2].includes(current.schema_version)) {
         return h('p', null, '当前角色配置无法在此处编辑。')
       }
+      const validModel = selected => (selected.adapter !== 'api_agent' && selected.model === null)
+        || (typeof selected.model === 'string' && MODEL_ID.test(selected.model))
       const valid = Object.keys(cliRoles).every(role => {
         const selected = roles[role]
-        if (!selected) return false
+        if (!selected || !validModel(selected)) return false
         if (selected.adapter === 'api_agent') return role !== 'worker' && current.schema_version === 2
         return (selected.adapter === 'codex' || (role === 'worker' && selected.adapter === 'codebuddy'))
-          && (selected.model === null || (typeof selected.model === 'string' && MODEL_ID.test(selected.model)))
       })
       const disabled = saving || !snapshot.view.writable || stale
       const change = (role, fields) => {
@@ -294,8 +491,8 @@ window.__ModuleLoader__.load({
       const operations = () => {
         if (configured === undefined) return [{ op: 'set', path: ['roleConfig'], value: { schema_version: 1, roles } }]
         return Object.keys(cliRoles).flatMap(role => {
-          if (current.roles[role].adapter === 'api_agent') return []
-          return ['adapter', 'model'].filter(field => roles[role][field] !== current.roles[role][field])
+          const fields = current.roles[role].adapter === 'api_agent' ? ['model'] : ['adapter', 'model']
+          return fields.filter(field => roles[role][field] !== current.roles[role][field])
             .map(field => ({ op: 'set', path: ['roleConfig', 'roles', role, field], value: roles[role][field] }))
         })
       }
@@ -324,39 +521,61 @@ window.__ModuleLoader__.load({
         }
       }
 
-      return h('section', { 'aria-label': '默认 CLI 与模型', style: { padding: '12px 0' } },
-        h('strong', null, '默认 CLI 与模型'),
-        h('p', null, '保存后用于新启动的 Runtime 任务。模型留空时使用所选 CLI 的默认设置。'),
+      return h('div', { className: 'dsh-runtime-settings' }, h('style', null, settingsCss),
+        h('section', { 'aria-label': '角色与模型', className: 'rt-card' },
+        settingsHeader('角色与模型', '审查和只读检查的执行器与连接绑定由 Profile 配置管理。',
+          h('span', { className: 'rt-chip' }, stale ? '配置已在别处更新' : edit ? '有未保存的更改'
+            : configured === undefined ? '使用内置默认' : '当前配置')),
+        h('div', null,
         ...Object.entries(cliRoles).map(([role, label]) => {
           const selected = roles[role]
           if (!selected) return null
-          if (selected.adapter === 'api_agent') {
-            return h('p', { key: role }, `${label}阶段使用现有 API 角色，设置由 Profile 管理。`)
+          const api = selected.adapter === 'api_agent'
+          if (api && !desktop) {
+            return h('p', { key: role, className: 'rt-role' }, `${label}阶段使用现有 API 角色，设置由 Profile 管理。`)
           }
-          return h('div', { key: role },
-            role === 'worker' && h('label', null, '执行阶段 CLI', h('select', {
-              value: selected.adapter, disabled, style: inputStyle,
+          const inputLabel = `${label}阶段模型 ID`
+          const invalidModel = !validModel(selected)
+          return h('div', { key: role, className: 'rt-role' },
+            h('div', { className: 'rt-stack' }, h('h4', null, label),
+            role === 'worker' ? field('执行器', h('select', {
+              value: selected.adapter, disabled, className: 'rt-control', 'aria-label': '执行阶段 CLI',
               onChange: event => change(role, { adapter: event.target.value, model: null }),
-            }, h('option', { value: 'codebuddy' }, 'CodeBuddy'), h('option', { value: 'codex' }, 'Codex'))),
-            h('label', null, `${label}阶段模型 ID${role === 'worker' ? '' : '（Codex）'}`,
-              h('input', { type: 'text', value: selected.model ?? '', maxLength: 129, style: inputStyle,
-                placeholder: '留空使用 CLI 默认', spellCheck: false, autoComplete: 'off', disabled,
-                onChange: event => change(role, { model: event.target.value || null }) })))
-        }),
-        !valid && h('p', { role: 'alert' }, '模型 ID 须以字母或数字开头，最多 128 字符。可以使用字母、数字和 . _ : / + -。'),
-        stale && h('p', { role: 'alert' }, '配置已在别处更新。请重新读取后再编辑。'),
-        h('button', { type: 'button', disabled: disabled || !edit || !valid, onClick: save }, saving ? '正在保存…' : '保存默认配置'),
-        edit && h('button', { type: 'button', style: button, disabled: saving, onClick: () => {
-          setEdit(null)
-          setMessage('')
-        } }, '放弃草稿并读取当前值'),
-        h('p', { role: 'status' }, message),
-        window.location?.protocol === 'dsh-app:' && h(React.Fragment, null,
-          h('section', { 'aria-label': 'CLI 登录', style: { paddingTop: 12 } },
-            h('strong', null, 'CLI 登录'),
-            h('p', null, '登录由各 CLI 完成。Codex 使用 Runtime 专用登录目录。'),
-            ...Object.entries(cliNames).map(([cli, label]) => h(CliLogin, { key: cli, cli, label }))),
-          h(ApiConnections, { roles: current.roles, inputStyle })))
+            }, h('option', { value: 'codebuddy' }, 'CodeBuddy'), h('option', { value: 'codex' }, 'Codex')))
+              : h('span', { className: 'rt-chip' }, api ? apiProviders[selected.provider].label : 'Codex'),
+            api && h('p', { className: 'rt-note' }, '绑定连接 · ' + selected.connection_ref)),
+            h('div', { className: 'rt-stack' },
+            field('模型 ID', h('input', {
+              type: 'text', value: selected.model ?? '', maxLength: 128, className: 'rt-control',
+              'aria-label': inputLabel, 'aria-invalid': invalidModel || undefined,
+              'aria-describedby': invalidModel ? 'dsh-rt-model-error-' + role : undefined,
+              placeholder: api ? '输入模型 ID' : '留空使用 CLI 默认', spellCheck: false, autoComplete: 'off', disabled,
+              onChange: event => change(role, { model: api ? event.target.value : event.target.value || null }) })),
+            invalidModel && h('p', { role: 'alert', className: 'rt-note', id: 'dsh-rt-model-error-' + role },
+              '请输入有效模型 ID，最多 128 字符，可使用字母、数字和 . _ : / + -。'),
+            desktop && h(ModelOptions, { key: api
+              ? JSON.stringify([selected.provider, selected.connection_ref, catalogRevision])
+              : selected.adapter + ':' + cliEpoch,
+            selected, label, revision: catalogRevision, disabled,
+            onSelect: model => change(role, { model }) })))
+        })),
+        stale && h('p', { role: 'alert', className: 'rt-notice' }, '配置已在别处更新。请先放弃草稿并读取当前值。'),
+        h('p', { role: 'status', className: 'rt-notice' }, message),
+        h('div', { className: 'rt-footer' },
+          h('p', { className: 'rt-note' }, '保存后用于新启动的 Runtime 任务。'),
+          h('div', { className: 'rt-actions' },
+            h('button', { type: 'button', className: 'rt-btn rt-btn-primary', disabled: disabled || !edit || !valid,
+              onClick: save }, saving ? '正在保存…' : '保存默认配置'),
+            edit && h('button', { type: 'button', className: 'rt-btn rt-btn-quiet', disabled: saving, onClick: () => {
+              setEdit(null)
+              setMessage('')
+            } }, '放弃草稿并读取当前值')))),
+        desktop && h(React.Fragment, null,
+          h('section', { 'aria-label': 'CLI 登录', className: 'rt-card' },
+            settingsHeader('CLI 登录', '登录由各 CLI 完成。Codex 使用 Runtime 专用登录目录。'),
+            ...Object.entries(cliNames).map(([cli, label]) => h(CliLogin, { key: cli, cli, label,
+              invalidateModels: () => setCliEpoch(value => value + 1) }))),
+          h(ApiConnections, { roles: current.roles, onRevision: setCatalogRevision })))
     }
 
     function failureGuidance(state, manifest) {

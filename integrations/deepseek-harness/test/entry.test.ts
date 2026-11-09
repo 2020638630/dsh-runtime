@@ -51,7 +51,8 @@ test('Desktop login route starts only fixed CLI actions and keeps the result pri
       const login = argv[3] === 'login'
       const done = login ? new Promise(resolve => { finishLogin = () => resolve({ exitCode: 0 }) })
         : Promise.resolve({ exitCode: 0 })
-      const text = login ? 'closed\n' : 'unexpected account details\n'
+      const text = login ? 'closed\n' : argv[3] === 'models'
+        ? '{"status":"ok","models":["test-model"],"truncated":false}\n' : 'unexpected account details\n'
       return { done, collected: { stdout: { readFrom: () => ({ text, lossy: false }) } } }
     } },
   } as unknown as Context
@@ -72,14 +73,19 @@ test('Desktop login route starts only fixed CLI actions and keeps the result pri
     assert.equal((await request('operation=login&cli=codex', undefined, 'shell')).status, 403)
     assert.equal((await request('operation=login&cli=other')).status, 400)
     assert.equal((await request('operation=login&cli=codex&argv=arbitrary')).status, 400)
+    assert.deepEqual(await (await request('operation=models&cli=codebuddy')).json(), { status: 'unsupported' })
     assert.equal(invoked, 0)
     assert.deepEqual(await (await request('operation=status&cli=codex')).json(), { status: 'unknown' })
     const running = request('operation=login&cli=codex')
     assert.equal((await request('operation=login&cli=codex')).status, 409)
     assert.deepEqual(await (await request('operation=status&cli=codex')).json(), { status: 'running' })
+    assert.deepEqual(await (await request('operation=models&cli=codex')).json(), { status: 'running' })
     finishLogin!()
     assert.deepEqual(await (await running).json(), { status: 'closed' })
-    assert.equal(invoked, 2)
+    assert.deepEqual(await (await request('operation=models&cli=codex')).json(), {
+      status: 'ok', models: ['test-model'], truncated: false,
+    })
+    assert.equal(invoked, 3)
     await dispose()
     assert.equal(disposed, true)
   } finally {

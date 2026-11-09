@@ -25,7 +25,11 @@ from dsh_runtime.api_agent_connections import (
 
 _MAX_REQUEST_BYTES = 4096
 _MAX_PROBE_BYTES = 262_144
+_MAX_MODEL_BYTES = 4_194_304
+_MAX_MODELS = 512
 _PROBES = {"openrouter": "/key", "siliconflow": "/models?sub_type=chat"}
+_MODEL_PATHS = {**_PROBES, "openrouter": "/models"}
+_MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/+-]{0,127}\Z")
 
 
 class Conflict(Exception):
@@ -134,55 +138,89 @@ def _draft(command: dict, entries: dict[str, Connection]) -> tuple[str, Connecti
     return reference, validate_connection({"provider": provider, "base_url": _ENDPOINTS[provider], "api_key": key})
 
 
-def probe_connection(connection: Connection, *, transport: Any = None) -> str:
+def _provider_json(connection: Connection, suffix: str, limit: int, transport: Any) -> tuple[str, dict]:
     if _ENDPOINTS.get(connection.provider) != connection.base_url:
-        return "invalid"
+        return "invalid", {}
     try:
         import httpx
     except ImportError:
-        return "client_unavailable"
+        return "client_unavailable", {}
     try:
         with httpx.Client(timeout=6, follow_redirects=False, trust_env=False, transport=transport) as client:
-            with client.stream("GET", connection.base_url + _PROBES[connection.provider], headers={
+            with client.stream("GET", connection.base_url + suffix, headers={
                 "Authorization": "Bearer " + connection.api_key, "Accept-Encoding": "identity",
             }) as response:
                 if response.status_code in (401, 403):
-                    return "auth_rejected"
+                    return "auth_rejected", {}
                 if response.status_code == 429:
-                    return "rate_limited"
+                    return "rate_limited", {}
                 if 300 <= response.status_code < 400:
-                    return "redirect_rejected"
+                    return "redirect_rejected", {}
                 if response.status_code != 200:
-                    return "http_error"
+                    return "http_error", {}
                 if response.headers.get("content-encoding", "identity").lower() != "identity":
-                    return "invalid_response"
+                    return "invalid_response", {}
                 raw = bytearray()
                 for chunk in response.iter_bytes():
-                    if len(raw) + len(chunk) > _MAX_PROBE_BYTES:
-                        return "invalid_response"
+                    if len(raw) + len(chunk) > limit:
+                        return "invalid_response", {}
                     raw.extend(chunk)
         document = json.loads(raw)
-        if not isinstance(document, dict):
-            return "invalid_response"
-        data = document.get("data")
-        if connection.provider == "openrouter" and isinstance(data, dict) and isinstance(data.get("label"), str):
-            return "authenticated"
-        if connection.provider == "siliconflow" and document.get("object") == "list" and isinstance(data, list):
-            return "model_catalog_readable"
-        return "invalid_response"
+        return ("ok", document) if isinstance(document, dict) else ("invalid_response", {})
     except httpx.TimeoutException:
-        return "timeout"
+        return "timeout", {}
     except httpx.HTTPError:
-        return "network_error"
-    except (TypeError, ValueError):
-        return "invalid_response"
+        return "network_error", {}
+    except (TypeError, ValueError, RecursionError):
+        return "invalid_response", {}
+
+
+def probe_connection(connection: Connection, *, transport: Any = None) -> str:
+    status, document = _provider_json(connection, _PROBES.get(connection.provider, ""),
+                                      _MAX_PROBE_BYTES, transport)
+    if status != "ok":
+        return status
+    data = document.get("data")
+    if connection.provider == "openrouter" and isinstance(data, dict) and isinstance(data.get("label"), str):
+        return "authenticated"
+    if connection.provider == "siliconflow" and document.get("object") == "list" and isinstance(data, list):
+        return "model_catalog_readable"
+    return "invalid_response"
+
+
+def provider_models(connection: Connection, *, transport: Any = None) -> dict:
+    status, document = _provider_json(connection, _MODEL_PATHS.get(connection.provider, ""),
+                                      _MAX_MODEL_BYTES, transport)
+    if status != "ok":
+        return {"status": status}
+    rows = document.get("data")
+    if not isinstance(rows, list) or (connection.provider == "siliconflow" and document.get("object") != "list"):
+        return {"status": "invalid_response"}
+    models: set[str] = set()
+    for row in rows:
+        model = row.get("id") if isinstance(row, dict) else None
+        if not isinstance(model, str) or not _MODEL_ID.fullmatch(model) or connection.api_key in model:
+            continue
+        # The Runtime's API Agent calls Chat Completions. Exclude explicitly incompatible models.
+        if connection.provider == "openrouter":
+            endpoints = row.get("endpoints")
+            if isinstance(endpoints, list) and "/api/v1/chat/completions" not in endpoints:
+                continue
+        models.add(model)
+        if len(models) > _MAX_MODELS:
+            break
+    return {"status": "ok", "models": sorted(models)[:_MAX_MODELS], "truncated": len(models) > _MAX_MODELS}
 
 
 def handle(path: Path, command: dict, secret: bytes) -> dict:
     action = command.get("action")
-    if action not in ("list", "save", "test"):
+    if action not in ("list", "save", "test", "models"):
         return {"status": "invalid"}
-    expected = {"action"} if action == "list" else {"action", "reference", "provider", "key", "revision"}
+    expected = {"action"}
+    if action != "list":
+        expected |= {"reference", "provider", "revision"}
+    if action in ("save", "test"):
+        expected.add("key")
     if command.keys() != expected:
         return {"status": "invalid"}
     try:
@@ -202,6 +240,13 @@ def handle(path: Path, command: dict, secret: bytes) -> dict:
         entries = {} if raw is None else decode_catalog(raw)
         if action == "list":
             return _public_catalog(raw, secret, entries)
+        if action == "models":
+            _check_revision(command, raw, secret)
+            reference = validate_reference(command["reference"])
+            candidate = entries.get(reference)
+            if candidate is None or candidate.provider != command["provider"]:
+                return {"status": "missing_connection"}
+            return provider_models(candidate)
         _, candidate = _checked_draft(command, raw, entries, secret)
         return {"status": probe_connection(candidate)}
     except Conflict:
@@ -214,15 +259,19 @@ def handle(path: Path, command: dict, secret: bytes) -> dict:
 
 def _checked_draft(command: dict, raw: bytes | None, entries: dict[str, Connection],
                    secret: bytes) -> tuple[str, Connection]:
+    _check_revision(command, raw, secret)
+    try:
+        return _draft(command, entries)
+    except ValueError:
+        raise InvalidDraft from None
+
+
+def _check_revision(command: dict, raw: bytes | None, secret: bytes) -> None:
     revision = command.get("revision")
     if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{64}", revision):
         raise InvalidDraft
     if not hmac.compare_digest(revision, _revision(raw, secret)):
         raise Conflict
-    try:
-        return _draft(command, entries)
-    except ValueError:
-        raise InvalidDraft from None
 
 
 def main() -> None:

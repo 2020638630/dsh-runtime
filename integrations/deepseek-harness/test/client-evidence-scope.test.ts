@@ -13,11 +13,11 @@ const startedProps = { phase: 'result', sessionId: 'session', block: {
   content: [{ type: 'text', text: 'started governed DSH Runtime task 00000000-0000-4000-8000-000000000001' }],
 } }
 
-function loadViews(react: unknown, configForms?: unknown): Map<string, View> {
+function loadViews(react: unknown, configForms?: unknown, windowLocation: object = {}): Map<string, View> {
   const views = new Map<string, View>()
   let plugin: { apply: (ctx: unknown) => void } | undefined
   runInNewContext(source, {
-    window: { __ModuleLoader__: { load: (registration: { factory: (require: (id: string) => unknown) => unknown }) => {
+    window: { location: windowLocation, __ModuleLoader__: { load: (registration: { factory: (require: (id: string) => unknown) => unknown }) => {
       plugin = registration.factory(id => id === 'react' ? react : { createPortal: (node: unknown) => node }) as typeof plugin
     } } },
     document: { body: {} }, Date, AbortController, URLSearchParams, setInterval, clearInterval,
@@ -202,6 +202,7 @@ test('plugin settings atomically edit CLI roles and preserve API entries and sta
     ns: 'dsh-runtime-standalone', revision: 4, value: { roleConfig },
   }
   let accept = false
+  const location = { protocol: '' }
   const writes: Array<{ ops: unknown; revision: number }> = []
   const views = loadViews({
     createElement,
@@ -220,7 +221,7 @@ test('plugin settings atomically edit CLI roles and preserve API entries and sta
     } }),
     describe: () => ({ subscribe: () => () => {},
       getSnapshot: () => ({ view: { writable: true, namespaces: [section] } }) }),
-  })
+  }, location)
   const view = views.get('plugins.bundle.config')!
   const component = (view({}) as Element).type as View
   const form = () => { cursor = 0; return nodes(component((view({}) as Element).props!)) }
@@ -261,4 +262,20 @@ test('plugin settings atomically edit CLI roles and preserve API entries and sta
       inspector: { adapter: 'codex', model: null },
     },
   } }] })
+
+  states.length = 0
+  location.protocol = 'dsh-app:'
+  section = { ...section, value: { roleConfig } }
+  const editApi = (value: string) => (control('input', 1).onChange as
+    (event: { target: { value: string } }) => void)({ target: { value } })
+  assert.equal(control('input', 1).value, 'api-model')
+  editApi('')
+  await save()
+  assert.equal(writes.length, 2)
+  editApi('provider/new-model')
+  await save()
+  assert.deepEqual(writes[2], { revision: 5, ops: [
+    { op: 'set', path: ['roleConfig', 'roles', 'reviewer', 'model'], value: 'provider/new-model' },
+  ] })
+  assert.equal(roleConfig.roles.reviewer, reviewer)
 })

@@ -119,3 +119,52 @@ def test_trial_does_not_follow_redirect_or_return_provider_content():
         lambda request: httpx.Response(401, text=TEST_KEY))) == "auth_rejected"
     assert admin.probe_connection(entry, transport=httpx.MockTransport(
         lambda request: httpx.Response(200, json=[]))) == "invalid_response"
+
+
+@pytest.mark.parametrize(("provider", "url"), [
+    ("openrouter", "https://openrouter.ai/api/v1/models"),
+    ("siliconflow", "https://api.siliconflow.cn/v1/models?sub_type=chat"),
+])
+def test_model_catalog_projects_bounded_ids_from_fixed_get(provider, url, monkeypatch):
+    monkeypatch.setattr(admin, "_MAX_MODELS", 2)
+    seen = []
+
+    def respond(request):
+        seen.append((request.method, str(request.url)))
+        assert request.headers["authorization"] == "Bearer " + TEST_KEY
+        return httpx.Response(200, json={"object": "list", "data": [
+            {"id": "provider/chat", "name": TEST_KEY},
+            {"id": "provider/chat"},
+            {"id": TEST_KEY},
+            {"id": "<invalid>"},
+            {"id": "provider/second"},
+            {"id": "provider/third"},
+        ]})
+
+    entry = Connection(provider, admin._ENDPOINTS[provider], TEST_KEY)
+    assert admin.provider_models(entry, transport=httpx.MockTransport(respond)) == {
+        "status": "ok", "models": ["provider/chat", "provider/second"], "truncated": True,
+    }
+    assert seen == [("GET", url)]
+
+
+def test_model_lookup_uses_only_saved_matching_connection_and_current_revision(tmp_path, monkeypatch):
+    path = tmp_path / "connections.local.json"
+    revision = read_catalog(path)["revision"]
+    lookup = {"action": "models", "reference": "entry", "provider": "openrouter", "revision": revision}
+    assert admin.handle(path, lookup, SECRET) == {"status": "missing_connection"}
+    saved = admin.handle(path, command("save", revision, "entry", "openrouter", TEST_KEY), SECRET)
+    assert admin.handle(path, lookup, SECRET) == {"status": "conflict"}
+    lookup["revision"] = saved["revision"]
+    assert admin.handle(path, {**lookup, "key": OLD_KEY}, SECRET) == {"status": "invalid"}
+    assert admin.handle(path, {**lookup, "provider": "siliconflow"}, SECRET) == {"status": "missing_connection"}
+    seen = []
+
+    def list_models(connection):
+        seen.append(connection.api_key)
+        return {"status": "ok", "models": ["provider/model"], "truncated": False}
+
+    monkeypatch.setattr(admin, "provider_models", list_models)
+    before = path.read_bytes()
+    assert admin.handle(path, lookup, SECRET)["models"] == ["provider/model"]
+    assert seen == [TEST_KEY] and path.read_bytes() == before
