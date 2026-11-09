@@ -31,13 +31,13 @@ The Runtime root and policy file must exist. The audit parent, pin directory and
 
 Run `pnpm install --frozen-lockfile --ignore-scripts` and then
 `pnpm run pack:desktop-rc1 ABS_OUTPUT_DIRECTORY` in this package. The output
-directory must already exist. This builds the `0.1.0-rc.34` Desktop bundle,
+directory must already exist. This builds the `0.1.0-rc.35` Desktop bundle,
 which declares its exact Harness version and uses the host's shared packages.
 The frozen RC.31 tarball targets the earlier Web setup. Installing that
 tarball in Desktop 0.2.2-rc.1 can replace core host dependencies and leave the
 window blank even while the bundle is disabled.
 
-Import the RC.34 tarball by its absolute `file:` path in an isolated Desktop
+Import the RC.35 tarball by its absolute `file:` path in an isolated Desktop
 Profile. Apply the Profile configuration above before enabling the bundle.
 Start with only `repository_inspection` enabled for a read-only smoke test.
 Use the matching Runtime source to display repository-change review verdicts.
@@ -55,6 +55,10 @@ The optional `roleConfig` belongs in the plugin's Profile config, alongside `run
         reviewer: { adapter: codex, model: null }  # replace null with a supported model ID
         inspector: { adapter: codex, model: null } # may use a different model ID
 ```
+
+On Desktop, open **插件 → DSH Runtime → 默认 CLI 与模型** to edit the CLI roles. Saving updates the existing `roleConfig` through the Host's settings service. Existing API roles stay managed by the Profile. Each new Runtime task takes a snapshot of the saved role settings. Check the requested and reported worker and reviewer models in the task's evidence drawer.
+
+The Windows Desktop plugin detail also has a **CLI 登录** section. Each CLI reports its local login state. Use the login button to open that CLI's own window and complete its browser flow. Codex writes to the Runtime's managed Codex home, and CodeBuddy uses the credential store from the Runtime's CodeBuddy environment. In the CodeBuddy window, follow the startup login prompt or enter `/login`, then close the window. Status refreshes when the window closes and can also be checked manually. The plugin page receives status labels only. A local sign-in state does not test model access.
 
 The three roles are required when the config is present. Under schema v1, a `codex` worker is also accepted and receives workspace write authority only for the existing write stage; reviewer and inspector remain read-only and require `codex`. Codex model IDs are passed to its app-server `thread/start` request; model availability still depends on the installed Codex account. A CodeBuddy worker model ID is passed as `--model` to the installed CLI in both JSON and stream JSON modes. The current local CLI (`2.164.0`) advertises this flag, and one isolated direct worker trial observed the requested `deepseek-v4.1-flash` model. A model ID unsupported by the installed CLI or account can still fail at invocation time. Leaving `model` as `null` preserves each adapter's own default. Reasoning overrides are not part of this schema. This configuration cannot add stages, raise read-only authority, or enable D2. Do not put credentials in `roleConfig`.
 

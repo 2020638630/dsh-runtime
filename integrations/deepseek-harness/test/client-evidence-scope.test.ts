@@ -5,30 +5,16 @@ import { test } from 'node:test'
 import { runInNewContext } from 'node:vm'
 
 const source = readFileSync(join(import.meta.dirname, '..', '..', 'src', 'client.js'), 'utf8')
+type View = (props: Record<string, unknown>) => unknown
+type Element = { type: unknown; props: Record<string, unknown> | null; children: unknown[] }
+const createElement = (type: unknown, props: Record<string, unknown> | null, ...children: unknown[]): Element =>
+  ({ type, props, children })
+const startedProps = { phase: 'result', sessionId: 'session', block: {
+  content: [{ type: 'text', text: 'started governed DSH Runtime task 00000000-0000-4000-8000-000000000001' }],
+} }
 
-function render(tab: string, changes: Record<string, unknown>, scope?: Record<string, unknown>,
-  relocation?: { status: 'verified_copy'; createdAt: string }, modelObservations?: unknown): string {
-  let registered: ((props: Record<string, unknown>) => unknown) | undefined
-  const react = {
-    createElement: (type: unknown, props: unknown, ...children: unknown[]) => ({ type, props, children }),
-    useState: (() => {
-      let index = 0
-      return (initial: unknown) => {
-        const values = [
-          { manifest: {
-            status: 'completed', duration_ms: 1, workspace_changes: changes,
-            task_kind: 'repository_change', model_observations: modelObservations,
-            evidence_scope: scope,
-            verification: { verdict: 'PASS', evidence_text: 'model report' },
-            execution_trajectory: { status: 'available', turns_used: null },
-            audit: { status: 'settled', call_id: 'id', stdout_sha256: 'hash' },
-          }, diff: 'patch text', relocation }, true, tab, Date.now(),
-        ]
-        return [values[index++] ?? initial, () => {}]
-      }
-    })(),
-    useEffect: () => {},
-  }
+function loadViews(react: unknown, configForms?: unknown): Map<string, View> {
+  const views = new Map<string, View>()
   let plugin: { apply: (ctx: unknown) => void } | undefined
   runInNewContext(source, {
     window: { __ModuleLoader__: { load: (registration: { factory: (require: (id: string) => unknown) => unknown }) => {
@@ -36,12 +22,49 @@ function render(tab: string, changes: Record<string, unknown>, scope?: Record<st
     } } },
     document: { body: {} }, Date, AbortController, URLSearchParams, setInterval, clearInterval,
   })
-  plugin?.apply({ slots: { inject: (_: string, callback: () => unknown) => callback(),
-    register: (_: unknown, component: typeof registered) => { registered = component } } })
-  assert.ok(registered)
-  const tree = registered({ phase: 'result', sessionId: 'session', block: {
-    content: [{ type: 'text', text: 'started governed DSH Runtime task 00000000-0000-4000-8000-000000000001' }],
+  const slots = { inject: (_: string, callback: () => unknown) => callback(),
+    register: (options: { name: string }, component: View) => { views.set(options.name, component) } }
+  plugin?.apply({ slots, inject: (_: string[], callback: (ctx: unknown) => unknown) => {
+    if (configForms) callback({ configForms, slots })
   } })
+  return views
+}
+
+function nodes(value: unknown): Element[] {
+  if (Array.isArray(value)) return value.flatMap(nodes)
+  if (value && typeof value === 'object' && 'children' in value) {
+    const node = value as Element
+    return [node, ...nodes(node.children)]
+  }
+  return []
+}
+
+function render(tab: string, changes: Record<string, unknown>, scope?: Record<string, unknown>,
+  relocation?: { status: 'verified_copy'; createdAt: string }, modelObservations?: unknown,
+  terminal?: Record<string, unknown> | 'aborted' | 'error' | 'unavailable'): string {
+  const react = {
+    createElement,
+    useState: (() => {
+      let index = 0
+      return (initial: unknown) => {
+        const values = [
+          typeof terminal === 'string' ? terminal : { manifest: {
+            status: 'completed', duration_ms: 1, workspace_changes: changes,
+            task_kind: 'repository_change', model_observations: modelObservations,
+            evidence_scope: scope,
+            verification: { verdict: 'PASS', evidence_text: 'model report' },
+            execution_trajectory: { status: 'available', turns_used: null },
+            audit: { status: 'settled', call_id: 'id', stdout_sha256: 'hash' },
+            ...terminal,
+          }, diff: 'patch text', relocation }, true, tab, Date.now(),
+        ]
+        return [values[index++] ?? initial, () => {}]
+      }
+    })(),
+    useEffect: () => {},
+  }
+  const view = loadViews(react).get('tool.call.toolview')!
+  const tree = view(startedProps)
   const strings: string[] = []
   const visit = (value: unknown): void => {
     if (typeof value === 'string') strings.push(value)
@@ -122,4 +145,100 @@ test('drawer labels CodeBuddy JSON evidence and unknown separately from Codex', 
   assert.match(draw({ ...worker, requested_model: 'worker-request', reported_model: null, source: 'unobserved' }),
     /执行阶段模型：CodeBuddy · 请求 worker-request · CLI 报告 未知/u)
   assert.match(draw({ ...worker, source: 'codex_thread_start' }), /执行阶段模型：未记录/u)
+})
+
+test('terminal guidance distinguishes review failure, unavailable evidence and an inspection', () => {
+  const changes = { added_files: [], modified_files: [], deleted_files: [] }
+  const status = 'failed'
+  const run_id = 'dsh-runtime-00000000-0000-4000-8000-000000000001'
+  const draw = (terminal: Record<string, unknown> | 'aborted' | 'error' | 'unavailable') =>
+    render('audit', changes, undefined, undefined, undefined, terminal)
+  const fail = draw({ status, run_id, verification: { verdict: 'FAIL', evidence_text: 'review basis' } })
+  assert.match(fail, /模型审查未通过/u)
+  assert.ok(fail.includes(run_id) && fail.includes('调用 ID：id') && fail.includes('review basis'))
+  for (const [invocation_binding, text] of [
+    ['missing', '缺少审查调用记录'], ['invalid', '审查调用证据未通过绑定校验'],
+    ['matched', '现有证据无法形成有效的审查判决'], [undefined, '现有证据无法形成有效的审查判决'],
+  ] as const) {
+    assert.ok(draw({ status, verification: { verdict: 'UNAVAILABLE', invocation_binding } }).includes(text))
+  }
+  for (const state of ['aborted', 'error', 'unavailable'] as const) {
+    assert.match(draw(state), /无法确认文件是否发生变动/u)
+    assert.doesNotMatch(draw(state), /BLOCKED|查看证据/u)
+  }
+  assert.doesNotMatch(draw({ task_kind: 'repository_inspection', verification: { verdict: 'UNAVAILABLE' } }), /现有证据无法/u)
+})
+
+test('plugin settings atomically edit CLI roles and preserve API entries and stale drafts', async () => {
+  let cursor = 0
+  const states: unknown[] = []
+  const reviewer = { adapter: 'api_agent', provider: 'siliconflow', model: 'api-model',
+    connection_ref: 'reference', max_requests: 3, max_tool_calls: 3, max_output_tokens: 512 }
+  const roleConfig = { schema_version: 2, roles: {
+    worker: { adapter: 'codebuddy', model: 'before' }, reviewer,
+    inspector: { adapter: 'codex', model: null },
+  } }
+  let section: { ns: string; revision: number; value: object } = {
+    ns: 'dsh-runtime-standalone', revision: 4, value: { roleConfig },
+  }
+  let accept = false
+  const writes: Array<{ ops: unknown; revision: number }> = []
+  const views = loadViews({
+    createElement,
+    useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => getSnapshot(),
+    useState(initial: unknown) {
+      const i = cursor++
+      if (!(i in states)) states[i] = initial
+      return [states[i], (next: unknown) => {
+        states[i] = typeof next === 'function' ? next(states[i]) : next
+      }]
+    },
+  }, {
+    get: () => ({ mutate: async (ops: unknown, revision: number) => {
+      writes.push({ ops: structuredClone(ops), revision })
+      return accept
+    } }),
+    describe: () => ({ subscribe: () => () => {},
+      getSnapshot: () => ({ view: { writable: true, namespaces: [section] } }) }),
+  })
+  const view = views.get('plugins.bundle.config')!
+  const component = (view({}) as Element).type as View
+  const form = () => { cursor = 0; return nodes(component((view({}) as Element).props!)) }
+  const control = (type: string, index = 0) => form().filter(node => node.type === type)[index].props!
+  const edit = (type: string, value: string) =>
+    (control(type).onChange as (event: { target: { value: string } }) => void)({ target: { value } })
+  const save = () => (control('button').onClick as () => Promise<void>)()
+
+  assert.equal(form().filter(node => node.type === 'input').length, 2)
+  edit('select', 'codex')
+  assert.equal(control('input').value, '')
+  edit('input', 'bad model')
+  assert.equal(control('button').disabled, true)
+  await save()
+  assert.equal(writes.length, 0)
+  edit('input', 'new-model')
+  await save()
+  assert.deepEqual(writes[0], { revision: 4, ops: [
+    { op: 'set', path: ['roleConfig', 'roles', 'worker', 'adapter'], value: 'codex' },
+    { op: 'set', path: ['roleConfig', 'roles', 'worker', 'model'], value: 'new-model' },
+  ] })
+  assert.equal(control('input').value, 'new-model')
+  assert.equal(roleConfig.roles.reviewer, reviewer)
+  section = { ...section, revision: 5 }
+  assert.equal(control('button').disabled, true)
+  await save()
+  assert.equal(writes.length, 1)
+
+  states.length = 0
+  section = { ...section, value: {} }
+  accept = true
+  edit('input', 'first-model')
+  await save()
+  assert.deepEqual(writes[1], { revision: 5, ops: [{ op: 'set', path: ['roleConfig'], value: {
+    schema_version: 1, roles: {
+      worker: { adapter: 'codebuddy', model: 'first-model' },
+      reviewer: { adapter: 'codex', model: null },
+      inspector: { adapter: 'codex', model: null },
+    },
+  } }] })
 })

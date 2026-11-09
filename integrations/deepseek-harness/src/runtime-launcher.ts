@@ -9,6 +9,7 @@ export interface RuntimeLauncherConfig {
   readonly runtimeRoot: string
   readonly python: string
   readonly env: Record<string, string>
+  readonly readEnv?: () => Record<string, string>
   readonly evidenceRoot?: string
   readonly disposeGraceMs: number
   readonly spawn: (spec: SubprocessSpawnSpec) => SubprocessHandle
@@ -31,7 +32,7 @@ export function createRuntimeLauncher(config: RuntimeLauncherConfig, startRun: S
       taskKind,
       runtimeRoot: config.runtimeRoot,
       python: config.python,
-      env: config.env,
+      env: config.readEnv?.() ?? config.env,
       ...config.evidenceRoot === undefined ? {} : { evidenceRoot: config.evidenceRoot },
       disposeGraceMs: config.disposeGraceMs,
       spawn: config.spawn,

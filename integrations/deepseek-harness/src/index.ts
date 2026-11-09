@@ -1,11 +1,14 @@
 /** Installable official DeepSeekHarness Host entrypoint. */
 import { lstatSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute, dirname, relative, resolve, sep } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
+import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-session-query'
 import { mountHostCore, type HostCoreConfig } from './host-core.ts'
 import { registerRuntimeEvidenceRoute } from './evidence-route.ts'
+import { registerCliLoginRoute } from './cli-login-route.ts'
 
 export const name = 'dsh-runtime-standalone'
 export const inject = ['subprocess', 'subagents', 'tools', 'connection', 'sessionQuery']
@@ -63,6 +66,15 @@ export interface Config {
   apiAgentConnectionsPath?: string
 }
 
+type LiveRoleConfig = { get(): RoleConfig | undefined }
+type EntryConfig = Omit<Config, 'roleConfig'> & { roleConfig?: RoleConfig | LiveRoleConfig }
+
+// Expose only the role selection to the Host settings service. Existing
+// Profile paths and governance fields continue through validateConfig.
+export const Config = z.object({
+  roleConfig: z.transform(z.any(), validateRoleConfig).volatile(),
+})
+
 type ResolvedConfig = Required<Omit<Config, 'roleConfig' | 'apiAgentConnectionsPath'>> & {
   roleConfig?: RoleConfig
   apiAgentConnectionsPath?: string
@@ -101,7 +113,7 @@ function roleSelection(
         throw new TypeError(`${role} ${name} is out of bounds`)
       }
     }
-    return fields as unknown as ApiRoleSelectionConfig
+    return { ...fields } as unknown as ApiRoleSelectionConfig
   }
   if (!exactKeys(fields, ['adapter', 'model'])) {
     throw new TypeError(`${role} requires only adapter and model`)
@@ -206,13 +218,7 @@ export function validateConfig(input: Config): ResolvedConfig {
   return { runtimeRoot, python: input.python, policySource, expectedPolicyHash: input.expectedPolicyHash, enabledWorkloads: input.enabledWorkloads, auditPath, pinRoot, evidenceRoot, disposeGraceMs, responseTimeoutMs, env, roleConfig, apiAgentConnectionsPath }
 }
 
-export function hostCoreConfig(config: ResolvedConfig): HostCoreConfig {
-  const runtimeEnv = {
-    ...config.env,
-    ...config.roleConfig === undefined ? {} : { [ROLE_CONFIG_ENV]: JSON.stringify(config.roleConfig) },
-    ...config.apiAgentConnectionsPath === undefined ? {}
-      : { [API_AGENT_CONNECTIONS_PATH_ENV]: config.apiAgentConnectionsPath },
-  }
+export function hostCoreConfig(config: ResolvedConfig, live?: LiveRoleConfig): HostCoreConfig {
   return {
     governance: {
       runtimeRoot: config.runtimeRoot, python: config.python, env: config.env,
@@ -222,19 +228,68 @@ export function hostCoreConfig(config: ResolvedConfig): HostCoreConfig {
       disposeGraceMs: config.disposeGraceMs, responseTimeoutMs: config.responseTimeoutMs,
     },
     runtime: {
-      runtimeRoot: config.runtimeRoot, python: config.python, env: runtimeEnv,
+      runtimeRoot: config.runtimeRoot, python: config.python, env: runtimeEnv(config, config.roleConfig),
+      ...live === undefined ? {} : { readEnv: () => liveRuntimeEnv(config, live) },
       evidenceRoot: config.evidenceRoot, disposeGraceMs: config.disposeGraceMs,
     },
   }
 }
 
-export async function apply(ctx: Context, rawConfig: Config): Promise<() => Promise<void>> {
-  const config = validateConfig(rawConfig)
-  const disposeCore = await mountHostCore(ctx, hostCoreConfig(config))
+function runtimeEnv(config: ResolvedConfig, roles: RoleConfig | undefined): Record<string, string> {
+  return {
+    ...config.env,
+    ...roles === undefined ? {} : { [ROLE_CONFIG_ENV]: JSON.stringify(roles) },
+    ...config.apiAgentConnectionsPath === undefined ? {}
+      : { [API_AGENT_CONNECTIONS_PATH_ENV]: config.apiAgentConnectionsPath },
+  }
+}
+
+function liveRuntimeEnv(config: ResolvedConfig, source: LiveRoleConfig): Record<string, string> {
+  const current = source.get()
+  const roles = current === undefined ? undefined : validateRoleConfig(current)
+  const original = config.roleConfig
+  if (original?.schema_version === 2 || roles?.schema_version === 2) {
+    if (original?.schema_version !== 2 || roles?.schema_version !== 2) {
+      throw new TypeError('Changing an API role configuration schema requires reopening Harness')
+    }
+    for (const role of ['reviewer', 'inspector'] as const) {
+      const before = original.roles[role]
+      const after = roles.roles[role]
+      if ((before.adapter === 'api_agent' || after.adapter === 'api_agent') && !isDeepStrictEqual(before, after)) {
+        throw new TypeError('Changing API role settings requires reopening Harness')
+      }
+    }
+  }
+  return runtimeEnv(config, roles)
+}
+
+export async function apply(ctx: Context, rawConfig: EntryConfig): Promise<() => Promise<void>> {
+  const selection = rawConfig?.roleConfig
+  const source = selection && typeof selection === 'object' && 'get' in selection
+    && typeof selection.get === 'function' ? selection : undefined
+  const config = validateConfig(source ? { ...rawConfig, roleConfig: source.get() } : rawConfig as Config)
+  const disposeCore = await mountHostCore(ctx, hostCoreConfig(config, source))
   try {
+    if (source) ctx.inject(['settings'], (child) => {
+      const settings = (child as Context & { settings: {
+        configure?: (options: { auto: boolean }, fiber: Context['fiber']) => () => void
+      } }).settings
+      if (typeof settings.configure === 'function') {
+        child.effect(() => settings.configure!({ auto: false }, ctx.fiber))
+      }
+    })
     const disposeRoute = registerRuntimeEvidenceRoute(ctx, config.evidenceRoot)
-    return async () => {
-      try { await disposeRoute() } finally { await disposeCore() }
+    try {
+      const disposeLogin = registerCliLoginRoute(ctx, config)
+      return async () => {
+        try { await disposeLogin() }
+        finally {
+          try { await disposeRoute() } finally { await disposeCore() }
+        }
+      }
+    } catch (error) {
+      await disposeRoute()
+      throw error
     }
   } catch (error) {
     await disposeCore()

@@ -3,7 +3,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
-import { hostCoreConfig, validateConfig, type Config } from '../src/index.ts'
+import type { Context } from '@deepseek-ai/cordis'
+import { Config, hostCoreConfig, validateConfig, type RoleConfig } from '../src/index.ts'
+import { registerCliLoginRoute } from '../src/cli-login-route.ts'
 
 function fixture(): Config {
   const root = mkdtempSync(join(tmpdir(), 'dsh-plugin-entry-'))
@@ -27,6 +29,105 @@ test('entry accepts a complete isolated Profile and fills safe defaults', () => 
   assert.equal(config.disposeGraceMs, 3000)
   assert.equal(config.responseTimeoutMs, 10000)
   assert.deepEqual(config.env, {})
+})
+
+test('Desktop login route starts only fixed CLI actions and keeps the result private', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  let fetch: ((request: Request) => Promise<Response>) | undefined
+  let finishLogin: (() => void) | undefined
+  let invoked = 0
+  let disposed = false
+  const ctx = {
+    connection: { fetch: { register: (route: { fetch: typeof fetch }) => {
+      fetch = route.fetch
+      return async () => { disposed = true }
+    } } },
+    subprocess: { spawn: ({ argv }: { argv: string[] }) => {
+      invoked++
+      assert.deepEqual(argv.slice(0, 2), ['python', '-B'])
+      assert.match(argv[2], /[/\\]scripts[/\\]cli-login\.py$/u)
+      assert.equal(argv[4], 'codex')
+      const login = argv[3] === 'login'
+      const done = login ? new Promise(resolve => { finishLogin = () => resolve({ exitCode: 0 }) })
+        : Promise.resolve({ exitCode: 0 })
+      const text = login ? 'closed\n' : 'unexpected account details\n'
+      return { done, collected: { stdout: { readFrom: () => ({ text, lossy: false }) } } }
+    } },
+  } as unknown as Context
+  const previous = process.env.ELECTRON_RUN_AS_NODE
+  delete process.env.ELECTRON_RUN_AS_NODE
+  await registerCliLoginRoute(ctx, validateConfig(fixture()))()
+  assert.equal(fetch, undefined)
+  process.env.ELECTRON_RUN_AS_NODE = '1'
+  try {
+    const dispose = registerCliLoginRoute(ctx, validateConfig(fixture()))
+    assert.ok(fetch)
+    const handle = fetch as (request: Request) => Promise<Response>
+    const request = (query: string, headers: HeadersInit = { 'x-dsh-runtime-cli': '1' }, body?: string) =>
+      handle(new Request('http://localhost/api/dsh-runtime.cli-login?' + query, { method: 'POST', headers, body }))
+    assert.equal((await request('operation=login&cli=codex', {})).status, 403)
+    assert.equal((await request('operation=login&cli=codex',
+      { 'x-dsh-runtime-cli': '1', origin: 'http://localhost' })).status, 403)
+    assert.equal((await request('operation=login&cli=codex', undefined, 'shell')).status, 403)
+    assert.equal((await request('operation=login&cli=other')).status, 400)
+    assert.equal((await request('operation=login&cli=codex&argv=arbitrary')).status, 400)
+    assert.equal(invoked, 0)
+    assert.deepEqual(await (await request('operation=status&cli=codex')).json(), { status: 'unknown' })
+    const running = request('operation=login&cli=codex')
+    assert.equal((await request('operation=login&cli=codex')).status, 409)
+    assert.deepEqual(await (await request('operation=status&cli=codex')).json(), { status: 'running' })
+    finishLogin!()
+    assert.deepEqual(await (await running).json(), { status: 'closed' })
+    assert.equal(invoked, 2)
+    await dispose()
+    assert.equal(disposed, true)
+  } finally {
+    if (previous === undefined) delete process.env.ELECTRON_RUN_AS_NODE
+    else process.env.ELECTRON_RUN_AS_NODE = previous
+  }
+})
+
+test('new launches snapshot saved CLI defaults independently of governance and earlier launches', () => {
+  const base = fixture()
+  const composed = Config(base)
+  assert.equal((composed as unknown as Config).runtimeRoot, base.runtimeRoot)
+  assert.equal(composed.roleConfig.get(), undefined)
+  let roleConfig: RoleConfig | undefined
+  const core = hostCoreConfig(validateConfig(base), { get: () => roleConfig })
+  const before = core.runtime.readEnv!()
+  assert.equal(before.DSH_RUNTIME_ROLE_CONFIG_JSON, undefined)
+  roleConfig = { schema_version: 1, roles: {
+    worker: { adapter: 'codebuddy', model: null },
+    reviewer: { adapter: 'codex', model: 'reviewer-model' },
+    inspector: { adapter: 'codex', model: null },
+  } }
+  const after = core.runtime.readEnv!()
+  assert.deepEqual(JSON.parse(after.DSH_RUNTIME_ROLE_CONFIG_JSON), roleConfig)
+  roleConfig.roles.worker.model = 'later'
+  assert.equal(JSON.parse(after.DSH_RUNTIME_ROLE_CONFIG_JSON).roles.worker.model, null)
+  assert.equal(before.DSH_RUNTIME_ROLE_CONFIG_JSON, undefined)
+  assert.equal(core.governance.env?.DSH_RUNTIME_ROLE_CONFIG_JSON, undefined)
+})
+
+test('live defaults preserve the Profile API roles and connection path', () => {
+  const base = fixture()
+  const apiAgentConnectionsPath = join(dirname(base.runtimeRoot), 'connections.local.json')
+  writeFileSync(apiAgentConnectionsPath, '{}')
+  const roleConfig: RoleConfig = { schema_version: 2, roles: {
+    worker: { adapter: 'codebuddy', model: null },
+    reviewer: { adapter: 'codex', model: null },
+    inspector: { adapter: 'api_agent', provider: 'siliconflow', model: 'api-model',
+      connection_ref: 'example', max_requests: 3, max_tool_calls: 3, max_output_tokens: 512 },
+  } }
+  const live = structuredClone(roleConfig)
+  const core = hostCoreConfig(validateConfig({ ...base, roleConfig, apiAgentConnectionsPath }), { get: () => live })
+  live.roles.reviewer.model = 'new-cli-model'
+  const env = core.runtime.readEnv!()
+  assert.equal(env.DSH_API_AGENT_CONNECTIONS_PATH, apiAgentConnectionsPath)
+  assert.deepEqual(JSON.parse(env.DSH_RUNTIME_ROLE_CONFIG_JSON), live)
+  live.roles.inspector.model = 'different-api-model'
+  assert.throws(() => core.runtime.readEnv!(), /Changing API role settings/)
 })
 
 test('entry rejects missing governance identity, unsupported workload and missing evidence root', () => {

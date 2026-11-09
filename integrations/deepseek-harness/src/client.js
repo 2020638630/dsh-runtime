@@ -6,8 +6,15 @@ window.__ModuleLoader__.load({
     const { createPortal } = require('react-dom')
     const h = React.createElement
     const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
+    const RUN_ID = /^dsh-runtime-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
     const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,127}$/
     const labels = { trajectory: '执行轨迹', changes: '实际变动', audit: '审计' }
+    const cliRoles = { worker: '执行', reviewer: '审查', inspector: '只读检查' }
+    const cliNames = { codex: 'Codex', codebuddy: 'CodeBuddy' }
+    const loginLabels = {
+      signed_in: '已登录', signed_out: '未登录', unavailable: 'CLI 不可用',
+      unknown: '无法确认登录状态', unsupported: '当前宿主不支持', running: '登录窗口已打开',
+    }
 
     function startedChild(props) {
       if (props.phase !== 'result') return null
@@ -41,6 +48,194 @@ window.__ModuleLoader__.load({
     const button = { border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', padding: '6px 9px' }
     const pre = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 }
     const line = (label, value) => h('p', { key: label }, `${label}：${value ?? '未知'}`)
+
+    function drawer(title, close, ...children) {
+      return createPortal(h('div', {
+        style: { position: 'fixed', inset: 0, zIndex: 1000, background: 'rgb(0 0 0 / 42%)', display: 'flex', justifyContent: 'flex-end' },
+        onMouseDown: event => { if (event.target === event.currentTarget) close() },
+      }, h('section', { role: 'dialog', 'aria-modal': 'true', 'aria-label': title,
+        style: { width: 'min(560px, 100vw)', height: '100%', background: 'var(--dsw-alias-bg-base, white)', display: 'flex', flexDirection: 'column' },
+      }, h('header', { style: { ...panel, paddingTop: 40, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 } },
+        h('button', { type: 'button', 'aria-label': '关闭', style: button, onClick: close }, '×'), h('strong', null, title)),
+      ...children)), document.body)
+    }
+
+    function CliLogin({ cli, label }) {
+      const [status, setStatus] = React.useState(null)
+      const [busy, setBusy] = React.useState(false)
+      const [message, setMessage] = React.useState('')
+
+      async function request(operation, signal) {
+        try {
+          const query = new URLSearchParams({ cli, operation })
+          const response = await fetch('api/dsh-runtime.cli-login?' + query, {
+            method: 'POST', headers: { 'x-dsh-runtime-cli': '1' }, signal,
+          })
+          if (response.status === 404) return 'unsupported'
+          if (response.status === 409) return 'running'
+          if (response.ok) {
+            const { status } = await response.json()
+            if (Object.hasOwn(loginLabels, status) || status === 'closed') return status
+          }
+        } catch {
+          // A failed check is not proof that the CLI is signed out.
+        }
+        return 'unknown'
+      }
+
+      async function refresh(signal) {
+        setStatus(null)
+        const value = await request('status', signal)
+        if (!signal?.aborted) setStatus(value === 'closed' ? 'unknown' : value)
+      }
+
+      React.useEffect(() => {
+        const lifetime = new AbortController()
+        void refresh(lifetime.signal)
+        return () => lifetime.abort()
+      }, [cli])
+
+      async function login() {
+        setBusy(true)
+        setMessage(cli === 'codex' ? '请在打开的窗口中完成 Codex 登录。'
+          : '请在打开的 CodeBuddy 窗口中按提示登录，或输入 /login。完成后关闭窗口。')
+        const result = await request('login')
+        setMessage(result === 'closed' ? '窗口已关闭，正在重新检查登录状态。'
+          : result === 'running' ? '已有登录窗口，请在该窗口继续。' : '未能确认登录窗口正常结束，请检查状态后再试。')
+        await refresh()
+        setBusy(false)
+        if (result === 'closed') setMessage('')
+      }
+
+      const canLogin = status && !['unavailable', 'unsupported', 'running'].includes(status)
+      return h('div', { style: { margin: '8px 0' } },
+        h('p', { role: 'status' }, label + ' · ' + (status === null ? '正在检查…' : loginLabels[status])),
+        h('button', { type: 'button', disabled: busy || !canLogin, onClick: login }, '打开 ' + label + ' 登录'),
+        h('button', { type: 'button', style: button, disabled: busy || status === null,
+          onClick: () => { setMessage(''); void refresh() } }, '刷新 ' + label + ' 状态'),
+        message && h('p', { role: 'status' }, message))
+    }
+
+    function RoleDefaults({ form, mirror }) {
+      const snapshot = React.useSyncExternalStore(listener => mirror.subscribe(listener), () => mirror.getSnapshot())
+      const entry = snapshot.view?.namespaces.find(item => item.ns === 'dsh-runtime-standalone')
+      const [edit, setEdit] = React.useState(null)
+      const [saving, setSaving] = React.useState(false)
+      const [message, setMessage] = React.useState('')
+      const configured = entry?.value?.roleConfig
+      const current = configured === undefined ? { schema_version: 1, roles: {
+        worker: { adapter: 'codebuddy', model: null },
+        reviewer: { adapter: 'codex', model: null },
+        inspector: { adapter: 'codex', model: null },
+      } } : configured
+      const roles = edit?.roles ?? current?.roles
+      const stale = edit !== null && edit.revision !== entry?.revision
+      const inputStyle = { display: 'block', width: '100%', maxWidth: 420, margin: '4px 0 8px',
+        boxSizing: 'border-box', padding: '6px 8px', borderRadius: 4,
+        border: '1px solid var(--dsw-alias-border-normal, #888)', background: 'var(--dsw-alias-bg-base, white)', color: 'inherit' }
+
+      if (!entry || !entry.value || typeof entry.revision !== 'number') {
+        return h('p', null, snapshot.view ? '当前宿主未提供模型配置。' : '正在读取 Runtime 默认配置…')
+      }
+      if (!roles || !current || ![1, 2].includes(current.schema_version)) {
+        return h('p', null, '当前角色配置无法在此处编辑。')
+      }
+      const valid = Object.keys(cliRoles).every(role => {
+        const selected = roles[role]
+        if (!selected) return false
+        if (selected.adapter === 'api_agent') return role !== 'worker' && current.schema_version === 2
+        return (selected.adapter === 'codex' || (role === 'worker' && selected.adapter === 'codebuddy'))
+          && (selected.model === null || (typeof selected.model === 'string' && MODEL_ID.test(selected.model)))
+      })
+      const disabled = saving || !snapshot.view.writable || stale
+      const change = (role, fields) => {
+        setEdit(previous => {
+          const base = previous ?? { revision: entry.revision, roles: current.roles }
+          return { ...base, roles: { ...base.roles, [role]: { ...base.roles[role], ...fields } } }
+        })
+        setMessage('')
+      }
+      const operations = () => {
+        if (configured === undefined) return [{ op: 'set', path: ['roleConfig'], value: { schema_version: 1, roles } }]
+        return Object.keys(cliRoles).flatMap(role => {
+          if (current.roles[role].adapter === 'api_agent') return []
+          return ['adapter', 'model'].filter(field => roles[role][field] !== current.roles[role][field])
+            .map(field => ({ op: 'set', path: ['roleConfig', 'roles', role, field], value: roles[role][field] }))
+        })
+      }
+
+      async function save() {
+        if (!edit || disabled || !valid) return
+        const ops = operations()
+        if (!ops.length) {
+          setEdit(null)
+          return
+        }
+        setSaving(true)
+        setMessage('')
+        try {
+          const accepted = await form.mutate(ops, edit.revision)
+          if (accepted) {
+            setEdit(null)
+            setMessage('已保存。新任务使用这套默认配置，已启动的任务继续使用原配置。')
+          } else {
+            setMessage('宿主拒绝保存。草稿已保留，请核对当前配置后再试。')
+          }
+        } catch {
+          setMessage('保存结果未能确认。草稿已保留，请重新读取配置。')
+        } finally {
+          setSaving(false)
+        }
+      }
+
+      return h('section', { 'aria-label': '默认 CLI 与模型', style: { padding: '12px 0' } },
+        h('strong', null, '默认 CLI 与模型'),
+        h('p', null, '保存后用于新启动的 Runtime 任务。模型留空时使用所选 CLI 的默认设置。'),
+        ...Object.entries(cliRoles).map(([role, label]) => {
+          const selected = roles[role]
+          if (!selected) return null
+          if (selected.adapter === 'api_agent') {
+            return h('p', { key: role }, `${label}阶段使用现有 API 角色，设置由 Profile 管理。`)
+          }
+          return h('div', { key: role },
+            role === 'worker' && h('label', null, '执行阶段 CLI', h('select', {
+              value: selected.adapter, disabled, style: inputStyle,
+              onChange: event => change(role, { adapter: event.target.value, model: null }),
+            }, h('option', { value: 'codebuddy' }, 'CodeBuddy'), h('option', { value: 'codex' }, 'Codex'))),
+            h('label', null, `${label}阶段模型 ID${role === 'worker' ? '' : '（Codex）'}`,
+              h('input', { type: 'text', value: selected.model ?? '', maxLength: 129, style: inputStyle,
+                placeholder: '留空使用 CLI 默认', spellCheck: false, autoComplete: 'off', disabled,
+                onChange: event => change(role, { model: event.target.value || null }) })))
+        }),
+        !valid && h('p', { role: 'alert' }, '模型 ID 须以字母或数字开头，最多 128 字符。可以使用字母、数字和 . _ : / + -。'),
+        stale && h('p', { role: 'alert' }, '配置已在别处更新。请重新读取后再编辑。'),
+        h('button', { type: 'button', disabled: disabled || !edit || !valid, onClick: save }, saving ? '正在保存…' : '保存默认配置'),
+        edit && h('button', { type: 'button', style: button, disabled: saving, onClick: () => {
+          setEdit(null)
+          setMessage('')
+        } }, '放弃草稿并读取当前值'),
+        h('p', { role: 'status' }, message),
+        window.location?.protocol === 'dsh-app:' && h('section', { 'aria-label': 'CLI 登录', style: { paddingTop: 12 } },
+          h('strong', null, 'CLI 登录'),
+          h('p', null, '登录由各 CLI 完成。Codex 使用 Runtime 专用登录目录。'),
+          ...Object.entries(cliNames).map(([cli, label]) => h(CliLogin, { key: cli, cli, label }))))
+    }
+
+    function failureGuidance(state, manifest) {
+      if (!manifest) {
+        return ['aborted', 'error', 'unavailable'].includes(state)
+          ? '缺少终态证据，无法确认文件是否发生变动。请先手动核对工作区。' : null
+      }
+      if (manifest.task_kind !== 'repository_change') return null
+      const { verdict, invocation_binding: binding } = manifest.verification
+      if (verdict === 'FAIL' && manifest.status === 'failed') {
+        return '模型审查未通过。请先查看审计中的审查原文，并核对「实际变动」。'
+      }
+      if (verdict !== 'UNAVAILABLE') return null
+      const reason = binding === 'missing' ? '缺少审查调用记录'
+        : binding === 'invalid' ? '审查调用证据未通过绑定校验' : '现有证据无法形成有效的审查判决'
+      return `${reason}。请查看「审计」和「实际变动」，必要时手动核对工作区。`
+    }
 
     function modelLines(manifest) {
       if (manifest.task_kind !== 'repository_change') return []
@@ -144,6 +339,7 @@ window.__ModuleLoader__.load({
         && changes?.observation_boundary === 'window_observed_changes'
       const scope = manifest?.evidence_scope
       const attributionKnown = scope?.change_attribution === 'not_established_shared_workspace'
+      const guidance = failureGuidance(state, manifest)
       const summary = ready ? `${manifest.status} · ${Math.round(manifest.duration_ms / 1000)} 秒${ready.relocation ? ' · 历史证据副本' : ''}`
         : state === 'waiting' ? (id ? `等待证据 ${Math.max(0, Math.round((now - start) / 1000))} 秒` : '正在启动')
           : state === 'aborted' ? '已取消'
@@ -169,7 +365,10 @@ window.__ModuleLoader__.load({
           observed && ready.diff ? h('pre', { key: 'diff', style: pre }, ready.diff.slice(0, 200000)) : null]
       } else if (ready) {
         const review = manifest.review_trajectory
-        body = [line('审计状态', manifest.audit.status), line('调用 ID', manifest.audit.call_id),
+        body = [line('审计状态', manifest.audit.status),
+          guidance && typeof manifest.run_id === 'string' && RUN_ID.test(manifest.run_id)
+            ? line('运行 ID', manifest.run_id) : null,
+          line('调用 ID', manifest.audit.call_id),
           line('输出摘要', manifest.audit.stdout_sha256), line('模型审查判决', manifest.verification.verdict),
           line('判决范围', '模型报告；文件变化由独立快照观察，不能据此认定变动归属'),
           review?.source === 'api_agent_safe_event_trace'
@@ -188,15 +387,14 @@ window.__ModuleLoader__.load({
         h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, minHeight: 30 } },
           h('strong', null, 'DSH Runtime'),
           h('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, summary),
-          ready && h('button', { type: 'button', style: button, onClick: () => setOpen(true) }, '查看证据')),
-        open && ready && createPortal(h('div', {
-          style: { position: 'fixed', inset: 0, zIndex: 1000, background: 'rgb(0 0 0 / 42%)', display: 'flex', justifyContent: 'flex-end' },
-          onMouseDown: event => { if (event.target === event.currentTarget) setOpen(false) },
-        }, h('section', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'DSH Runtime',
-          style: { width: 'min(560px, 100vw)', height: '100%', background: 'var(--dsw-alias-bg-base, white)', display: 'flex', flexDirection: 'column' } },
-        h('header', { style: { ...panel, display: 'flex', justifyContent: 'space-between' } },
-          h('strong', null, 'DSH Runtime'), h('button', { type: 'button', 'aria-label': '关闭', style: button, onClick: () => setOpen(false) }, '×')),
+          ready && h('button', { type: 'button', style: button, onClick: () => {
+            if (guidance) setTab('audit')
+            setOpen(true)
+          } }, '查看证据')),
+        guidance && h('p', { style: { fontSize: 12, margin: '4px 0' } }, guidance),
+        open && ready && drawer('DSH Runtime', () => setOpen(false),
         h('div', { style: panel }, `任务状态：${manifest.status}　模型审查判决：${manifest.verification.verdict}`),
+        guidance && h('p', { style: panel }, guidance),
         ready.relocation && h('div', { style: panel },
           `历史证据副本：复制哈希已核对（${ready.relocation.createdAt}）。此校验只证明副本与迁移收据一致，不证明原始任务或审查正确。`),
         h('nav', { 'aria-label': 'DSH Runtime', style: { display: 'flex', padding: '0 16px' } },
@@ -204,7 +402,7 @@ window.__ModuleLoader__.load({
             'aria-current': tab === name ? 'page' : undefined,
             style: { ...button, borderBottom: tab === name ? '2px solid currentColor' : 'none' },
             onClick: () => setTab(name) }, label))),
-        h('div', { style: { ...panel, flex: 1 } }, body))), document.body))
+        h('div', { style: { ...panel, flex: 1 } }, body)))
     }
 
     return {
@@ -212,6 +410,13 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         ctx.slots.inject('tool.call.toolview', () => ctx.slots.register(
           { name: 'tool.call.toolview', key: 'dsh_runtime', locale: 'conversation' }, EvidenceRow))
+        ctx.inject(['configForms'], child => {
+          const form = child.configForms.get('dsh-runtime-standalone')
+          const mirror = child.configForms.describe()
+          child.slots.inject('plugins.bundle.config', () => child.slots.register({
+            name: 'plugins.bundle.config', key: '@dsh-runtime/harness-plugin',
+          }, () => h(RoleDefaults, { form, mirror })))
+        })
       },
     }
   },

@@ -39,6 +39,9 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: 0.2.1-rc.4
         version: 0.2.1-rc.4(efa9449c199ea8362a6457c8610cf27c)
+      '@deepseek-ai/schemastery':
+        specifier: 3.18.5
+        version: 3.18.5
       zod:
         specifier: 4.6.6
         version: 4.6.6

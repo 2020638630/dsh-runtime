@@ -22,6 +22,7 @@
     "DEPENDENCY_SECURITY_RC31.md",
     "HOST_COMPATIBILITY_GATE.md",
     "SUPPORTED_HOSTS.md",
+    "scripts/cli-login.py",
     "scripts/migrate-legacy-home.mjs",
     "scripts/copy-terminal-evidence.mjs"
   ],
@@ -64,6 +65,7 @@
     "@deepseek-ai/dsh-subagent": "0.2.1-rc.4",
     "@deepseek-ai/dsh-subprocess": "0.2.1-rc.4",
     "@deepseek-ai/dsh-tools": "0.2.1-rc.4",
+    "@deepseek-ai/schemastery": "3.18.5",
     "zod": "4.6.6"
   },
   "devDependencies": {
