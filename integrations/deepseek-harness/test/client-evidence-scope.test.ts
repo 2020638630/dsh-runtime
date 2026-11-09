@@ -13,7 +13,7 @@ const startedProps = { phase: 'result', sessionId: 'session', block: {
   content: [{ type: 'text', text: 'started governed DSH Runtime task 00000000-0000-4000-8000-000000000001' }],
 } }
 
-function loadViews(react: unknown, configForms?: unknown, windowLocation: object = {}): Map<string, View> {
+function loadViews(react: unknown, configForms?: unknown, windowLocation: object = {}, navigator?: object): Map<string, View> {
   const views = new Map<string, View>()
   let plugin: { apply: (ctx: unknown) => void } | undefined
   runInNewContext(source, {
@@ -21,7 +21,7 @@ function loadViews(react: unknown, configForms?: unknown, windowLocation: object
       plugin = registration.factory(id => id === 'react' ? { useRef: () => ({ current: null }), ...(react as object) }
         : { createPortal: (node: unknown) => node }) as typeof plugin
     } } },
-    document: { body: {} }, Date, AbortController, URLSearchParams, setInterval, clearInterval,
+    document: { body: {} }, navigator, Date, AbortController, URLSearchParams, setInterval, clearInterval,
   })
   const slots = { inject: (_: string, callback: () => unknown) => callback(),
     register: (options: { name: string }, component: View) => { views.set(options.name, component) } }
@@ -65,7 +65,7 @@ test('running card announces the phase without announcing the elapsed time on ev
 type MissingEvidence = 'aborted' | 'error' | 'unavailable' | 'read-error'
 function renderTree(tab: string, changes: Record<string, unknown>, scope?: Record<string, unknown>,
   relocation?: { status: 'verified_copy'; createdAt: string }, modelObservations?: unknown,
-  terminal?: Record<string, unknown> | MissingEvidence, diff = 'patch text'): Element {
+  terminal?: Record<string, unknown> | MissingEvidence, diff = 'patch text', navigator?: object): Element {
   const react = {
     createElement,
     useState: (() => {
@@ -87,7 +87,7 @@ function renderTree(tab: string, changes: Record<string, unknown>, scope?: Recor
     })(),
     useEffect: () => {},
   }
-  const view = loadViews(react).get('tool.call.toolview')!
+  const view = loadViews(react, undefined, {}, navigator).get('tool.call.toolview')!
   return view(startedProps) as Element
 }
 
@@ -224,6 +224,49 @@ test('long patches and audit details are collapsed by default', () => {
   assert.deepEqual(auditDetails.map(node => nodes(node).find(child => child.type === 'summary')?.children[0]),
     ['审计坐标', '模型审查原文'])
   assert.ok(auditDetails.every(node => node.props?.open === undefined))
+})
+
+test('summary preview and clipboard match without leaking file, model, output or path values', async () => {
+  const marker = {
+    version: 1, source: 'post_run_worktree_observation', scope: 'dsh_controlled_snapshot_v1',
+    file_count: 2, base_commit: 'b'.repeat(40), content_sha256: 'c'.repeat(64),
+  }
+  const changes = {
+    source: 'workspace_pre_post_snapshot_delta', baseline_compared: true,
+    observation_boundary: 'window_observed_changes', patch_complete: false,
+    added_files: ['private/source.txt'], modified_files: [], deleted_files: [],
+    diff_content_ref: '/private/diff.patch',
+  }
+  const models = { version: 1, source: 'codex_thread_start', entries: [
+    { role: 'worker', adapter: 'codex', invocation_index: 1, requested_model: 'sk-private', reported_model: 'gpt-private' },
+  ] }
+  let copied = ''
+  const tree = renderTree('audit', changes, undefined, undefined, models, {
+    status: 'failed', target_observation: marker,
+    verification: { verdict: 'FAIL', evidence_text: 'private review output' },
+  }, 'private diff content', { clipboard: { writeText: async (text: string) => { copied = text } } })
+  const view = nodes(tree).find(node => typeof node.type === 'function' && typeof node.props?.summary === 'string')!
+  const panel = nodes((view.type as View)(view.props!))
+  const preview = panel.find(node => node.type === 'textarea')!
+  const copy = panel.find(node => node.type === 'button')!
+  assert.equal(preview.props?.readOnly, true)
+  await (copy.props?.onClick as () => Promise<void>)()
+  assert.equal(copied, preview.props?.value)
+  assert.match(copied, /内容摘要 SHA-256：c{64}/u)
+  assert.match(copied, /模型审查判决：FAIL/u)
+  assert.match(copied, /实际受审快照：未绑定/u)
+  assert.match(copied, /补丁完整性：不完整/u)
+  assert.match(copied, /执行阶段模型来源：Codex · CLI 启动返回 · 已记录/u)
+  assert.doesNotMatch(copied, /private/u)
+  for (const [observation, label] of [
+    [undefined, '运行后工作树观察：未记录'],
+    [{ ...marker, content_sha256: null }, '运行后工作树观察：覆盖不完整'],
+  ] as const) {
+    const history = nodes(renderTree('audit', changes, undefined, undefined, undefined, { target_observation: observation }))
+    const summary = history.find(node => typeof node.props?.summary === 'string')?.props?.summary
+    assert.ok(typeof summary === 'string' && summary.includes(label))
+    assert.doesNotMatch(summary, /内容摘要 SHA-256/u)
+  }
 })
 
 test('plugin settings atomically edit CLI roles and preserve API entries and stale drafts', async () => {

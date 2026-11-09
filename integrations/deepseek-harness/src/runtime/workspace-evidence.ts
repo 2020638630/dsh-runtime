@@ -28,6 +28,7 @@ export interface WorkspaceSnapshot {
   readonly workspace: string
   readonly files: ReadonlyMap<string, FileState>
   readonly scopeExclusions: readonly string[]
+  readonly coverageLimited: boolean
 }
 
 /** Per-file content status used when a complete text patch is unavailable. */
@@ -89,6 +90,7 @@ export async function captureWorkspace(workspace: string): Promise<WorkspaceSnap
   const paths = [...new Set(stdout.toString('utf8').split('\0').filter(Boolean))]
     .filter(path => !excluded(path)).sort()
   if (paths.length > MAX_PATHS) throw new Error('workspace snapshot exceeds the file-count bound')
+  let coverageLimited = !Buffer.from(stdout.toString('utf8'), 'utf8').equals(stdout)
   const files = new Map<string, FileState>()
   let capturedBytes = 0
   for (const path of paths) {
@@ -97,13 +99,19 @@ export async function captureWorkspace(workspace: string): Promise<WorkspaceSnap
     let info
     try {
       physical = await realpath(absolute)
-      if (!within(physicalRoot, physical)) continue
+      if (!within(physicalRoot, physical)) {
+        coverageLimited = true
+        continue
+      }
       info = await stat(absolute)
     } catch (error: unknown) {
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') continue
       throw error
     }
-    if (!info.isFile()) continue
+    if (!info.isFile()) {
+      coverageLimited = true
+      continue
+    }
     let bytes: Buffer | null = null
     if (info.size <= MAX_FILE_BYTES && capturedBytes + info.size <= MAX_CAPTURE_BYTES) {
       bytes = await readFile(absolute)
@@ -113,7 +121,31 @@ export async function captureWorkspace(workspace: string): Promise<WorkspaceSnap
     const hash = bytes === null ? await hashFile(absolute) : createHash('sha256').update(bytes).digest('hex')
     files.set(path, { size: info.size, hash, bytes })
   }
-  return { workspace: physicalRoot, files, scopeExclusions: [...EXCLUSIONS] }
+  return { workspace: physicalRoot, files, scopeExclusions: [...EXCLUSIONS], coverageLimited }
+}
+
+/** Describe the terminal worktree observation. Git HEAD is advisory and the walk is not atomic. */
+export async function describeWorkspaceObservation(snapshot: WorkspaceSnapshot) {
+  const scope = 'dsh_controlled_snapshot_v1'
+  const head = await run('git', [
+    '-c', `safe.directory=${snapshot.workspace}`, 'rev-parse', '--verify', 'HEAD',
+  ], { cwd: snapshot.workspace, encoding: 'utf8', maxBuffer: 4096, timeout: 5000 })
+    .then(({ stdout }) => stdout.trim(), () => '')
+  const baseCommit = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(head) ? head : null
+  const hash = createHash('sha256')
+  hash.update(`dsh-post-run-worktree-v1\n${scope}\n`)
+  for (const path of [...snapshot.files.keys()].sort()) {
+    const file = snapshot.files.get(path)!
+    hash.update(JSON.stringify([path, file.size, file.hash]) + '\n')
+  }
+  return {
+    version: 1,
+    source: 'post_run_worktree_observation',
+    scope,
+    base_commit: baseCommit,
+    file_count: snapshot.files.size,
+    content_sha256: snapshot.coverageLimited ? null : hash.digest('hex'),
+  } as const
 }
 
 function textLines(text: string): string[] {

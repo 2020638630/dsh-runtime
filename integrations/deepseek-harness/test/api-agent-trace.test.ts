@@ -9,7 +9,7 @@ import { inspectApiAgentTrace } from '../src/runtime/api-agent-trace-evidence.ts
 import { inspectCodexTrace } from '../src/runtime/codex-trace-evidence.ts'
 import { writeTerminalEvidence } from '../src/runtime/evidence-manifest.ts'
 import { parseTaskState, type RuntimeTaskState } from '../src/runtime/run.ts'
-import { captureWorkspace } from '../src/runtime/workspace-evidence.ts'
+import { captureWorkspace, describeWorkspaceObservation } from '../src/runtime/workspace-evidence.ts'
 
 const RUN_ID = 'dsh-runtime-00000000-0000-4000-8000-000000000005'
 const TRACE_ID = 'a'.repeat(32)
@@ -206,6 +206,35 @@ test('inspection Manifest uses API Agent trace source when a closed trace exists
   assert.deepEqual(manifest.execution_trajectory.tool_operations_summary,
     { list_files: 0, read_file: 1, search_text: 0 })
   assert.deepEqual(manifest.workspace_changes.modified_files, [])
+  assert.equal(manifest.target_observation.source, 'post_run_worktree_observation')
+  assert.equal(manifest.target_observation.file_count, 1)
+  assert.equal(manifest.target_observation.base_commit, null)
+  assert.match(manifest.target_observation.content_sha256, /^[0-9a-f]{64}$/u)
+  assert.doesNotMatch(JSON.stringify(manifest.target_observation), /README\.md|isolated inspection/u)
+})
+
+test('terminal worktree digest covers actual staged, unstaged and untracked paths without changing Git', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'dsh-worktree-observation-'))
+  const git = (...args: string[]) => execFileSync('git', ['-C', workspace, ...args], { encoding: 'utf8' })
+  git('init', '-q')
+  writeFileSync(join(workspace, 'tracked.txt'), 'before\n')
+  git('add', 'tracked.txt')
+  git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'Fixture')
+  writeFileSync(join(workspace, 'tracked.txt'), 'staged\n')
+  git('add', 'tracked.txt')
+  writeFileSync(join(workspace, 'tracked.txt'), 'worktree\n')
+  writeFileSync(join(workspace, 'untracked.txt'), 'same length A\n')
+  const before = git('status', '--porcelain=v1')
+  const first = await describeWorkspaceObservation(await captureWorkspace(workspace))
+  assert.deepEqual(await describeWorkspaceObservation(await captureWorkspace(workspace)), first)
+  assert.equal(git('status', '--porcelain=v1'), before)
+  assert.equal(first.file_count, 2)
+  writeFileSync(join(workspace, 'untracked.txt'), 'same length B\n')
+  const second = await describeWorkspaceObservation(await captureWorkspace(workspace))
+  assert.equal(second.base_commit, first.base_commit)
+  assert.notEqual(second.content_sha256, first.content_sha256)
+  const partial = await describeWorkspaceObservation({ ...await captureWorkspace(workspace), coverageLimited: true })
+  assert.equal(partial.content_sha256, null)
 })
 
 test('inspection Manifest marks missing expected API trace unavailable', async () => {

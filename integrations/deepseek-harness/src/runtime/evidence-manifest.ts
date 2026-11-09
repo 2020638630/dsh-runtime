@@ -8,7 +8,7 @@ import { inspectCallTrace } from './call-trace-evidence.ts'
 import { inspectApiAgentTrace } from './api-agent-trace-evidence.ts'
 import { inspectCodexTrace } from './codex-trace-evidence.ts'
 import { inspectSafeTrace } from './safe-trace-evidence.ts'
-import { captureWorkspace, compareWorkspace, type WorkspaceSnapshot } from './workspace-evidence.ts'
+import { captureWorkspace, compareWorkspace, describeWorkspaceObservation, type WorkspaceSnapshot } from './workspace-evidence.ts'
 import type { DshRuntimeTaskKind, RuntimeTaskState } from './run.ts'
 
 const TRACE_NAME = /^codebuddy-safe-worker-[0-9a-f]{32}\.jsonl$/u
@@ -147,6 +147,7 @@ export async function writeTerminalEvidence(input: {
   }
   const after = await captureWorkspace(input.workspace)
   const changes = compareWorkspace(input.before, after)
+  const observation = await describeWorkspaceObservation(after)
   const safeTraceNames = await readdir(input.safeTraceDir)
   const traceNames = safeTraceNames.filter(name => TRACE_NAME.test(name))
   const codexTraceNames = safeTraceNames.filter(name => CODEX_TRACE_NAME.test(name))
@@ -221,6 +222,7 @@ export async function writeTerminalEvidence(input: {
       phase_2_api_agent_effective_write: apiReview && task.iteration >= 2 ? false : null,
     },
     workspace_changes: { ...changes, diff: undefined, diff_content_ref: diffPath },
+    target_observation: observation,
     evidence_scope: {
       review_verdict_basis: 'runtime_terminal_model_report',
       workspace_change_basis: 'bounded_git_pre_post_snapshot',

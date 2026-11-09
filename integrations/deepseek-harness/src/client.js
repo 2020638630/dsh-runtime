@@ -144,6 +144,13 @@ window.__ModuleLoader__.load({
       .dsh-runtime-evidence summary { cursor: pointer; }
       .dsh-runtime-evidence details p { margin-top: 8px; }
       .dsh-runtime-evidence pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+      .dsh-runtime-evidence .rt-review-summary { margin-bottom: 10px; }
+      .dsh-runtime-evidence .rt-review-summary textarea {
+        display: block; box-sizing: border-box; width: 100%; min-height: 9rem; margin: 8px 0;
+        padding: 8px; border: 1px solid var(--rt-line); border-radius: 6px; resize: vertical;
+        background: var(--rt-surface); color: inherit; font: inherit; font-size: 12px;
+      }
+      .dsh-runtime-evidence .rt-review-summary textarea:focus-visible { outline: 2px solid var(--rt-focus); }
       @media (max-width: 360px) {
         .dsh-runtime-evidence .rt-evidence-summary { grid-template-columns: minmax(0, 1fr); }
       }
@@ -645,35 +652,107 @@ window.__ModuleLoader__.load({
       return `${reason}。请查看「审计」和「实际变动」，必要时手动核对工作区。`
     }
 
-    function modelLines(manifest) {
-      if (manifest.task_kind !== 'repository_change') return []
+    function observedModels(manifest) {
       const models = manifest.model_observations
       const legacy = models?.version === 1 && models.source === 'codex_thread_start'
       const entries = (legacy || models?.version === 2)
         && Array.isArray(models.entries) && models.entries.length <= 2 ? models.entries : []
       const validId = value => value === null || (typeof value === 'string' && MODEL_ID.test(value))
       return ['worker', 'reviewer'].map((role, index) => {
-        const title = index === 0 ? '执行阶段模型' : '审查阶段模型'
         const matches = entries.filter(entry => entry?.role === role)
         const entry = matches[0]
         if (matches.length !== 1 || entry.invocation_index !== index + 1
-          || !validId(entry.requested_model) || !validId(entry.reported_model)) {
-          return line(title, '未记录')
-        }
+          || !validId(entry.requested_model) || !validId(entry.reported_model)) return null
         const source = legacy ? models.source : entry.source
         const codex = entry.adapter === 'codex' && source === 'codex_thread_start'
         const codebuddy = index === 0 && entry.adapter === 'codebuddy' && source ===
           (entry.reported_model === null ? 'unobserved' : 'codebuddy_json_assistant')
-        if (!codex && !codebuddy) return line(title, '未记录')
-        const requested = entry.requested_model ?? 'CLI 默认'
-        const reported = entry.reported_model ?? '未知'
-        const mismatch = entry.requested_model !== null && entry.reported_model !== null
-          && entry.requested_model !== entry.reported_model ? '（与请求不同）' : ''
+        if (!codex && !codebuddy) return null
         const adapter = codex ? 'Codex' : 'CodeBuddy'
         const reportLabel = codex ? 'CLI 启动返回'
           : source === 'codebuddy_json_assistant' ? 'CLI JSON 报告' : 'CLI 报告'
+        return { adapter, reportLabel, requested: entry.requested_model, reported: entry.reported_model }
+      })
+    }
+
+    function modelLines(manifest) {
+      if (manifest.task_kind !== 'repository_change') return []
+      return observedModels(manifest).map((entry, index) => {
+        const title = index === 0 ? '执行阶段模型' : '审查阶段模型'
+        if (!entry) return line(title, '未记录')
+        const { adapter, reportLabel } = entry
+        const requested = entry.requested ?? 'CLI 默认'
+        const reported = entry.reported ?? '未知'
+        const mismatch = entry.requested !== null && entry.reported !== null
+          && entry.requested !== entry.reported ? '（与请求不同）' : ''
         return line(title, `${adapter} · 请求 ${requested} · ${reportLabel} ${reported}${mismatch}`)
       })
+    }
+
+    function formatReviewSummary(manifest, runId, stats, observed, relocated) {
+      const inspection = manifest.task_kind === 'repository_inspection'
+      const change = manifest.task_kind === 'repository_change'
+      const parts = ['DSH Runtime 复核摘要',
+        `本机证据引用：原会话 → 查看证据 → ${runId}`,
+        `任务类型：${inspection ? '仓库只读检查' : change ? '仓库修改' : '未知'}`,
+        `任务约束：${inspection ? '只读' : change ? '执行后须经独立只读复核' : '未记录'}；具体目标请核对原会话。`,
+        ...stats.map(([label, value]) => `${label}：${value}`)]
+      if (change) {
+        for (const [index, model] of observedModels(manifest).entries()) {
+          const source = model ? `${model.adapter} · ${model.reportLabel} · ${model.reported ? '已记录' : '未知'}` : '未记录'
+          parts.push(`${index === 0 ? '执行' : '审查'}阶段模型来源：${source}`)
+        }
+      } else {
+        parts.push('模型来源：未记录')
+      }
+      const changes = manifest.workspace_changes
+      if (observed) {
+        parts.push(`运行前后观察：新增 ${changes.added_files.length}，修改 ${changes.modified_files.length}，删除 ${changes.deleted_files.length}；变动归属未证明。`)
+        parts.push(`补丁完整性：${changes.patch_complete === true ? '完整' : changes.patch_complete === false ? '不完整' : '未记录'}`)
+      } else {
+        parts.push('运行前后观察：缺少可比较的快照')
+      }
+      const target = manifest.target_observation
+      if (target?.version === 1 && target.source === 'post_run_worktree_observation'
+        && target.scope === 'dsh_controlled_snapshot_v1'
+        && Number.isSafeInteger(target.file_count) && target.file_count >= 0 && target.file_count <= 20000) {
+        const head = typeof target.base_commit === 'string' && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(target.base_commit)
+          ? target.base_commit : '未记录'
+        parts.push(`Git 基准：${head}`)
+        if (typeof target.content_sha256 === 'string' && /^[0-9a-f]{64}$/u.test(target.content_sha256)) {
+          parts.push(`运行后工作树观察：${target.file_count} 个文件 · ${target.scope}`,
+            `内容摘要 SHA-256：${target.content_sha256}`)
+        } else {
+          parts.push('运行后工作树观察：覆盖不完整，内容摘要不可用')
+        }
+      } else {
+        parts.push('运行后工作树观察：未记录')
+      }
+      parts.push('实际受审快照：未绑定。当前工作区尚未重新核对。')
+      if (manifest.verification.evidence_truncated === true) parts.push('审查原文：证据内仅保留部分。')
+      if (relocated) parts.push('证据来源：历史副本。')
+      return parts.join('\n')
+    }
+
+    function ReviewSummary({ summary }) {
+      const [copyStatus, setCopyStatus] = React.useState('')
+      const previewRef = React.useRef(null)
+      async function copy() {
+        try {
+          await navigator.clipboard.writeText(summary)
+          setCopyStatus('已复制复核摘要。')
+        } catch {
+          previewRef.current?.focus()
+          previewRef.current?.select()
+          setCopyStatus('自动复制不可用，已选中摘要。请按 Ctrl+C 或使用系统复制。')
+        }
+      }
+      return h('details', { className: 'rt-review-summary' },
+        h('summary', null, '复核摘要'),
+        h('p', null, '可复制本机证据引用和摘要。任务原文、模型 ID、文件路径、源码和日志保留在原处。'),
+        h('textarea', { 'aria-label': '复核摘要预览', ref: previewRef, readOnly: true, value: summary }),
+        h('button', { type: 'button', style: runButton, onClick: copy }, '复制复核摘要'),
+        copyStatus && h('p', { role: 'status' }, copyStatus))
     }
 
     function liveActivity(progress, now) {
@@ -744,10 +823,13 @@ window.__ModuleLoader__.load({
             }
           } catch {
             if (!lifetime.signal.aborted) { done = true; setState('read-error') }
-          } finally { pending = false }
+          } finally {
+            pending = false
+            if (done) clearInterval(timer)
+          }
         }
-        void load()
         const timer = setInterval(() => { void load() }, 3000)
+        void load()
         return () => { lifetime.abort(); clearInterval(timer) }
       }, [id, props.sessionId])
 
@@ -869,6 +951,9 @@ window.__ModuleLoader__.load({
           guidance && h('p', { className: 'rt-evidence-note' }, guidance),
           ready.relocation && h('p', { className: 'rt-evidence-note' },
             `历史证据副本：复制哈希已核对（${ready.relocation.createdAt}）。此校验只证明副本与迁移收据一致，不证明原始任务或审查正确。`),
+          h(ReviewSummary, {
+            summary: formatReviewSummary(manifest, `dsh-runtime-${id}`, stats, observed, ready.relocation),
+          }),
           h('nav', { 'aria-label': '证据分类' },
             Object.entries(labels).map(([name, label]) => h('button', { key: name, type: 'button', style: runButton,
               'aria-current': tab === name ? 'page' : undefined, onClick: () => setTab(name) }, label))),
