@@ -18,7 +18,8 @@ function loadViews(react: unknown, configForms?: unknown, windowLocation: object
   let plugin: { apply: (ctx: unknown) => void } | undefined
   runInNewContext(source, {
     window: { location: windowLocation, __ModuleLoader__: { load: (registration: { factory: (require: (id: string) => unknown) => unknown }) => {
-      plugin = registration.factory(id => id === 'react' ? react : { createPortal: (node: unknown) => node }) as typeof plugin
+      plugin = registration.factory(id => id === 'react' ? { useRef: () => ({ current: null }), ...(react as object) }
+        : { createPortal: (node: unknown) => node }) as typeof plugin
     } } },
     document: { body: {} }, Date, AbortController, URLSearchParams, setInterval, clearInterval,
   })
@@ -39,7 +40,7 @@ function nodes(value: unknown): Element[] {
   return []
 }
 
-test('running card displays phase, executor and latest safe event separately from evidence', () => {
+test('running card announces the phase without announcing the elapsed time on every tick', () => {
   const now = Date.now()
   const props = { ...startedProps, block: { ...startedProps.block, time: now - 20_000 } }
   const progress = {
@@ -53,15 +54,18 @@ test('running card displays phase, executor and latest safe event separately fro
     useState: () => [values[index++], () => {}],
     useEffect: () => {},
   }).get('tool.call.toolview')!
-  const strings = nodes(view(props)).flatMap(node => node.children.filter(child => typeof child === 'string'))
-  assert.ok(strings.includes('审查阶段 · Codex · 20 秒'))
+  const elements = nodes(view(props))
+  const strings = elements.flatMap(node => node.children.filter(child => typeof child === 'string'))
+  assert.equal(elements.find(node => node.props?.role === 'status')?.children.join(''), '审查阶段 · Codex')
+  assert.ok(strings.includes(' · 20 秒'))
   assert.ok(strings.includes('最近事件 · Codex · 命令 · 已完成 · 4 秒前'))
   assert.ok(!strings.includes('查看证据'))
 })
 
-function render(tab: string, changes: Record<string, unknown>, scope?: Record<string, unknown>,
+type MissingEvidence = 'aborted' | 'error' | 'unavailable' | 'read-error'
+function renderTree(tab: string, changes: Record<string, unknown>, scope?: Record<string, unknown>,
   relocation?: { status: 'verified_copy'; createdAt: string }, modelObservations?: unknown,
-  terminal?: Record<string, unknown> | 'aborted' | 'error' | 'unavailable'): string {
+  terminal?: Record<string, unknown> | MissingEvidence, diff = 'patch text'): Element {
   const react = {
     createElement,
     useState: (() => {
@@ -76,7 +80,7 @@ function render(tab: string, changes: Record<string, unknown>, scope?: Record<st
             execution_trajectory: { status: 'available', turns_used: null },
             audit: { status: 'settled', call_id: 'id', stdout_sha256: 'hash' },
             ...terminal,
-          }, diff: 'patch text', relocation }, true, tab, Date.now(),
+          }, diff, relocation }, true, tab, Date.now(),
         ]
         return [values[index++] ?? initial, () => {}]
       }
@@ -84,14 +88,17 @@ function render(tab: string, changes: Record<string, unknown>, scope?: Record<st
     useEffect: () => {},
   }
   const view = loadViews(react).get('tool.call.toolview')!
-  const tree = view(startedProps)
+  return view(startedProps) as Element
+}
+
+function render(...args: Parameters<typeof renderTree>): string {
   const strings: string[] = []
   const visit = (value: unknown): void => {
     if (typeof value === 'string') strings.push(value)
     else if (Array.isArray(value)) value.forEach(visit)
     else if (value && typeof value === 'object' && 'children' in value) visit(value.children)
   }
-  visit(tree)
+  visit(renderTree(...args))
   return strings.join('\n')
 }
 
@@ -171,7 +178,7 @@ test('terminal guidance distinguishes review failure, unavailable evidence and a
   const changes = { added_files: [], modified_files: [], deleted_files: [] }
   const status = 'failed'
   const run_id = 'dsh-runtime-00000000-0000-4000-8000-000000000001'
-  const draw = (terminal: Record<string, unknown> | 'aborted' | 'error' | 'unavailable') =>
+  const draw = (terminal: Record<string, unknown> | MissingEvidence) =>
     render('audit', changes, undefined, undefined, undefined, terminal)
   const fail = draw({ status, run_id, verification: { verdict: 'FAIL', evidence_text: 'review basis' } })
   assert.match(fail, /模型审查未通过/u)
@@ -182,11 +189,41 @@ test('terminal guidance distinguishes review failure, unavailable evidence and a
   ] as const) {
     assert.ok(draw({ status, verification: { verdict: 'UNAVAILABLE', invocation_binding } }).includes(text))
   }
-  for (const state of ['aborted', 'error', 'unavailable'] as const) {
+  for (const state of ['aborted', 'error', 'unavailable', 'read-error'] as const) {
     assert.match(draw(state), /无法确认文件是否发生变动/u)
     assert.doesNotMatch(draw(state), /BLOCKED|查看证据/u)
   }
   assert.doesNotMatch(draw({ task_kind: 'repository_inspection', verification: { verdict: 'UNAVAILABLE' } }), /现有证据无法/u)
+})
+
+test('overview keeps task, verdict, trajectory and audit states independent', () => {
+  const changes = { added_files: [], modified_files: [], deleted_files: [] }
+  const overview = (terminal: Record<string, unknown>) => nodes(renderTree('trajectory', changes,
+    undefined, undefined, undefined, terminal)).filter(node => node.type === 'dt' || node.type === 'dd')
+    .map(node => node.children.join(''))
+  assert.deepEqual(overview({ status: 'timed_out', verification: { verdict: 'UNAVAILABLE' },
+    execution_trajectory: { status: 'incomplete' }, audit: { status: 'unavailable' } }),
+  ['任务状态', '运行超时', '模型审查判决', '无法确认', '轨迹状态', '不完整', '审计状态', '不可用'])
+  assert.deepEqual(overview({ task_kind: 'repository_inspection', verification: { verdict: 'UNAVAILABLE' } }),
+    ['任务状态', '已完成', '模型审查判决', '不适用', '轨迹状态', '可用', '审计状态', '已结算'])
+})
+
+test('long patches and audit details are collapsed by default', () => {
+  const changes = {
+    source: 'workspace_pre_post_snapshot_delta', baseline_compared: true,
+    observation_boundary: 'window_observed_changes',
+    added_files: ['new.txt'], modified_files: [], deleted_files: [],
+  }
+  const text = 'x'.repeat(200001)
+  const patch = nodes(renderTree('changes', changes, undefined, undefined, undefined, undefined, text))
+    .find(node => node.type === 'details')!
+  assert.equal(patch.props?.open, undefined)
+  assert.equal(nodes(patch).find(node => node.type === 'pre')?.children[0], text.slice(0, 200000))
+  assert.match(nodes(patch).find(node => node.type === 'p')?.children.join('') ?? '', /仅展示/u)
+  const auditDetails = nodes(renderTree('audit', changes)).filter(node => node.type === 'details')
+  assert.deepEqual(auditDetails.map(node => nodes(node).find(child => child.type === 'summary')?.children[0]),
+    ['审计坐标', '模型审查原文'])
+  assert.ok(auditDetails.every(node => node.props?.open === undefined))
 })
 
 test('plugin settings atomically edit CLI roles and preserve API entries and stale drafts', async () => {

@@ -82,10 +82,72 @@ window.__ModuleLoader__.load({
           && typeof value.relocation?.createdAt === 'string'))
     }
 
-    const panel = { padding: '16px 20px', overflow: 'auto', overflowWrap: 'anywhere' }
-    const button = { border: 0, background: 'transparent', color: 'inherit', cursor: 'pointer', padding: '6px 9px' }
-    const pre = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 12 }
+    const runButton = {
+      border: '1px solid var(--dsw-alias-border-l3, currentColor)', borderRadius: 8,
+      background: 'transparent', color: 'inherit', cursor: 'pointer', padding: '5px 10px',
+    }
+    const runStatuses = {
+      completed: '已完成', failed: '运行失败', timed_out: '运行超时', max_iterations: '已达运行轮次上限',
+    }
+    const evidenceStatuses = {
+      available: '可用', unavailable: '不可用', incomplete: '不完整', unknown: '未知',
+      not_applicable: '不适用', settled: '已结算', invalid: '校验失败',
+    }
+    const labelFor = (labels, value) => Object.hasOwn(labels, value) ? labels[value] : '未知'
     const line = (label, value) => h('p', { key: label }, `${label}：${value ?? '未知'}`)
+    const disclosure = (title, ...children) =>
+      h('details', { key: title }, h('summary', null, title), ...children)
+    const evidenceCss = `
+      .dsh-runtime-evidence {
+        --rt-surface: var(--dsw-alias-bg-base, Canvas);
+        --rt-muted: var(--dsw-alias-label-secondary, CanvasText);
+        --rt-line: var(--dsw-alias-border-l3, color-mix(in srgb, CanvasText 24%, transparent));
+        --rt-focus: var(--dsw-alias-link, Highlight);
+        box-sizing: border-box; position: fixed; inset: 0 0 0 auto; margin: 0;
+        width: min(560px, 100%); height: 100%; max-width: 100%; max-height: 100%;
+        padding: 0; border: 0; border-inline-start: 1px solid var(--rt-line);
+        color: var(--dsw-alias-label-primary, CanvasText); background: var(--rt-surface);
+        line-height: 1.45; overflow: hidden; overflow-wrap: anywhere;
+      }
+      .dsh-runtime-evidence[open] { display: flex; flex-direction: column; }
+      .dsh-runtime-evidence::backdrop { background: rgb(0 0 0 / 42%); }
+      .dsh-runtime-evidence :where(p, h2, dt, dd) { margin: 0; }
+      .dsh-runtime-evidence :where(button, summary, .rt-evidence-body):focus-visible {
+        outline: 2px solid var(--rt-focus); outline-offset: -2px;
+      }
+      .dsh-runtime-evidence .rt-evidence-head {
+        display: flex; align-items: center; gap: 12px; justify-content: space-between;
+        padding: 38px 16px 12px; flex: none; border-bottom: 1px solid var(--rt-line);
+      }
+      .dsh-runtime-evidence h2 { font-size: 17px; font-weight: 650; }
+      .dsh-runtime-evidence .rt-evidence-body { min-height: 0; overflow: auto; padding: 16px; }
+      .dsh-runtime-evidence .rt-evidence-summary {
+        margin: 0 0 12px; display: grid; gap: 8px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .dsh-runtime-evidence .rt-evidence-summary div,
+      .dsh-runtime-evidence details, .dsh-runtime-evidence .rt-evidence-note {
+        min-width: 0; padding: 8px 10px; border: 1px solid var(--rt-line); border-radius: 8px;
+      }
+      .dsh-runtime-evidence dt { color: var(--rt-muted); font-size: 12px; }
+      .dsh-runtime-evidence dd { margin-top: 3px; font-weight: 650; }
+      .dsh-runtime-evidence .rt-evidence-note { margin: 0 0 10px; font-size: 13px; }
+      .dsh-runtime-evidence nav {
+        display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;
+        padding-block: 6px; border-bottom: 1px solid var(--rt-line);
+      }
+      .dsh-runtime-evidence nav [aria-current="page"] {
+        border-color: currentColor; font-weight: 650;
+        background: color-mix(in srgb, currentColor 9%, transparent);
+      }
+      .dsh-runtime-evidence .rt-evidence-content { display: grid; gap: 8px; font-size: 13px; }
+      .dsh-runtime-evidence summary { cursor: pointer; }
+      .dsh-runtime-evidence details p { margin-top: 8px; }
+      .dsh-runtime-evidence pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+      @media (max-width: 360px) {
+        .dsh-runtime-evidence .rt-evidence-summary { grid-template-columns: minmax(0, 1fr); }
+      }
+    `
     const settingsCss = `
       .dsh-runtime-settings {
         --rt-surface: var(--dsw-alias-bg-base, Canvas);
@@ -177,17 +239,6 @@ window.__ModuleLoader__.load({
       h('div', null, h('h3', null, title), h('p', { className: 'rt-note' }, help)), status)
     const field = (label, control, full = false) =>
       h('label', { className: full ? 'rt-field rt-span' : 'rt-field' }, label, control)
-
-    function drawer(title, close, ...children) {
-      return createPortal(h('div', {
-        style: { position: 'fixed', inset: 0, zIndex: 1000, background: 'rgb(0 0 0 / 42%)', display: 'flex', justifyContent: 'flex-end' },
-        onMouseDown: event => { if (event.target === event.currentTarget) close() },
-      }, h('section', { role: 'dialog', 'aria-modal': 'true', 'aria-label': title,
-        style: { width: 'min(560px, 100vw)', height: '100%', background: 'var(--dsw-alias-bg-base, white)', display: 'flex', flexDirection: 'column' },
-      }, h('header', { style: { ...panel, paddingTop: 40, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 } },
-        h('button', { type: 'button', 'aria-label': '关闭', style: button, onClick: close }, '×'), h('strong', null, title)),
-      ...children)), document.body)
-    }
 
     function CliLogin({ cli, label, invalidateModels }) {
       const [status, setStatus] = React.useState(null)
@@ -580,7 +631,7 @@ window.__ModuleLoader__.load({
 
     function failureGuidance(state, manifest) {
       if (!manifest) {
-        return ['aborted', 'error', 'unavailable'].includes(state)
+        return ['aborted', 'error', 'unavailable', 'read-error'].includes(state)
           ? '缺少终态证据，无法确认文件是否发生变动。请先手动核对工作区。' : null
       }
       if (manifest.task_kind !== 'repository_change') return null
@@ -647,11 +698,14 @@ window.__ModuleLoader__.load({
       const [tab, setTab] = React.useState('trajectory')
       const [now, setNow] = React.useState(Date.now())
       const [progress, setProgress] = React.useState(null)
-      const start = props.phase === 'result' ? props.block.callTime ?? props.block.time : props.block.time
+      const dialogRef = React.useRef(null)
+      const triggerRef = React.useRef(null)
+      const start = props.phase === 'result' ? props.block?.callTime ?? props.block?.time : props.block?.time
 
       React.useEffect(() => {
         setState('waiting')
         setProgress(null)
+        setOpen(false)
         if (!id) return
         const lifetime = new AbortController()
         let pending = false
@@ -663,16 +717,18 @@ window.__ModuleLoader__.load({
           try {
             const query = new URLSearchParams({ sessionId: props.sessionId, childId: id })
             const response = await fetch(`api/dsh-runtime.evidence?${query}`, { signal: lifetime.signal })
+            if (lifetime.signal.aborted) return
             if (response.status === 404) {
               if (++missing >= 10) { done = true; setState('unavailable') }
               return
             }
             if (!response.ok && response.status !== 202) {
               done = true
-              setState('unavailable')
+              setState('read-error')
               return
             }
             const value = await response.json()
+            if (lifetime.signal.aborted) return
             if (validEvidence(value)) {
               done = true
               setState(value)
@@ -687,7 +743,7 @@ window.__ModuleLoader__.load({
               setProgress(value.progress ?? {})
             }
           } catch {
-            if (!lifetime.signal.aborted) { done = true; setState('unavailable') }
+            if (!lifetime.signal.aborted) { done = true; setState('read-error') }
           } finally { pending = false }
         }
         void load()
@@ -696,18 +752,19 @@ window.__ModuleLoader__.load({
       }, [id, props.sessionId])
 
       React.useEffect(() => {
-        if (state !== 'waiting') return
+        if (!id || state !== 'waiting') return
         const timer = setInterval(() => setNow(Date.now()), 1000)
         return () => clearInterval(timer)
-      }, [state])
-      React.useEffect(() => {
-        if (!open) return
-        const close = event => { if (event.key === 'Escape') setOpen(false) }
-        window.addEventListener('keydown', close)
-        return () => window.removeEventListener('keydown', close)
-      }, [open])
-
+      }, [id, state])
       const ready = typeof state === 'object' ? state : null
+      const showDrawer = open && !!ready
+      React.useEffect(() => {
+        if (!showDrawer) return
+        const dialog = dialogRef.current
+        dialog.showModal()
+        return () => dialog.close()
+      }, [showDrawer])
+
       const manifest = ready?.manifest
       const changes = manifest?.workspace_changes
       const count = changes ? changes.added_files.length + changes.modified_files.length + changes.deleted_files.length : 0
@@ -719,20 +776,26 @@ window.__ModuleLoader__.load({
       const guidance = failureGuidance(state, manifest)
       const active = state === 'waiting' && progress?.phase
       const stage = active && Object.hasOwn(cliRoles, active.role) && Object.hasOwn(progressAdapters, active.adapter)
-        ? cliRoles[active.role] + '阶段 · ' + progressAdapters[active.adapter] : '运行中'
-      const elapsed = Math.max(0, Math.round((now - start) / 1000))
-      const summary = ready ? `${manifest.status} · ${Math.round(manifest.duration_ms / 1000)} 秒${ready.relocation ? ' · 历史证据副本' : ''}`
-        : state === 'waiting' ? (id ? (progress ? stage : '等待证据') + ' · ' + elapsed + ' 秒' : '正在启动')
-          : state === 'aborted' ? '已取消'
-            : state === 'error' ? '运行失败' : '终态证据不可用'
+        ? cliRoles[active.role] + '阶段 · ' + progressAdapters[active.adapter]
+        : progress ? '运行中' : id ? '等待运行状态' : '正在启动'
+      const status = ready ? labelFor(runStatuses, manifest.status)
+        : state === 'waiting' ? stage
+          : labelFor({ aborted: '已取消', error: '运行失败', unavailable: '终态证据不可用', 'read-error': '读取证据失败' }, state)
+      const duration = ready ? manifest.duration_ms : id && state === 'waiting' && Number.isFinite(start)
+        ? Math.max(0, now - start) : null
+      const reviewVerdict = manifest?.task_kind === 'repository_inspection' ? '不适用'
+        : labelFor({ PASS: 'PASS', FAIL: 'FAIL', UNAVAILABLE: '无法确认', NOT_APPLICABLE: '不适用' },
+          manifest?.verification.verdict)
+      const trajectoryStatus = labelFor(evidenceStatuses, manifest?.execution_trajectory.status)
+      const auditStatus = labelFor(evidenceStatuses, manifest?.audit.status)
       let body = null
-      if (ready && tab === 'trajectory') {
+      if (showDrawer && tab === 'trajectory') {
         const trajectory = manifest.execution_trajectory
-        body = [line('轨迹状态', trajectory.status), line('轮次', trajectory.turns_used ?? '未记录'),
+        body = [line('轮次', trajectory.turns_used ?? '未记录'),
           ...modelLines(manifest),
           h('ul', { key: 'tools' }, Object.entries(trajectory.tool_operations_summary ?? {})
             .map(([name, count]) => h('li', { key: name }, `${name}：${count}`)))]
-      } else if (ready && tab === 'changes') {
+      } else if (showDrawer && tab === 'changes') {
         body = [line('文件范围证据', observed ? '运行前后快照观察' : '不可用：未确认可比的前后快照'),
           line('快照覆盖', observed ? 'Git 已跟踪文件及非忽略的未跟踪文件；受排除策略约束，补丁另有大小上限' : '未知'),
           observed ? line('排除路径', Array.isArray(changes.scope_exclusions)
@@ -743,15 +806,17 @@ window.__ModuleLoader__.load({
           observed ? line('修改', changes.modified_files.join('、') || '无') : null,
           observed ? line('删除', changes.deleted_files.join('、') || '无') : null,
           observed && count ? line('补丁', changes.patch_applicable ? '可应用' : '仅供查看') : null,
-          observed && ready.diff ? h('pre', { key: 'diff', style: pre }, ready.diff.slice(0, 200000)) : null]
-      } else if (ready) {
+          observed && ready.diff ? disclosure('查看补丁',
+            h('pre', null, ready.diff.slice(0, 200000)),
+            ready.diff.length > 200000 && h('p', null, '补丁仅展示前 200000 个字符。')) : null]
+      } else if (showDrawer) {
         const review = manifest.review_trajectory
-        body = [line('审计状态', manifest.audit.status),
-          guidance && typeof manifest.run_id === 'string' && RUN_ID.test(manifest.run_id)
-            ? line('运行 ID', manifest.run_id) : null,
+        body = [disclosure('审计坐标',
+          line('运行 ID', RUN_ID.test(manifest.run_id ?? '') ? manifest.run_id : null),
           line('调用 ID', manifest.audit.call_id),
-          line('输出摘要', manifest.audit.stdout_sha256), line('模型审查判决', manifest.verification.verdict),
-          line('判决范围', '模型报告；文件变化由独立快照观察，不能据此认定变动归属'),
+          line('输出摘要', manifest.audit.stdout_sha256)),
+          manifest.task_kind !== 'repository_inspection'
+            ? line('判决范围', '模型报告；文件变化由独立快照观察，不能据此认定变动归属') : null,
           review?.source === 'api_agent_safe_event_trace'
             ? line('API 审查轨迹', review.status) : null,
           review?.source === 'api_agent_safe_event_trace' && review.terminal_reason
@@ -761,31 +826,53 @@ window.__ModuleLoader__.load({
           review?.source === 'api_agent_safe_event_trace' && review.status === 'available'
             ? h('ul', { key: 'review-tools' }, Object.entries(review.tool_operations_summary ?? {})
               .map(([name, count]) => h('li', { key: name }, `${name}：${count}`))) : null,
-          line('模型审查原文', ''),
-          h('pre', { key: 'basis', style: pre }, manifest.verification.evidence_text ?? '未知')]
+          manifest.verification.evidence_text
+            ? disclosure('模型审查原文', h('pre', null, manifest.verification.evidence_text)) : null]
       }
-      return h('div', { 'data-tool': 'dsh_runtime', style: { minWidth: 0 } },
-        h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, minHeight: 30 } },
+      const close = () => {
+        dialogRef.current?.close()
+        triggerRef.current?.focus({ preventScroll: true })
+        setOpen(false)
+      }
+      const stats = [['任务状态', status], ['模型审查判决', reviewVerdict],
+        ['轨迹状态', trajectoryStatus], ['审计状态', auditStatus]]
+      return h('div', { 'data-tool': 'dsh_runtime', style: { minWidth: 0, overflowWrap: 'anywhere' } },
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 10px', minHeight: 32 } },
           h('strong', null, 'DSH Runtime'),
-          h('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, summary),
-          ready && h('button', { type: 'button', style: button, onClick: () => {
-            if (guidance) setTab('audit')
+          h('div', { style: { flex: '1 1 auto', minWidth: 0 } },
+            h('span', { role: 'status' }, status),
+            duration !== null && h('span', null, ` · ${Math.round(duration / 1000)} 秒`),
+            ready?.relocation && h('span', null, ' · 历史证据副本')),
+          ready && h('button', { type: 'button', ref: triggerRef, style: runButton, onClick: () => {
+            setTab(guidance || manifest.status !== 'completed' ? 'audit' : 'trajectory')
             setOpen(true)
           } }, '查看证据')),
+        ready && h('p', { style: { fontSize: 12, margin: '4px 0' } }, `模型审查判决：${reviewVerdict}`),
         guidance && h('p', { style: { fontSize: 12, margin: '4px 0' } }, guidance),
-        state === 'waiting' && progress && h('p', { style: { fontSize: 12, margin: '4px 0' } },
-          liveActivity(progress, now) ?? '等待可显示的运行事件'),
-        open && ready && drawer('DSH Runtime', () => setOpen(false),
-        h('div', { style: panel }, `任务状态：${manifest.status}　模型审查判决：${manifest.verification.verdict}`),
-        guidance && h('p', { style: panel }, guidance),
-        ready.relocation && h('div', { style: panel },
-          `历史证据副本：复制哈希已核对（${ready.relocation.createdAt}）。此校验只证明副本与迁移收据一致，不证明原始任务或审查正确。`),
-        h('nav', { 'aria-label': 'DSH Runtime', style: { display: 'flex', padding: '0 16px' } },
-          Object.entries(labels).map(([name, label]) => h('button', { key: name, type: 'button',
-            'aria-current': tab === name ? 'page' : undefined,
-            style: { ...button, borderBottom: tab === name ? '2px solid currentColor' : 'none' },
-            onClick: () => setTab(name) }, label))),
-        h('div', { style: { ...panel, flex: 1 } }, body)))
+        state === 'waiting' && id && h('p', { style: { fontSize: 12, margin: '4px 0' } },
+          liveActivity(progress, now) ?? '暂无可显示的运行事件'),
+        showDrawer && createPortal(h('dialog', {
+          ref: dialogRef, className: 'dsh-runtime-evidence', 'aria-label': 'DSH Runtime 证据',
+          onCancel: event => { event.preventDefault(); close() },
+          onClick: event => {
+            if (event.target !== event.currentTarget) return
+            const rect = event.currentTarget.getBoundingClientRect()
+            if (event.clientX < rect.left || event.clientX >= rect.right) close()
+          },
+        }, h('style', null, evidenceCss),
+        h('header', { className: 'rt-evidence-head' },
+          h('h2', null, 'DSH Runtime 证据'),
+          h('button', { type: 'button', style: runButton, autoFocus: true, onClick: close }, '关闭')),
+        h('div', { className: 'rt-evidence-body', tabIndex: 0, role: 'region', 'aria-label': '证据详情' },
+          h('dl', { className: 'rt-evidence-summary' }, stats.map(([label, value]) =>
+            h('div', { key: label }, h('dt', null, label), h('dd', null, value)))),
+          guidance && h('p', { className: 'rt-evidence-note' }, guidance),
+          ready.relocation && h('p', { className: 'rt-evidence-note' },
+            `历史证据副本：复制哈希已核对（${ready.relocation.createdAt}）。此校验只证明副本与迁移收据一致，不证明原始任务或审查正确。`),
+          h('nav', { 'aria-label': '证据分类' },
+            Object.entries(labels).map(([name, label]) => h('button', { key: name, type: 'button', style: runButton,
+              'aria-current': tab === name ? 'page' : undefined, onClick: () => setTab(name) }, label))),
+          h('div', { className: 'rt-evidence-content' }, body))), document.body))
     }
 
     return {
