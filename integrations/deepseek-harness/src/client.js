@@ -11,9 +11,34 @@ window.__ModuleLoader__.load({
     const labels = { trajectory: '执行轨迹', changes: '实际变动', audit: '审计' }
     const cliRoles = { worker: '执行', reviewer: '审查', inspector: '只读检查' }
     const cliNames = { codex: 'Codex', codebuddy: 'CodeBuddy' }
+    const progressAdapters = { ...cliNames, api_agent: 'API Agent' }
+    const progressTools = {
+      Read: '读取文件', Edit: '编辑文件', Write: '写入文件', Bash: '命令',
+      commandExecution: '命令', fileChange: '文件变更', list_files: '列出文件',
+      read_file: '读取文件', search_text: '搜索文件',
+    }
     const loginLabels = {
       signed_in: '已登录', signed_out: '未登录', unavailable: 'CLI 不可用',
       unknown: '无法确认登录状态', unsupported: '当前宿主不支持', running: '登录窗口已打开',
+    }
+    const apiProviders = {
+      openrouter: { label: 'OpenRouter', url: 'https://openrouter.ai/api/v1' },
+      siliconflow: { label: 'SiliconFlow', url: 'https://api.siliconflow.cn/v1' },
+    }
+    const apiMessages = {
+      invalid: '连接信息无效，请检查引用、服务商和密钥格式。',
+      conflict: '连接已在别处更新。请重新读取后再编辑。',
+      unavailable: '连接配置不可用。请检查 Runtime 版本、连接文件和目录权限。',
+      authenticated: 'OpenRouter 鉴权通过。未验证模型调用。',
+      model_catalog_readable: 'SiliconFlow 聊天模型目录可读取。未验证模型调用。',
+      auth_rejected: '服务商拒绝鉴权，请核对密钥或权限。',
+      rate_limited: '服务商限制了请求频率。',
+      redirect_rejected: '服务商返回了跳转，请核对地址。',
+      http_error: '服务商返回错误，试连未通过。',
+      invalid_response: '服务商返回的内容不符合试连接口预期。',
+      timeout: '试连超时。',
+      network_error: '试连未建立网络连接。',
+      client_unavailable: 'Runtime 缺少 API 请求依赖。',
     }
 
     function startedChild(props) {
@@ -116,6 +141,117 @@ window.__ModuleLoader__.load({
         message && h('p', { role: 'status' }, message))
     }
 
+    function ApiConnections({ roles, inputStyle }) {
+      const [catalog, setCatalog] = React.useState(null)
+      const [selected, setSelected] = React.useState('')
+      const [draftRef, setDraftRef] = React.useState('')
+      const [draftProvider, setDraftProvider] = React.useState('openrouter')
+      const [busy, setBusy] = React.useState(false)
+      const [stale, setStale] = React.useState(false)
+      const [message, setMessage] = React.useState('')
+      const password = React.useRef(null)
+      const existing = catalog?.connections.find(item => item.reference === selected)
+      const reference = existing?.reference ?? draftRef
+      const provider = existing?.provider ?? draftProvider
+
+      async function send(body, signal) {
+        try {
+          const response = await fetch('api/dsh-runtime.api-connections', {
+            method: 'POST', cache: 'no-store', signal,
+            headers: { 'content-type': 'application/json', 'x-dsh-runtime-api': '1' },
+            body: JSON.stringify(body),
+          })
+          return await response.json()
+        } catch {
+          return { status: 'unavailable' }
+        }
+      }
+
+      async function refresh(signal) {
+        setBusy(true)
+        const result = await send({ action: 'list' }, signal)
+        if (signal?.aborted) return
+        setBusy(false)
+        if (result?.status !== 'ok') {
+          setStale(true)
+          setMessage(apiMessages.unavailable)
+          return
+        }
+        if (password.current) password.current.value = ''
+        setSelected('')
+        setDraftRef('')
+        setCatalog(result)
+        setStale(false)
+        setMessage('')
+      }
+
+      React.useEffect(() => {
+        const lifetime = new AbortController()
+        void refresh(lifetime.signal)
+        return () => lifetime.abort()
+      }, [])
+
+      async function submit(action) {
+        const key = password.current?.value || null
+        if (!catalog || busy || stale) return
+        if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/u.test(reference)
+          || (key !== null && !/^[\x21-\x7e]{8,512}$/u.test(key))) {
+          setMessage(apiMessages.invalid)
+          return
+        }
+        if (!existing && catalog.connections.some(item => item.reference === reference)) {
+          setMessage('该连接引用已存在，请从列表选择它再编辑。')
+          return
+        }
+        if (!existing && key === null) {
+          setMessage('新连接需要填写 API Key。')
+          return
+        }
+        setBusy(true)
+        setMessage(action === 'test' ? '正在试连…' : '正在保存…')
+        const result = await send({ action, reference, provider, key, revision: catalog.revision })
+        setBusy(false)
+        if (action === 'save' && result?.status === 'ok') {
+          if (password.current) password.current.value = ''
+          setCatalog(result)
+          setSelected(reference)
+          setDraftRef('')
+          setMessage('连接已保存。新任务会读取更新后的凭据。')
+          return
+        }
+        if (result?.status === 'conflict') setStale(true)
+        setMessage(apiMessages[result?.status] ?? apiMessages.unavailable)
+      }
+
+      const disabled = !catalog || busy || stale
+      const attached = Object.entries(roles)
+        .filter(([, role]) => role.adapter === 'api_agent' && role.connection_ref === reference)
+        .map(([role, value]) => cliRoles[role] + ' · ' + value.model)
+      return h('section', { 'aria-label': 'API 连接', style: { paddingTop: 18 } },
+        h('strong', null, 'API 连接'),
+        h('p', null, '试连使用当前表单，不会保存或发起推理。角色继续使用 Profile 中的连接引用和模型。'),
+        h('label', null, '已保存的 API 连接', h('select', { style: inputStyle, value: selected,
+          disabled, onChange: event => { setSelected(event.target.value); setDraftRef(''); setMessage('') },
+        }, h('option', { value: '' }, '新建 API 连接'),
+        ...(catalog?.connections ?? []).map(item => h('option', { key: item.reference, value: item.reference },
+          item.reference + ' · ' + apiProviders[item.provider].label)))),
+        h('label', null, '连接引用', h('input', { style: inputStyle, value: reference, maxLength: 64,
+          disabled: disabled || Boolean(existing), spellCheck: false, autoComplete: 'off',
+          onChange: event => setDraftRef(event.target.value) })),
+        h('label', null, 'API 服务商', h('select', { style: inputStyle, value: provider,
+          disabled: disabled || Boolean(existing), onChange: event => { setDraftProvider(event.target.value); setMessage('') },
+        }, ...Object.entries(apiProviders).map(([id, item]) => h('option', { key: id, value: id }, item.label)))),
+        h('p', null, '服务地址：' + apiProviders[provider].url),
+        existing && h('p', null, 'API Key 已设置。留空保留已保存的密钥。'),
+        attached.length > 0 && h('p', null, '使用此连接的角色与模型：' + attached.join('，')),
+        h('label', null, 'API Key', h('input', { key: selected + provider, ref: password, type: 'password',
+          maxLength: 512, autoComplete: 'new-password', spellCheck: false, style: inputStyle, disabled })),
+        h('button', { type: 'button', disabled, onClick: () => void submit('save') }, '保存 API 连接'),
+        h('button', { type: 'button', disabled, style: button, onClick: () => void submit('test') }, '试连 API'),
+        h('button', { type: 'button', disabled: busy, style: button, onClick: () => void refresh() }, '重新读取 API 连接'),
+        h('p', { role: 'status' }, message || (!catalog && busy ? '正在读取 API 连接…' : '')))
+    }
+
     function RoleDefaults({ form, mirror }) {
       const snapshot = React.useSyncExternalStore(listener => mirror.subscribe(listener), () => mirror.getSnapshot())
       const entry = snapshot.view?.namespaces.find(item => item.ns === 'dsh-runtime-standalone')
@@ -215,10 +351,12 @@ window.__ModuleLoader__.load({
           setMessage('')
         } }, '放弃草稿并读取当前值'),
         h('p', { role: 'status' }, message),
-        window.location?.protocol === 'dsh-app:' && h('section', { 'aria-label': 'CLI 登录', style: { paddingTop: 12 } },
-          h('strong', null, 'CLI 登录'),
-          h('p', null, '登录由各 CLI 完成。Codex 使用 Runtime 专用登录目录。'),
-          ...Object.entries(cliNames).map(([cli, label]) => h(CliLogin, { key: cli, cli, label }))))
+        window.location?.protocol === 'dsh-app:' && h(React.Fragment, null,
+          h('section', { 'aria-label': 'CLI 登录', style: { paddingTop: 12 } },
+            h('strong', null, 'CLI 登录'),
+            h('p', null, '登录由各 CLI 完成。Codex 使用 Runtime 专用登录目录。'),
+            ...Object.entries(cliNames).map(([cli, label]) => h(CliLogin, { key: cli, cli, label }))),
+          h(ApiConnections, { roles: current.roles, inputStyle })))
     }
 
     function failureGuidance(state, manifest) {
@@ -268,15 +406,33 @@ window.__ModuleLoader__.load({
       })
     }
 
+    function liveActivity(progress, now) {
+      const item = progress?.activity
+      if (!item || !Object.hasOwn(progressAdapters, item.adapter) || !Number.isSafeInteger(item.atMs)) return null
+      let message
+      if (item.kind === 'tool' && Object.hasOwn(progressTools, item.tool)) {
+        const status = { called: '已发起', completed: '已完成', failed: '失败' }
+        if (Object.hasOwn(status, item.status)) message = progressTools[item.tool] + ' · ' + status[item.status]
+      } else if (item.kind === 'started') message = '执行器已启动'
+      else if (item.kind === 'model') message = '收到模型活动'
+      else if (item.kind === 'finishing') message = '收到执行器结束事件'
+      if (!message) return null
+      const seconds = Math.max(0, Math.floor((now - item.atMs) / 1000))
+      return '最近事件 · ' + progressAdapters[item.adapter] + ' · ' + message + ' · ' + seconds + ' 秒前'
+    }
+
     function EvidenceRow(props) {
       const id = startedChild(props)
       const [state, setState] = React.useState('waiting')
       const [open, setOpen] = React.useState(false)
       const [tab, setTab] = React.useState('trajectory')
       const [now, setNow] = React.useState(Date.now())
+      const [progress, setProgress] = React.useState(null)
       const start = props.phase === 'result' ? props.block.callTime ?? props.block.time : props.block.time
 
       React.useEffect(() => {
+        setState('waiting')
+        setProgress(null)
         if (!id) return
         const lifetime = new AbortController()
         let pending = false
@@ -308,6 +464,8 @@ window.__ModuleLoader__.load({
             } else if (response.status === 200 || value?.state?.phase !== 'running') {
               done = true
               setState('unavailable')
+            } else {
+              setProgress(value.progress ?? {})
             }
           } catch {
             if (!lifetime.signal.aborted) { done = true; setState('unavailable') }
@@ -340,8 +498,12 @@ window.__ModuleLoader__.load({
       const scope = manifest?.evidence_scope
       const attributionKnown = scope?.change_attribution === 'not_established_shared_workspace'
       const guidance = failureGuidance(state, manifest)
+      const active = state === 'waiting' && progress?.phase
+      const stage = active && Object.hasOwn(cliRoles, active.role) && Object.hasOwn(progressAdapters, active.adapter)
+        ? cliRoles[active.role] + '阶段 · ' + progressAdapters[active.adapter] : '运行中'
+      const elapsed = Math.max(0, Math.round((now - start) / 1000))
       const summary = ready ? `${manifest.status} · ${Math.round(manifest.duration_ms / 1000)} 秒${ready.relocation ? ' · 历史证据副本' : ''}`
-        : state === 'waiting' ? (id ? `等待证据 ${Math.max(0, Math.round((now - start) / 1000))} 秒` : '正在启动')
+        : state === 'waiting' ? (id ? (progress ? stage : '等待证据') + ' · ' + elapsed + ' 秒' : '正在启动')
           : state === 'aborted' ? '已取消'
             : state === 'error' ? '运行失败' : '终态证据不可用'
       let body = null
@@ -392,6 +554,8 @@ window.__ModuleLoader__.load({
             setOpen(true)
           } }, '查看证据')),
         guidance && h('p', { style: { fontSize: 12, margin: '4px 0' } }, guidance),
+        state === 'waiting' && progress && h('p', { style: { fontSize: 12, margin: '4px 0' } },
+          liveActivity(progress, now) ?? '等待可显示的运行事件'),
         open && ready && drawer('DSH Runtime', () => setOpen(false),
         h('div', { style: panel }, `任务状态：${manifest.status}　模型审查判决：${manifest.verification.verdict}`),
         guidance && h('p', { style: panel }, guidance),

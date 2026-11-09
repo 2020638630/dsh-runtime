@@ -63,3 +63,65 @@ test('parent ownership gates a verified historical copy and rejects a damaged re
   assert.equal(damaged.status, 500)
   assert.ok(warnings.some(msg => msg.includes('receipt identity or digest mismatch')))
 })
+
+test('live progress shows the active phase and only safe recent activity to the parent Session', async t => {
+  const tempRoot = realpathSync(tmpdir())
+  const base = mkdtempSync(join(tempRoot, 'dsh-route-progress-'))
+  t.after(() => {
+    const physical = realpathSync(base)
+    assert.equal(physical, base)
+    assert.equal(relative(tempRoot, physical).includes(sep), false)
+    rmSync(physical, { recursive: true, force: true })
+  })
+  const runDir = join(base, 'dsh-runtime', runId)
+  const traceDir = join(runDir, 'safe-trace-' + runId)
+  mkdirSync(traceDir, { recursive: true })
+  const identity = { schema_version: 1, run_id: runId, workspace_id: workspaceId }
+  const started = Date.now() - 5000
+  const traces = 'a'.repeat(32)
+  writeFileSync(join(runDir, 'run-state.json'), JSON.stringify({ ...identity, phase: 'running' }))
+  writeFileSync(join(runDir, 'runtime-progress.jsonl'), JSON.stringify({
+    ...identity, role: 'worker', adapter: 'codebuddy', started_at_ms: started,
+  }) + '\n')
+  writeFileSync(join(traceDir, 'codebuddy-safe-worker-' + traces + '.jsonl'), JSON.stringify({
+    schema_version: 1, trace_id: traces, event_seq: 1,
+    event_type: 'tool_result', tool_name: 'Edit', tool_status: 'completed',
+    captured_at_utc: new Date(started + 1000).toISOString(), prompt: 'private prompt',
+  }) + '\n{"private":"incomplete tail"')
+  let handler
+  const ctx = {
+    connection: { fetch: { register: spec => { handler = spec.fetch; return async () => {} } } },
+    sessionQuery: { readSession: async id => ({ events: id === workspaceId
+      ? [{ type: 'subagent/catalog', data: { version: 2, childId } }] : [] }) },
+    logger: { warn: () => {} },
+  }
+  registerRuntimeEvidenceRoute(ctx, base)
+  const url = 'http://localhost/api/dsh-runtime.evidence?childId=' + childId + '&sessionId='
+  assert.equal((await handler(new Request(url + 'unrelated'))).status, 404)
+  const response = await handler(new Request(url + workspaceId))
+  assert.equal(response.status, 202)
+  const payload = await response.json()
+  assert.deepEqual(payload.progress, {
+    phase: { role: 'worker', adapter: 'codebuddy', atMs: started },
+    activity: { adapter: 'codebuddy', kind: 'tool', tool: 'Edit', status: 'completed', atMs: started + 1000 },
+  })
+
+  writeFileSync(join(runDir, 'runtime-progress.jsonl'), JSON.stringify({
+    ...identity, role: 'reviewer', adapter: 'codex', started_at_ms: started + 2000,
+  }) + '\n', { flag: 'a' })
+  writeFileSync(join(runDir, 'runtime-codex-activity.jsonl'), JSON.stringify({
+    ...identity, tool: 'commandExecution', status: 'called', at_ms: started + 3000,
+    command: 'private command',
+  }) + '\n')
+  const review = await (await handler(new Request(url + workspaceId))).json()
+  assert.deepEqual(review.progress, {
+    phase: { role: 'reviewer', adapter: 'codex', atMs: started + 2000 },
+    activity: { adapter: 'codex', kind: 'tool', tool: 'commandExecution', status: 'called', atMs: started + 3000 },
+  })
+  writeFileSync(join(runDir, 'run-state.json'), JSON.stringify({
+    ...identity, phase: 'settled', stop_reason: 'aborted',
+  }))
+  const cancelled = await handler(new Request(url + workspaceId))
+  assert.equal(cancelled.status, 200)
+  assert.equal((await cancelled.json()).progress, undefined)
+})

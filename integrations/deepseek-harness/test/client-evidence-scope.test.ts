@@ -39,6 +39,26 @@ function nodes(value: unknown): Element[] {
   return []
 }
 
+test('running card displays phase, executor and latest safe event separately from evidence', () => {
+  const now = Date.now()
+  const props = { ...startedProps, block: { ...startedProps.block, time: now - 20_000 } }
+  const progress = {
+    phase: { role: 'reviewer', adapter: 'codex' },
+    activity: { adapter: 'codex', kind: 'tool', tool: 'commandExecution', status: 'completed', atMs: now - 4_000 },
+  }
+  let index = 0
+  const values = ['waiting', false, 'trajectory', now, progress]
+  const view = loadViews({
+    createElement,
+    useState: () => [values[index++], () => {}],
+    useEffect: () => {},
+  }).get('tool.call.toolview')!
+  const strings = nodes(view(props)).flatMap(node => node.children.filter(child => typeof child === 'string'))
+  assert.ok(strings.includes('审查阶段 · Codex · 20 秒'))
+  assert.ok(strings.includes('最近事件 · Codex · 命令 · 已完成 · 4 秒前'))
+  assert.ok(!strings.includes('查看证据'))
+})
+
 function render(tab: string, changes: Record<string, unknown>, scope?: Record<string, unknown>,
   relocation?: { status: 'verified_copy'; createdAt: string }, modelObservations?: unknown,
   terminal?: Record<string, unknown> | 'aborted' | 'error' | 'unavailable'): string {

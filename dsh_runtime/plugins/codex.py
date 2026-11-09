@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -25,6 +26,7 @@ from ..codex_safe_trace import (
     SAFE_EVENT_TRACE_DIR_ENV,
 )
 from ..runtime.plugin import ExecutionContext, PluginResult
+from ..observability.progress import record_codex_tool
 
 
 class _CodexProtocolError(Exception):
@@ -207,6 +209,7 @@ class _CodexSession:
         max_output_chars: int,
         trace: _CodexQualificationTrace | None = None,
         safe_trace: CodexSafeTrace | None = None,
+        workspace_id: str | None = None,
     ) -> None:
         self.process = process
         self.cwd = cwd
@@ -215,6 +218,8 @@ class _CodexSession:
         self.max_output_chars = max_output_chars
         self.trace = trace
         self.safe_trace = safe_trace
+        self.workspace_id = workspace_id
+        self._last_live_tool_at = float("-inf")
         self._next_id = 1
         self.thread_id: str | None = None
         self.reported_model: str | None = None
@@ -387,13 +392,22 @@ class _CodexSession:
         params = message.get("params")
         if not isinstance(method, str) or not isinstance(params, dict):
             return
-        if method != "item/completed":
+        if method not in {"item/started", "item/completed"}:
             return
         if params.get("threadId") != self.thread_id:
             return
         if self.turn_id is not None and params.get("turnId") != self.turn_id:
             return
         item = params.get("item")
+        if (self.workspace_id is not None and self.thread_id is not None and isinstance(item, dict)
+            and item.get("type") in ("commandExecution", "fileChange")):
+            status = "called" if method == "item/started" else item.get("status")
+            now = time.monotonic()
+            if status in ("called", "completed", "failed") and now - self._last_live_tool_at >= 0.5:
+                record_codex_tool(self.workspace_id, item["type"], status)
+                self._last_live_tool_at = now
+        if method != "item/completed":
+            return
         if (self.safe_trace is not None and isinstance(item, dict)
             and item.get("type") in {"commandExecution", "fileChange"}):
             status = "completed" if item.get("status") == "completed" else "failed"
@@ -756,6 +770,7 @@ class CodexPlugin:
                 max_output_chars=self.max_output_chars,
                 trace=trace,
                 safe_trace=safe_trace,
+                workspace_id=ctx.workspace_id,
             )
             await session.initialize()
             await session.start_thread()

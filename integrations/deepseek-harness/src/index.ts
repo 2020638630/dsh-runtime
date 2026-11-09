@@ -9,6 +9,7 @@ import type {} from '@deepseek-ai/dsh-session-query'
 import { mountHostCore, type HostCoreConfig } from './host-core.ts'
 import { registerRuntimeEvidenceRoute } from './evidence-route.ts'
 import { registerCliLoginRoute } from './cli-login-route.ts'
+import { registerApiConnectionsRoute } from './api-connections-route.ts'
 
 export const name = 'dsh-runtime-standalone'
 export const inject = ['subprocess', 'subagents', 'tools', 'connection', 'sessionQuery']
@@ -268,7 +269,14 @@ export async function apply(ctx: Context, rawConfig: EntryConfig): Promise<() =>
   const source = selection && typeof selection === 'object' && 'get' in selection
     && typeof selection.get === 'function' ? selection : undefined
   const config = validateConfig(source ? { ...rawConfig, roleConfig: source.get() } : rawConfig as Config)
-  const disposeCore = await mountHostCore(ctx, hostCoreConfig(config, source))
+  const releases = [await mountHostCore(ctx, hostCoreConfig(config, source))]
+  async function dispose(): Promise<void> {
+    let failure: unknown
+    while (releases.length) {
+      try { await releases.pop()!() } catch (error) { failure ??= error }
+    }
+    if (failure !== undefined) throw failure
+  }
   try {
     if (source) ctx.inject(['settings'], (child) => {
       const settings = (child as Context & { settings: {
@@ -278,21 +286,12 @@ export async function apply(ctx: Context, rawConfig: EntryConfig): Promise<() =>
         child.effect(() => settings.configure!({ auto: false }, ctx.fiber))
       }
     })
-    const disposeRoute = registerRuntimeEvidenceRoute(ctx, config.evidenceRoot)
-    try {
-      const disposeLogin = registerCliLoginRoute(ctx, config)
-      return async () => {
-        try { await disposeLogin() }
-        finally {
-          try { await disposeRoute() } finally { await disposeCore() }
-        }
-      }
-    } catch (error) {
-      await disposeRoute()
-      throw error
-    }
+    releases.push(registerRuntimeEvidenceRoute(ctx, config.evidenceRoot))
+    releases.push(registerCliLoginRoute(ctx, config))
+    releases.push(registerApiConnectionsRoute(ctx, config))
+    return dispose
   } catch (error) {
-    await disposeCore()
+    await dispose()
     throw error
   }
 }

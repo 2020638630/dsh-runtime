@@ -1856,6 +1856,7 @@ class CodeBuddyPlugin:
         # CodeBuddy's environment.
         environment.pop(SAFE_EVENT_TRACE_DIR_ENV, None)
         environment.pop(RUNTIME_RUN_ID_ENV, None)
+        environment.pop("DSH_RUNTIME_PROGRESS_PATH", None)
         environment.pop(SAFE_STREAM_JSON_ENV, None)
         environment.pop(MAX_STREAM_CHARS_ENV, None)
         return environment

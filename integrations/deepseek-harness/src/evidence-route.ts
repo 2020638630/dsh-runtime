@@ -5,6 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-session-query'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { readTerminalEvidence, readTerminalRunState } from './runtime/read-terminal-evidence.ts'
+import { readLiveProgress } from './runtime/read-live-progress.ts'
 
 /** Authenticated Host path for one parent Session's Runtime evidence. */
 export const RUNTIME_EVIDENCE_PATH = '/api/dsh-runtime.evidence'
@@ -39,7 +40,8 @@ export function registerRuntimeEvidenceRoute(ctx: Context, evidenceRoot: string)
         if (evidence === null) {
           const state = await readTerminalRunState(coordinates)
           if (state === null) return new Response('Runtime evidence not found.', { status: 404 })
-          return Response.json({ state }, { status: state.phase === 'running' ? 202 : 200,
+          const progress = state.phase === 'running' ? await readLiveProgress(coordinates) : undefined
+          return Response.json({ state, progress }, { status: state.phase === 'running' ? 202 : 200,
             headers: { 'cache-control': 'no-store' } })
         }
         return Response.json(evidence, { headers: { 'cache-control': 'no-store' } })

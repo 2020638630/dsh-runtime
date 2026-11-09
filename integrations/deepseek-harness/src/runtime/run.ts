@@ -378,7 +378,7 @@ async function createDshRuntimeRun(
     }
     for (const key of [
       'DSH_RUNTIME_RUN_ID', 'DSH_RUNTIME_CALL_TRACE_PATH',
-      'DSH_RUNTIME_INVOCATION_EVIDENCE',
+      'DSH_RUNTIME_INVOCATION_EVIDENCE', 'DSH_RUNTIME_PROGRESS_PATH',
       'DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR', 'DSH_CODEX_SAFE_EVENT_TRACE_DIR',
       'DSH_API_AGENT_SAFE_EVENT_TRACE_DIR',
     ]) {
@@ -399,6 +399,7 @@ async function createDshRuntimeRun(
       // Python's Windows file APIs need the extended path form once the
       // Host-generated evidence filename crosses the legacy MAX_PATH limit.
       DSH_RUNTIME_CALL_TRACE_PATH: toNamespacedPath(callTracePath),
+      DSH_RUNTIME_PROGRESS_PATH: toNamespacedPath(join(runDir, 'runtime-progress.jsonl')),
       DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR: toNamespacedPath(safeTraceDir),
       DSH_CODEX_SAFE_EVENT_TRACE_DIR: toNamespacedPath(safeTraceDir),
       DSH_API_AGENT_SAFE_EVENT_TRACE_DIR: toNamespacedPath(safeTraceDir),

@@ -5,6 +5,7 @@ import time
 from dataclasses import replace
 
 from .observability.logger import record
+from .observability.progress import record_phase
 from .planner import SimplePlanner
 from .runtime.executor import Executor
 from .runtime.plugin import ExecutionContext, StopReason
@@ -77,6 +78,7 @@ class DSHController:
                     invocation_index=task.iteration + 1,
                     allow_workspace_write=allow_workspace_write,
                 )
+                record_phase(task.workspace_id, decision.role, decision.plugin)
             result = await self.executor.execute(
                 decision.plugin,
                 ExecutionContext(
