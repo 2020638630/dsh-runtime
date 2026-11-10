@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { createReadStream } from 'node:fs'
-import { readFile, realpath, stat } from 'node:fs/promises'
+import { open, readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
 
@@ -12,6 +12,7 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024
 const MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 const MAX_DIFF_BYTES = 8 * 1024 * 1024
 const MAX_PATHS = 20_000
+const MAX_REVIEW_WORKTREE_BYTES = 16 * 1024 * 1024
 const EXCLUSIONS = [
   '.git/', 'node_modules/', 'dist/', 'build/', '__pycache__/',
   '.venv/', '.node-v24/', '.tmp/', '*.log', '*.tmp',
@@ -81,12 +82,13 @@ async function hashFile(path: string): Promise<string> {
  * @param workspace - absolute Git workspace root to observe.
  * @returns bounded snapshot of file hashes and eligible text bytes.
  */
-export async function captureWorkspace(workspace: string): Promise<WorkspaceSnapshot> {
+export async function captureWorkspace(workspace: string, reviewSignal?: AbortSignal): Promise<WorkspaceSnapshot> {
+  reviewSignal?.throwIfAborted()
   if (!isAbsolute(workspace)) throw new Error('workspace snapshot requires an absolute directory')
   const physicalRoot = await realpath(workspace)
   const { stdout } = await run('git', [
     '-c', `safe.directory=${physicalRoot}`, 'ls-files', '-z', '--cached', '--others', '--exclude-standard',
-  ], { cwd: physicalRoot, encoding: 'buffer', maxBuffer: 4 * 1024 * 1024, timeout: 30_000 })
+  ], { cwd: physicalRoot, encoding: 'buffer', maxBuffer: 4 * 1024 * 1024, timeout: 30_000, signal: reviewSignal })
   const paths = [...new Set(stdout.toString('utf8').split('\0').filter(Boolean))]
     .filter(path => !excluded(path)).sort()
   if (paths.length > MAX_PATHS) throw new Error('workspace snapshot exceeds the file-count bound')
@@ -94,6 +96,7 @@ export async function captureWorkspace(workspace: string): Promise<WorkspaceSnap
   const files = new Map<string, FileState>()
   let capturedBytes = 0
   for (const path of paths) {
+    reviewSignal?.throwIfAborted()
     const absolute = join(physicalRoot, path)
     let physical: string
     let info
@@ -113,7 +116,39 @@ export async function captureWorkspace(workspace: string): Promise<WorkspaceSnap
       continue
     }
     let bytes: Buffer | null = null
-    if (info.size <= MAX_FILE_BYTES && capturedBytes + info.size <= MAX_CAPTURE_BYTES) {
+    if (reviewSignal) {
+      const samePath = process.platform === 'win32' ? physical.toLowerCase() === absolute.toLowerCase()
+        : physical === absolute
+      if (!samePath || info.nlink !== 1 || info.size > MAX_FILE_BYTES
+        || capturedBytes + info.size > MAX_REVIEW_WORKTREE_BYTES) {
+        throw new Error('worktree review capture exceeds scope')
+      }
+      const file = await open(absolute, 'r')
+      try {
+        const opened = await file.stat()
+        if (!opened.isFile() || opened.nlink !== 1 || opened.dev !== info.dev || opened.ino !== info.ino
+          || opened.size !== info.size || opened.mtimeMs !== info.mtimeMs || await realpath(absolute) !== physical) {
+          throw new Error('worktree file changed during review capture')
+        }
+        const buffer = Buffer.alloc(info.size + 1)
+        let offset = 0
+        while (offset < buffer.length) {
+          reviewSignal.throwIfAborted()
+          const { bytesRead } = await file.read(buffer, offset, buffer.length - offset, offset)
+          if (bytesRead === 0) break
+          offset += bytesRead
+        }
+        const end = await file.stat()
+        if (offset !== info.size || end.size !== info.size || end.mtimeMs !== info.mtimeMs
+          || end.ctimeMs !== opened.ctimeMs || end.nlink !== 1) {
+          throw new Error('worktree file changed during review capture')
+        }
+        bytes = buffer.subarray(0, offset)
+        capturedBytes += offset
+      } finally {
+        await file.close()
+      }
+    } else if (info.size <= MAX_FILE_BYTES && capturedBytes + info.size <= MAX_CAPTURE_BYTES) {
       bytes = await readFile(absolute)
       capturedBytes += bytes.length
       if (bytes.length > MAX_FILE_BYTES) bytes = null
@@ -125,12 +160,13 @@ export async function captureWorkspace(workspace: string): Promise<WorkspaceSnap
 }
 
 /** Describe the terminal worktree observation. Git HEAD is advisory and the walk is not atomic. */
-export async function describeWorkspaceObservation(snapshot: WorkspaceSnapshot) {
+export async function describeWorkspaceObservation(snapshot: WorkspaceSnapshot, signal?: AbortSignal) {
   const scope = 'dsh_controlled_snapshot_v1'
   const head = await run('git', [
     '-c', `safe.directory=${snapshot.workspace}`, 'rev-parse', '--verify', 'HEAD',
-  ], { cwd: snapshot.workspace, encoding: 'utf8', maxBuffer: 4096, timeout: 5000 })
+  ], { cwd: snapshot.workspace, encoding: 'utf8', maxBuffer: 4096, timeout: 5000, signal })
     .then(({ stdout }) => stdout.trim(), () => '')
+  signal?.throwIfAborted()
   const baseCommit = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(head) ? head : null
   const hash = createHash('sha256')
   hash.update(`dsh-post-run-worktree-v1\n${scope}\n`)

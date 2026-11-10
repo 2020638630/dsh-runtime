@@ -7,10 +7,13 @@ import { createGovernedProvider } from './provider.ts'
 import { createRuntimeTool } from './tool.ts'
 import { createRuntimeLauncher, type RuntimeLauncherConfig } from './runtime-launcher.ts'
 import { GovernanceBridge, type BridgeProcessConfig } from './governance/bridge.ts'
+import { mountSnapshotReview } from './snapshot-review-route.ts'
+import type { ApiRoleSelectionConfig } from './index.ts'
 
 export interface HostCoreConfig {
   readonly governance: BridgeProcessConfig
   readonly runtime: Omit<RuntimeLauncherConfig, 'spawn'>
+  readonly snapshotReviewer?: ApiRoleSelectionConfig
 }
 
 /** Register nothing runnable until the Python worker confirms policy identity. */
@@ -35,6 +38,12 @@ export async function mountHostCore(ctx: Context, config: HostCoreConfig): Promi
     providerDisposers.push(ctx.subagents.registerProvider(createGovernedProvider('repository_inspection', bridge, launch)))
     providerDisposers.push(ctx.subagents.registerProvider(createGovernedProvider('repository_change', bridge, launch)))
     providerDisposers.push(ctx.tools.register(createRuntimeTool(ctx.subagents)))
+    if (config.snapshotReviewer && config.runtime.evidenceRoot
+      && process.platform === 'win32' && process.env.ELECTRON_RUN_AS_NODE === '1') {
+      providerDisposers.push(await mountSnapshotReview(ctx, {
+        ...config.runtime, evidenceRoot: config.runtime.evidenceRoot, reviewer: config.snapshotReviewer,
+      }, bridge))
+    }
     return dispose
   } catch (error) {
     try { await dispose() } catch (cleanupError) {

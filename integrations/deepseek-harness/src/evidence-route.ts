@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-session-query'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { readTerminalEvidence, readTerminalRunState } from './runtime/read-terminal-evidence.ts'
 import { readLiveProgress } from './runtime/read-live-progress.ts'
+import { previewReviewMaterial } from './runtime/review-preview.ts'
 
 /** Authenticated Host path for one parent Session's Runtime evidence. */
 export const RUNTIME_EVIDENCE_PATH = '/api/dsh-runtime.evidence'
@@ -16,6 +17,7 @@ const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u
  * @param evidenceRoot - absolute Host-owned evidence directory.
  */
 export function registerRuntimeEvidenceRoute(ctx: Context, evidenceRoot: string): () => Promise<void> {
+  let previewInProgress = false
   return ctx.connection.fetch.register({
     path: RUNTIME_EVIDENCE_PATH,
     methods: ['GET'],
@@ -24,8 +26,12 @@ export function registerRuntimeEvidenceRoute(ctx: Context, evidenceRoot: string)
       const query = new URL(request.url).searchParams
       const parentId = query.get('sessionId')
       const childId = query.get('childId')
+      const preview = query.get('view') === 'review-preview'
       if (parentId === null || parentId.length === 0 || childId === null || !UUID.test(childId)) {
         return new Response('Invalid Runtime evidence coordinates.', { status: 400 })
+      }
+      if (preview && [...query].length !== 3) {
+        return new Response('Invalid Runtime review preview coordinates.', { status: 400 })
       }
       try {
         const parent = await ctx.sessionQuery.readSession(parentId as SessionId)
@@ -36,7 +42,19 @@ export function registerRuntimeEvidenceRoute(ctx: Context, evidenceRoot: string)
         const coordinates = {
           evidenceRoot, runId: `dsh-runtime-${childId}`, workspaceId: parentId,
         }
-        const evidence = await readTerminalEvidence(coordinates)
+        const evidence = await readTerminalEvidence({ ...coordinates, includeReviewBytes: preview })
+        if (preview) {
+          const headers = { 'cache-control': 'no-store' }
+          if (previewInProgress) return Response.json({ status: 'busy' }, { headers })
+          previewInProgress = true
+          try {
+            const material = evidence === null ? { status: 'unsupported_run' }
+              : await previewReviewMaterial(evidence, parent.session.cwd, request.signal)
+            return Response.json(material, { headers })
+          } finally {
+            previewInProgress = false
+          }
+        }
         if (evidence === null) {
           const state = await readTerminalRunState(coordinates)
           if (state === null) return new Response('Runtime evidence not found.', { status: 404 })

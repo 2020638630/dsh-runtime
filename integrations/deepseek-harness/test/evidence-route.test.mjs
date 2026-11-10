@@ -1,15 +1,176 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { test } from 'node:test'
+import { setTimeout as wait } from 'node:timers/promises'
 import { registerRuntimeEvidenceRoute } from '../.build/src/evidence-route.js'
+import { captureWorkspace, describeWorkspaceObservation } from '../.build/src/runtime/workspace-evidence.js'
+import { mountSnapshotReview } from '../.build/src/snapshot-review-route.js'
 
 const childId = '11111111-2222-3333-4444-555555555555'
 const runId = `dsh-runtime-${childId}`
 const workspaceId = 'session-22222222-3333-4444-5555-666666666666'
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
+
+test('review preview verifies ownership, saved patch bytes, and drift within one Git commit', async t => {
+  const root = realpathSync(tmpdir())
+  const base = mkdtempSync(join(root, 'dsh-review-preview-'))
+  t.after(() => {
+    const physical = realpathSync(base)
+    const rel = relative(root, physical)
+    assert.ok(rel !== '' && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+    rmSync(physical, { recursive: true, force: true })
+  })
+  const workspace = join(base, 'worktree')
+  mkdirSync(workspace)
+  const git = (...args) => execFileSync('git', ['-C', workspace, ...args], { encoding: 'utf8' }).trim()
+  git('init', '-q')
+  const file = join(workspace, 'fixture.txt')
+  writeFileSync(file, 'before\n')
+  git('add', 'fixture.txt')
+  git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'Fixture')
+  writeFileSync(file, 'after\n')
+  const status = git('--no-optional-locks', 'status', '--porcelain=v1')
+  const target = await describeWorkspaceObservation(await captureWorkspace(workspace))
+  const evidenceRoot = join(base, 'evidence')
+  const runDir = join(evidenceRoot, 'dsh-runtime', runId)
+  mkdirSync(runDir, { recursive: true })
+  const diff = '--- a/fixture.txt\n+++ b/fixture.txt\n@@ -1 +1 @@\n-before\n+after �\n'
+  const diffPath = join(runDir, 'diff.patch')
+  const manifestPath = join(runDir, 'evidence-manifest.v1.json')
+  const manifest = { schema_version: '1', workspace_id: workspaceId, run_id: runId, task_id: '00000000-0000-4000-8000-000000000007', status: 'completed',
+    task_kind: 'repository_change', target_observation: target,
+    verification: { verdict: 'PASS', invocation_binding: 'matched' },
+    workspace_changes: { diff_content_ref: diffPath, diff_sha256: sha(diff), patch_complete: true, patch_applicable: true },
+  }
+  writeFileSync(diffPath, diff)
+  writeFileSync(manifestPath, JSON.stringify(manifest))
+  let handle, review, provider, receivedPatch
+  let starts = 0
+  let admissions = 0
+  let finish
+  const childDone = new Promise(resolve => { finish = resolve })
+  const session = { id: workspaceId, header: { cwd: workspace } }
+  const parent = { id: workspaceId, session }
+  manifest.model_observations = {
+    version: 1, source: 'codex_thread_start',
+    entries: [{ role: 'worker', invocation_index: 1, adapter: 'codex', reported_model: 'gpt-5.6-luna' }],
+  }
+  writeFileSync(manifestPath, JSON.stringify(manifest))
+  const ctx = {
+    connection: { fetch: { register(route) {
+      if (route.path.endsWith('.evidence')) handle = route.fetch
+      else review = route.fetch
+      return async () => {}
+    } } },
+    sessionQuery: { readSession: async id => ({ session: { cwd: workspace },
+      events: id === workspaceId ? [{ type: 'subagent/catalog', data: { version: 2, childId } }] : [] }) },
+    logger: { warn: () => {} },
+    get: key => key === 'agents' ? { get: id => id === workspaceId ? parent : undefined } : undefined,
+    subagents: {
+      registerProvider(value) { provider = value; return () => {} },
+      async startActivation(spec) {
+        assert.equal(spec.request.parent, parent)
+        assert.equal(spec.delivery, 'caller')
+        const child = await provider.start({ ...spec.request, signal: spec.signal, cwd: workspace })
+        return { result: child.result, dispose: child.dispose }
+      },
+    },
+    subprocess: { spawn(spec) {
+      starts += 1
+      assert.equal(spec.cwd, base)
+      assert.equal(spec.argv.at(-1), 'dsh_runtime.snapshot_review')
+      receivedPatch = JSON.parse(spec.stdio.stdin.data)
+      return {
+        done: childDone, terminate() { finish({ exitCode: 1 }) }, waitForExit: async () => {},
+        collected: { stdout: { readFrom: () => ({ lossy: false, text: JSON.stringify({
+          patch_sha256: sha(diff), observed_model: 'deepseek-ai/DeepSeek-V3.2', verdict: 'FAIL', report: 'fixture finding',
+        }) }) } },
+      }
+    } },
+  }
+  registerRuntimeEvidenceRoute(ctx, evidenceRoot)
+  const config = {
+    runtimeRoot: base, python: 'python', env: {}, disposeGraceMs: 500, evidenceRoot,
+    reviewer: { adapter: 'api_agent', provider: 'siliconflow', model: 'deepseek-ai/DeepSeek-V3.2' },
+  }
+  const bridge = { evaluatePreStart: async (live, caller, route) => {
+    admissions += 1
+    assert.equal(live, session)
+    assert.equal(caller, workspaceId)
+    assert.equal(route.taskKind, 'repository_inspection')
+    return { kind: 'EXECUTION_ELIGIBLE' }
+  } }
+  let unmount = await mountSnapshotReview(ctx, config, bridge)
+  t.after(() => unmount())
+  const url = `http://localhost/api/dsh-runtime.evidence?sessionId=${workspaceId}&childId=${childId}&view=review-preview`
+  const preview = async () => (await handle(new Request(url))).json()
+  const ready = await preview()
+  assert.equal(ready.status, 'ready')
+  assert.equal(ready.scope, 'saved_text_patch')
+  assert.equal(ready.patch, diff)
+  assert.equal(ready.patchSha256, sha(diff))
+  assert.doesNotMatch(JSON.stringify(ready), /diff_content_ref|worktree[/\\]/u)
+  const regular = await handle(new Request(url.replace('&view=review-preview', '')))
+  assert.equal((await regular.json()).reviewBytes, undefined)
+  assert.equal((await handle(new Request(url.replace(workspaceId, 'other-session')))).status, 404)
+  assert.equal(git('--no-optional-locks', 'status', '--porcelain=v1'), status)
+  await assert.rejects(provider.start({
+    parent, prompt: [{ type: 'text', text: 'not-a-grant' }], signal: new AbortController().signal, cwd: workspace,
+  }), /Host grant/u)
+  const reviewUrl = 'http://localhost/api/dsh-runtime.snapshot-review'
+  const statusUrl = `${reviewUrl}?sessionId=${workspaceId}&childId=${childId}`
+  const approval = await (await review(new Request(statusUrl))).json()
+  assert.equal(approval.status, 'ready')
+  assert.equal(approval.requestedModel, config.reviewer.model)
+  assert.equal(starts, 0)
+  const post = (overrides = {}, headers = {}) => new Request(reviewUrl, {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-dsh-runtime-review': '1', ...headers },
+    body: JSON.stringify({ sessionId: workspaceId, childId, patchSha256: approval.patchSha256,
+      worktreeSha256: approval.worktreeSha256, approvalToken: approval.approvalToken, ...overrides }),
+  })
+  assert.equal((await review(post({}, { origin: 'https://example.invalid' }))).status, 403)
+  assert.equal((await review(post({ patchSha256: '0'.repeat(64) }))).status, 409)
+  assert.equal((await review(post({ sessionId: 'other-session' }))).status, 404)
+  const replay = await Promise.all([review(post()), review(post())])
+  assert.ok(replay.some(res => res.status === 202))
+  assert.equal(starts, 1)
+  assert.equal(admissions, 1)
+  assert.equal(receivedPatch, diff)
+  finish({ exitCode: 0 })
+  let settled
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    settled = await (await review(new Request(statusUrl))).json()
+    if (settled.status !== 'running') break
+    await wait(10)
+  }
+  assert.equal(settled?.status, 'completed')
+  await unmount()
+  unmount = await mountSnapshotReview(ctx, config, bridge)
+  const completed = await (await review(new Request(statusUrl))).json()
+  assert.equal(completed.status, 'completed')
+  assert.equal(completed.freshness, 'matched')
+  assert.equal(completed.verdict, 'FAIL')
+  assert.equal((await (await review(post())).json()).reviewId, completed.reviewId)
+  assert.equal(starts, 1)
+  writeFileSync(join(workspace, 'extra.txt'), 'untracked change\n')
+  assert.equal(git('rev-parse', 'HEAD'), target.base_commit)
+  assert.deepEqual(await preview(), { status: 'stale' })
+  assert.equal((await (await review(new Request(statusUrl))).json()).freshness, 'stale')
+  assert.equal(JSON.parse(readFileSync(manifestPath, 'utf8')).verification.verdict, 'PASS')
+  const invalidUtf8 = Buffer.concat([Buffer.from(diff.split('�')[0]), Buffer.from([0xff, 0x0a])])
+  assert.equal(invalidUtf8.toString('utf8'), diff)
+  writeFileSync(diffPath, invalidUtf8)
+  assert.deepEqual(await preview(), { status: 'material_changed' })
+  writeFileSync(manifestPath, JSON.stringify({ ...manifest,
+    workspace_changes: { ...manifest.workspace_changes, diff_sha256: sha(invalidUtf8) } }))
+  assert.deepEqual(await preview(), { status: 'unsupported_patch' })
+  writeFileSync(manifestPath, JSON.stringify({ ...manifest, target_observation: undefined }))
+  assert.deepEqual(await preview(), { status: 'missing_binding' })
+})
 
 test('parent ownership gates a verified historical copy and rejects a damaged receipt', async t => {
   const tempRoot = realpathSync(tmpdir())

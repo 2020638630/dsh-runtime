@@ -755,6 +755,123 @@ window.__ModuleLoader__.load({
         copyStatus && h('p', { role: 'status' }, copyStatus))
     }
 
+    const previewMessages = {
+      unsupported_run: '此记录不符合追加复核材料的准备条件。',
+      missing_binding: '此记录缺少工作树或补丁的内容绑定。',
+      unsupported_patch: '当前仅支持 24 KiB 以内的完整文本补丁。',
+      material_changed: '保存的补丁与记录的摘要不一致。',
+      workspace_unavailable: '无法在当前范围和时间内核对工作树。',
+      stale: '目标已变化，这份材料对当前工作区已过期。',
+      busy: '正在核对另一条记录，请稍后重试。',
+      parent_unavailable: '当前会话未启用，暂不能启动复核。',
+      identity_unverified: '无法确认执行与复核使用不同模型家族。',
+      unavailable: '追加复核暂不可用。',
+      failed: '追加复核失败，此运行不会自动重试。',
+      timed_out: '追加复核超时。',
+      cancelled: '追加复核已取消。',
+      unknown: '已有启动记录，结果未知。此运行不会再次启动。',
+      denied: '此会话无权发起复核。',
+    }
+
+    function ReviewMaterial({ sessionId, childId }) {
+      const [result, setResult] = React.useState(null)
+      const [review, setReview] = React.useState(null)
+      const active = React.useRef(null)
+      React.useEffect(() => () => active.current?.abort(), [])
+
+      const reviewUrl = 'api/dsh-runtime.snapshot-review'
+      async function readReview(signal) {
+        const query = new URLSearchParams({ sessionId, childId })
+        const response = await fetch(`${reviewUrl}?${query}`, { signal })
+        if (response.status === 404) return null
+        return response.json()
+      }
+
+      React.useEffect(() => {
+        if (review?.status !== 'running') return
+        const controller = new AbortController()
+        let pending = false
+        const timer = setInterval(async () => {
+          if (pending) return
+          pending = true
+          try {
+            const value = await readReview(controller.signal)
+            if (!controller.signal.aborted) setReview(value ?? { status: 'unknown' })
+          } catch {
+            if (!controller.signal.aborted) setReview({ status: 'unknown' })
+          } finally { pending = false }
+        }, 1800)
+        return () => { clearInterval(timer); controller.abort() }
+      }, [review?.status, sessionId, childId])
+
+      async function check() {
+        active.current?.abort()
+        const controller = new AbortController()
+        active.current = controller
+        setResult({ status: 'loading' })
+        setReview(null)
+        try {
+          const query = new URLSearchParams({ sessionId, childId, view: 'review-preview' })
+          const response = await fetch(`api/dsh-runtime.evidence?${query}`, { signal: controller.signal })
+          if (!response.ok) throw new Error('material unavailable')
+          const value = await response.json()
+          if (!controller.signal.aborted) setResult(value)
+          const supplemental = await readReview(controller.signal).catch(() => null)
+          if (!controller.signal.aborted) setReview(supplemental)
+        } catch {
+          if (!controller.signal.aborted) setResult({ status: 'workspace_unavailable' })
+        }
+      }
+      const ready = result?.status === 'ready' && result.scope === 'saved_text_patch'
+        && typeof result.patch === 'string' && result.patch.length <= 24576
+      const maySend = ready && review?.status === 'ready' && UUID.test(review.approvalToken ?? '')
+        && result.patchSha256 === review.patchSha256 && result.worktreeSha256 === review.worktreeSha256
+        && Object.hasOwn(apiProviders, review.provider)
+        && typeof review.requestedModel === 'string' && MODEL_ID.test(review.requestedModel)
+
+      async function sendReview() {
+        if (!maySend) return
+        setReview({ status: 'sending' })
+        try {
+          const response = await fetch(reviewUrl, {
+            method: 'POST', headers: { 'content-type': 'application/json', 'x-dsh-runtime-review': '1' },
+            body: JSON.stringify({ sessionId, childId, patchSha256: result.patchSha256,
+              worktreeSha256: result.worktreeSha256, approvalToken: review.approvalToken }),
+          })
+          setReview(await response.json())
+        } catch { setReview({ status: 'unknown' }) }
+      }
+
+      const reviewStatus = review?.status
+      const settled = reviewStatus === 'completed'
+      return h('details', { className: 'rt-review-summary' },
+        h('summary', null, '追加复核材料'),
+        h('p', null, '先在本机核对当前工作树和已保存的补丁。只有点击确认，才会发送预览中的补丁。'),
+        h('button', { type: 'button', style: runButton,
+          disabled: result?.status === 'loading' || reviewStatus === 'sending',
+          onClick: check }, '核对并预览材料'),
+        result && h('p', { role: 'status' }, ready ? '本次核对一致。复核范围为下方保存的文本补丁。'
+          : result.status === 'loading' ? '正在核对工作树…' : labelFor(previewMessages, result.status)),
+        ready && h(React.Fragment, null,
+          line('补丁 SHA-256', result.patchSha256),
+          line('补丁大小', `${result.patchBytes} 字节`),
+          h('pre', null, result.patch)),
+        maySend && h(React.Fragment, null,
+          h('p', null, `接收方：${apiProviders[review.provider].label} · ${review.requestedModel}。复核范围仅限预览补丁，请先确认其中没有不应外发的内容。`),
+          h('button', { type: 'button', style: runButton, onClick: sendReview }, '确认发送补丁并复核')),
+        (reviewStatus === 'sending' || reviewStatus === 'running') && h('p', { role: 'status' }, '追加复核正在进行…'),
+        reviewStatus && !['ready', 'running', 'sending', 'completed'].includes(reviewStatus)
+          && h('p', { role: 'status' }, labelFor(previewMessages, reviewStatus)),
+        settled && h(React.Fragment, null,
+          h('p', { role: 'status' }, review.freshness === 'matched' ? '追加复核完成 · 按报告标识判定为不同模型家族'
+            : review.freshness === 'stale' ? '追加复核已过期，以下为历史结果' : '追加复核已保存，当前目标未能核验'),
+          line('服务商报告模型', review.reportedModel),
+          line('追加复核判决', review.verdict),
+          review.verdict === 'FAIL' && h('p', null, '追加复核与原判决分歧，请核对证据后裁决。'),
+          typeof review.patch === 'string' && disclosure('当时送审的补丁', h('pre', null, review.patch)),
+          h('pre', null, review.report)))
+    }
+
     function liveActivity(progress, now) {
       const item = progress?.activity
       if (!item || !Object.hasOwn(progressAdapters, item.adapter) || !Number.isSafeInteger(item.atMs)) return null
@@ -954,6 +1071,8 @@ window.__ModuleLoader__.load({
           h(ReviewSummary, {
             summary: formatReviewSummary(manifest, `dsh-runtime-${id}`, stats, observed, ready.relocation),
           }),
+          manifest.task_kind === 'repository_change' && manifest.status === 'completed'
+            && h(ReviewMaterial, { key: id, sessionId: props.sessionId, childId: id }),
           h('nav', { 'aria-label': '证据分类' },
             Object.entries(labels).map(([name, label]) => h('button', { key: name, type: 'button', style: runButton,
               'aria-current': tab === name ? 'page' : undefined, onClick: () => setTab(name) }, label))),

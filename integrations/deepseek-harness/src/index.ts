@@ -220,7 +220,10 @@ export function validateConfig(input: Config): ResolvedConfig {
 }
 
 export function hostCoreConfig(config: ResolvedConfig, live?: LiveRoleConfig): HostCoreConfig {
+  const reviewer = config.roleConfig?.roles.reviewer
   return {
+    ...reviewer?.adapter === 'api_agent' && config.enabledWorkloads.includes('repository_inspection')
+      ? { snapshotReviewer: reviewer } : {},
     governance: {
       runtimeRoot: config.runtimeRoot, python: config.python, env: config.env,
       policySource: config.policySource, expectedPolicyHash: config.expectedPolicyHash,

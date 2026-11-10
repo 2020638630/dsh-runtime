@@ -28,7 +28,9 @@ export async function readTerminalEvidence(input: {
   readonly evidenceRoot: string
   readonly runId: string
   readonly workspaceId: string
+  readonly includeReviewBytes?: boolean
 }): Promise<{ readonly manifest: Record<string, unknown>; readonly diff: string;
+  readonly reviewBytes?: Buffer;
   readonly relocation?: { readonly status: 'verified_copy'; readonly createdAt: string } } | null> {
   const { evidenceRoot, runId, workspaceId } = input
   if (!isAbsolute(evidenceRoot) || !RUN_ID.test(runId) || workspaceId.length === 0) {
@@ -77,10 +79,14 @@ export async function readTerminalEvidence(input: {
     throw new Error('terminal evidence identities do not match this run and workspace')
   }
   const originalPathMatches = await realpath(referencedDiff).then(path => path === physicalDiff, () => false)
-  if (originalPathMatches) return { manifest, diff: diffBytes.toString('utf8') }
+  const result = {
+    manifest, diff: diffBytes.toString('utf8'),
+    ...(input.includeReviewBytes ? { reviewBytes: diffBytes } : {}),
+  }
+  if (originalPathMatches) return result
   const relocation = await verifyEvidenceRelocation({ runDir: physicalRunDir, runId,
     workspaceId, manifestBytes, diffBytes, originalDiffRef: referencedDiff })
-  return { manifest, diff: diffBytes.toString('utf8'), relocation }
+  return { ...result, relocation }
 }
 
 /** Read the Host's run lifecycle marker when a terminal Manifest is absent.

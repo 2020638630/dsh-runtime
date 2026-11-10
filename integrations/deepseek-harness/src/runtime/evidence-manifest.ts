@@ -221,7 +221,10 @@ export async function writeTerminalEvidence(input: {
         : task.iteration >= (input.taskKind === 'repository_change' ? 2 : 1) ? false : null,
       phase_2_api_agent_effective_write: apiReview && task.iteration >= 2 ? false : null,
     },
-    workspace_changes: { ...changes, diff: undefined, diff_content_ref: diffPath },
+    workspace_changes: {
+      ...changes, diff: undefined, diff_content_ref: diffPath,
+      diff_sha256: createHash('sha256').update(changes.diff, 'utf8').digest('hex'),
+    },
     target_observation: observation,
     evidence_scope: {
       review_verdict_basis: 'runtime_terminal_model_report',
