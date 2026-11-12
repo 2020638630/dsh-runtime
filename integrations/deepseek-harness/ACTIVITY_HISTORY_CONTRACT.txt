@@ -1,0 +1,95 @@
+DSH Runtime bounded activity history v1 (B)
+
+Purpose and authority
+Activity is an observation, never a TaskState, review verdict, audit receipt,
+snapshot binding, model identity proof, or complete execution log. Reading it
+does not invoke an executor, re-review a target, or restart a task. Original and
+supplemental review conclusions remain separate. No output-body stream is added.
+
+Source and identity
+The Host creates a random stream UUID and passes DSH_RUNTIME_ACTIVITY_STREAM to
+an updated Python Runtime. entrypoint consumes it before external CLI startup;
+native CLI environment overlays also remove it. Known legacy Runtime roots
+without observability/activity.py do not receive this private environment field.
+Legacy or missing source handshakes are unavailable observations, not evidence
+that a task did nothing. Deploying B requires compatible Host plugin AND Python
+Runtime source; installing the JavaScript package alone is insufficient.
+
+Python emits typed DSH_RUNTIME_ACTIVITY_V1 JSON lines on its private stderr pipe.
+Stdout remains the existing single terminal TaskState response. No activity file
+is written. The Host strips frames from ordinary diagnostics. Frames are not
+inserted into the existing invocation audit hash or Evidence Manifest.
+
+begin: v=1, type=begin, runId, workspaceId, streamId
+event: v=1, type=event, runId, workspaceId, streamId, seq, invocationId,
+       invocationIndex, role, adapter, atMs, kind, status, optional tool
+end:   v=1, type=end, runId, workspaceId, streamId, lastSeq, dropped
+
+workspaceId is the existing parent Session ownership scope. Invocation UUID and
+index identify each Runtime Executor call, not individual nested Bash/tool calls.
+Kinds/statuses: phase/dispatched; invocation/returned or interrupted;
+message/observed; tool/called, completed, failed, or observed. A returned call is
+not a passed task. seq is source order within a stream; atMs is observation time,
+not execution duration or ordering authority. No model identity is inferred.
+
+repository_change permits Worker call 1, then Reviewer call 2 with a new UUID;
+repository_inspection permits Inspector call 1. Role, adapter, index and UUID are
+validated together. Copied asynchronous invocation contexts are closed after
+their Executor call; late callbacks cannot be assigned to a new role.
+
+Safe source hooks
+Codex app-server: supported commandExecution/fileChange notifications and agent
+message metadata. CodeBuddy: existing safe stream-json observer, where enabled;
+its default buffered JSON path may expose only dispatch/return boundaries.
+API reviewer/inspector: bounded read-broker tool metadata, not CLI output.
+Tool names are fixed allowlists. No commands, arguments, paths, stdout/stderr,
+message text, thinking blocks, credentials or arbitrary debug payloads are sent.
+Malformed frames and unknown fields are rejected with fixed safe issue codes.
+
+Bounded transport and Host memory
+Execution threads enqueue only. The sender writes outside the queue lock.
+Queue: at most 63 ordinary frames / 30 KiB plus one reserved closing marker.
+Overflow increments dropped without waiting for the Host. close waits at most
+200 ms. Missing end/drain timeout indicates incomplete observations, not task
+failure. Host settlement waits at most 500 ms for stderr EOF and then freezes
+the window; late source frames cannot mutate a sealed window.
+
+Initial defaults, verified with bounded synthetic tests:
+- Each Run: newest 50 events AND <=32768 UTF-8 serialized-event bytes.
+- At most 32 Run windows per Host process; oldest window evicted under pressure.
+- Terminal windows: 30 minutes from sealing. Expiry is checked on access/start.
+- At most 64 recent expiry/eviction reason tombstones.
+The byte bound covers serialized events, not total process heap, HTTP envelope,
+or all Python/Node data structures. It is not a complete-history guarantee.
+
+GET and recovery
+Existing authenticated api/dsh-runtime.evidence route, after parent Session
+catalog ownership validation: view=activity, after=<nonnegative integer>,
+optional stream=<UUID>. Strict query keys and no-store response are retained.
+Response includes streamId, earliestSeq, lastSeq, nextCursor, events, reset,
+established, sourceClosed, closed, truncated, gaps, and retention/limit metadata.
+No arbitrary disk path or new mutation endpoint is introduced.
+
+Client requests only after expansion; duplicates inside its bounded cache merge
+by stream+seq. Server detects conflicting duplicates and out-of-order frames.
+A reconnect can recover only retained events after its cursor. Older records
+removed by count/byte pressure cause explicit window-truncated notification.
+Changed streams or ahead cursors reset the window and identify the discontinuity.
+Invalid, dropped, missing-end or binding failures remain explicit gap notices.
+Host restart loses ALL activity windows; the route returns unavailable with
+not_recorded_in_this_host. No reconstruction from old evidence is attempted.
+Cross-restart persistence requires a separate design and authorization.
+
+UI lifecycle
+Default collapsed, finite list, newest seq first. Each row retains its own role,
+adapter, invocation and observation time. Empty established window, read failure
+with last successful data, expired/evicted/unavailable window and record gaps
+have distinct text. No new activity does not imply a stuck task. Terminal state
+stops normal polling; up to three bounded final reads allow observation sealing.
+Manual retry only repeats GET. Closing/unmounting/terminal changes abort the old
+read lifecycle; late responses do not overwrite the new lifecycle. Evidence
+entry and keyboard focus remain governed by the existing card/dialog behavior.
+
+Deferred capabilities
+Output-body preview, full activity history, disk persistence, native terminal
+streaming, new governance policy and Runtime-internal long-run loops are outside B.

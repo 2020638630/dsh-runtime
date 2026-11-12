@@ -14,6 +14,64 @@ import { captureWorkspace, describeWorkspaceObservation } from '../src/runtime/w
 const RUN_ID = 'dsh-runtime-00000000-0000-4000-8000-000000000005'
 const TRACE_ID = 'a'.repeat(32)
 
+test('Codex inspection binds model evidence and archives only terminal metadata', async () => {
+  const taskId = '00000000-0000-4000-8000-000000000006'
+  const callId = '00000000-0000-4000-8000-000000000007'
+  const workspaceId = 'inspection.fixture'
+  const model = { role: 'inspector', adapter: 'codex', invocation_index: 1,
+    requested_model: null, reported_model: 'returned-model' }
+  const build = async (allowWrite: boolean, traceMatches = true) => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-inspection-evidence-'))
+    const workspace = join(root, 'workspace')
+    execFileSync('git', ['init', '-q', workspace])
+    const before = await captureWorkspace(workspace)
+    const runDir = join(root, RUN_ID)
+    const safeTraceDir = join(runDir, 'safe-trace')
+    mkdirSync(safeTraceDir, { recursive: true })
+    const identity = { version: 1, task_id: taskId, run_id: RUN_ID, workspace_id: workspaceId }
+    const task = {
+      task_id: taskId, workspace_id: workspaceId, task_kind: 'repository_inspection',
+      status: 'completed', iteration: 1, error: null, result: 'private report',
+      last_invocation_result: 'private report',
+      invocation_evidence: { ...identity, role: 'inspector', adapter: 'codex', invocation_index: 1,
+        allow_workspace_write: allowWrite, stop_reason: 'completed', success: true, cleanup_ok: true },
+      model_observations: { ...identity, entries: [model] },
+    }
+    const stdout = JSON.stringify(task) + '\n'
+    const stdoutSha256 = createHash('sha256').update(stdout).digest('hex')
+    const tracePath = join(runDir, `${RUN_ID}-runtime-call-trace.jsonl`)
+    writeFileSync(tracePath, [
+      { schema_version: '1', event: 'call_started', state: 'started', call_id: callId },
+      { schema_version: '1', event: 'call_terminal', state: 'returned', call_id: callId,
+        runtime_exit_code: 0, duration_ms: 1, task_status: 'completed',
+        stdout_bytes: Buffer.byteLength(stdout), stdout_sha256: traceMatches ? stdoutSha256 : '0'.repeat(64) },
+    ].map(entry => JSON.stringify(entry)).join('\n') + '\n')
+    await writeTerminalEvidence({ runId: RUN_ID, runDir, safeTraceDir, callTracePath: tracePath,
+      workspace, workspaceId, before, taskKind: 'repository_inspection', task,
+      exitCode: 0, durationMs: 1, stdout, maxTurnsConfig: null })
+    return { runDir, stdoutSha256,
+      manifest: JSON.parse(readFileSync(join(runDir, 'evidence-manifest.v1.json'), 'utf8')) }
+  }
+  const { runDir, manifest, stdoutSha256 } = await build(false)
+  assert.deepEqual(manifest.model_observations,
+    { version: 1, source: 'codex_thread_start', entries: [model] })
+  assert.equal(manifest.review_trajectory.status, 'not_applicable')
+  const bytes = readFileSync(join(runDir, 'task-state.v1.json'))
+  assert.deepEqual(manifest.task_state, { filename: 'task-state.v1.json', scope: 'terminal_metadata',
+    sha256: createHash('sha256').update(bytes).digest('hex') })
+  const state = JSON.parse(bytes.toString('utf8'))
+  assert.equal(state.task_id, taskId)
+  assert.equal(state.status, 'completed')
+  assert.equal(state.stdout_sha256, stdoutSha256)
+  assert.equal(state.call_id, callId)
+  assert.deepEqual(state.model_observations, manifest.model_observations)
+  assert.doesNotMatch(bytes.toString('utf8'), /private report|last_invocation_result|"error"/u)
+  assert.equal((await build(true)).manifest.model_observations, undefined)
+  const mismatchedTrace = await build(false, false)
+  assert.equal(mismatchedTrace.manifest.task_state, undefined)
+  assert.equal(existsSync(join(mismatchedTrace.runDir, 'task-state.v1.json')), false)
+})
+
 function fixture(
   roleName: 'inspector' | 'reviewer' = 'inspector',
   terminalReason: 'completed' | 'failed' | 'cancelled' = 'completed',

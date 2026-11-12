@@ -9,11 +9,49 @@ import { setTimeout as wait } from 'node:timers/promises'
 import { registerRuntimeEvidenceRoute } from '../.build/src/evidence-route.js'
 import { captureWorkspace, describeWorkspaceObservation } from '../.build/src/runtime/workspace-evidence.js'
 import { mountSnapshotReview } from '../.build/src/snapshot-review-route.js'
+import { activityHistories } from '../.build/src/runtime/activity-history.js'
 
 const childId = '11111111-2222-3333-4444-555555555555'
 const runId = `dsh-runtime-${childId}`
 const workspaceId = 'session-22222222-3333-4444-5555-666666666666'
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
+
+test('activity reads reuse parent ownership, strict cursors and no-store without starting a task', async t => {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'dsh-history-route-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  let handle
+  let starts = 0
+  const ctx = {
+    connection: { fetch: { register(route) { handle = route.fetch; return async () => {} } } },
+    sessionQuery: { readSession: async id => ({ events: id === workspaceId
+      ? [{ type: 'subagent/catalog', data: { version: 2, childId } }] : [] }) },
+    subagents: { start: () => { starts++; throw Error('Read must not start') } },
+    logger: { warn: () => {} },
+  }
+  const release = registerRuntimeEvidenceRoute(ctx, root)
+  t.after(release)
+  const identity = { evidenceRoot: realpathSync(root), runId, workspaceId }
+  const streamId = activityHistories.start(identity, 'repository_inspection')
+  activityHistories.accept(identity, { v: 1, type: 'begin', runId, workspaceId, streamId })
+  const event = { v: 1, type: 'event', runId, workspaceId, streamId, seq: 1,
+    invocationId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', invocationIndex: 1,
+    role: 'inspector', adapter: 'codex', atMs: Date.now(), kind: 'phase', status: 'dispatched' }
+  activityHistories.accept(identity, event)
+  const query = new URLSearchParams({ sessionId: workspaceId, childId, view: 'activity' })
+  const read = suffix => handle(new Request('http://fixture/api/dsh-runtime.evidence?' + query + suffix))
+  const first = await read('')
+  assert.equal(first.status, 200)
+  assert.equal(first.headers.get('cache-control'), 'no-store')
+  assert.equal((await first.json()).events.length, 1)
+  assert.equal((await (await read('&after=1&stream=' + streamId)).json()).events.length, 0)
+  assert.equal((await read('&after=-1')).status, 400)
+  assert.equal((await read('&after=9007199254740992')).status, 400)
+  assert.equal((await read('&after=0&after=1')).status, 400)
+  assert.equal((await read('&filename=private')).status, 400)
+  query.set('sessionId', 'unrelated-parent')
+  assert.equal((await read('')).status, 404)
+  assert.equal(starts, 0)
+})
 
 test('review preview verifies ownership, saved patch bytes, and drift within one Git commit', async t => {
   const root = realpathSync(tmpdir())

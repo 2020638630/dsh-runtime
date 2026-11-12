@@ -83,6 +83,7 @@ export async function copyTerminalEvidence({ sourceEvidenceRoot, targetEvidenceR
     throw failure('INVALID_SOURCE_RUN')
   }
   const sourceNames = []
+  let emptySafeTrace = false
   for (const name of topNames) {
     validateName(name)
     const info = await lstat(join(sourceRun, name))
@@ -93,7 +94,7 @@ export async function copyTerminalEvidence({ sourceEvidenceRoot, targetEvidenceR
     const physical = await realpath(join(sourceRun, name))
     if (!within(sourceRun, physical) || basename(physical) !== name) throw failure('UNSAFE_ARTIFACT')
     const children = await readdir(physical)
-    if (children.length === 0) throw failure('INVALID_SOURCE_RUN')
+    emptySafeTrace = children.length === 0
     for (const child of children) {
       validateName(child)
       sourceNames.push(`${name}/${child}`)
@@ -115,6 +116,14 @@ export async function copyTerminalEvidence({ sourceEvidenceRoot, targetEvidenceR
   if (manifest?.schema_version !== '1' || manifest.run_id !== runId
     || manifest.workspace_id !== workspaceId || typeof ref !== 'string' || !isAbsolute(ref)
     || await realpath(ref) !== join(sourceRun, 'diff.patch')) throw failure('SOURCE_IDENTITY_MISMATCH')
+  if (emptySafeTrace && (manifest.execution_trajectory?.trace_file != null
+    || manifest.review_trajectory?.trace_file != null)) throw failure('INVALID_SOURCE_RUN')
+  if (manifest.task_state !== undefined) {
+    const taskState = artifacts.get('task-state.v1.json')
+    if (manifest.task_state?.filename !== 'task-state.v1.json'
+      || manifest.task_state.scope !== 'terminal_metadata' || taskState === undefined
+      || manifest.task_state.sha256 !== hash(taskState)) throw failure('TASK_STATE_MISMATCH')
+  }
   const state = JSON.parse(artifacts.get('run-state.json').toString('utf8'))
   if (state?.schema_version !== 1 || state.run_id !== runId || state.workspace_id !== workspaceId
     || state.phase !== 'settled' || state.manifest_available !== true) throw failure('SOURCE_NOT_SETTLED')

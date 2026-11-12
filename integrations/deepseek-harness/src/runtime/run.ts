@@ -33,6 +33,7 @@ import {
 } from '@deepseek-ai/dsh-subprocess'
 import { writeTerminalEvidence } from './evidence-manifest.ts'
 import { captureWorkspace, type WorkspaceSnapshot } from './workspace-evidence.ts'
+import { activityHistories, ActivityFrameDecoder } from './activity-history.ts'
 
 /** Default POSIX grace between subprocess termination tiers. */
 export const DEFAULT_DISPOSE_GRACE_MS = 3_000
@@ -379,6 +380,7 @@ async function createDshRuntimeRun(
     for (const key of [
       'DSH_RUNTIME_RUN_ID', 'DSH_RUNTIME_CALL_TRACE_PATH',
       'DSH_RUNTIME_INVOCATION_EVIDENCE', 'DSH_RUNTIME_PROGRESS_PATH',
+      'DSH_RUNTIME_ACTIVITY_STREAM',
       'DSH_CODEBUDDY_SAFE_EVENT_TRACE_DIR', 'DSH_CODEX_SAFE_EVENT_TRACE_DIR',
       'DSH_API_AGENT_SAFE_EVENT_TRACE_DIR',
     ]) {
@@ -424,10 +426,24 @@ async function createDshRuntimeRun(
   }
 
   const startedAt = performance.now()
+  const activityIdentity = evidencePaths && {
+    evidenceRoot: realpathSync(spec.evidenceRoot!),
+    runId: evidencePaths.runId, workspaceId: spec.workspaceId,
+  }
+  // Identity uses the same canonical root as the existing evidence reader.
+  if (activityIdentity) {
+    const stream = activityHistories.start(activityIdentity, spec.taskKind)
+    // Known legacy Runtime deployments cannot consume/scrub the new Host-only
+    // identity. Do not pass it down to their native CLI environment.
+    if (existsSync(join(spec.runtimeRoot, 'dsh_runtime', 'observability', 'activity.py'))) {
+      evidenceEnv.DSH_RUNTIME_ACTIVITY_STREAM = stream
+    }
+  }
   let child: SubprocessHandle
   try {
     child = spec.spawn(buildSpawnSpec(spec, evidenceEnv))
   } catch (error: unknown) {
+    if (activityIdentity) activityHistories.finish(activityIdentity, false)
     if (evidencePaths !== undefined) {
       try {
         await settleEvidenceState(evidencePaths.runDir, {
@@ -444,17 +460,30 @@ async function createDshRuntimeRun(
     )
   }
 
-  let stderrText = ''
+  const decoder = new ActivityFrameDecoder(
+    value => { if (activityIdentity) activityHistories.accept(activityIdentity, value) },
+    () => { if (activityIdentity) activityHistories.issue(activityIdentity, 'invalid_frame') },
+  )
+  let drained = false
+  let resolveDrain!: () => void
+  const drain = new Promise<void>(resolve => { resolveDrain = resolve })
+  const onStderrEnd = () => { decoder.end(); drained = true; resolveDrain() }
+  const onStderrClose = () => { resolveDrain() }
   const onStderr = (chunk: Buffer | string): void => {
-    const bytes = typeof chunk === 'string' ? Buffer.from(chunk) : chunk
-    stderrText += bytes.toString('utf8')
+    // Observation frames do not alter stdout or the entrypoint's diagnostic audit projection.
+    decoder.feed(chunk)
   }
   child.stderr?.on('data', onStderr)
+  child.stderr?.once('end', onStderrEnd)
+  child.stderr?.once('close', onStderrClose)
+  if (!child.stderr) resolveDrain()
   const disposeProcess = async (): Promise<void> => {
     try {
       await disposeDshRuntimeChild(child)
     } finally {
       child.stderr?.off('data', onStderr)
+      child.stderr?.off('end', onStderrEnd)
+      child.stderr?.off('close', onStderrClose)
     }
   }
 
@@ -542,6 +571,12 @@ async function createDshRuntimeRun(
     onAbort,
   })
   const result: Promise<SubagentResult> = settledResult.then(async (outcome) => {
+    await new Promise<void>(resolve => {
+      const timer = setTimeout(resolve, 500)
+      void drain.then(() => { clearTimeout(timer); resolve() })
+    })
+    decoder.end()
+    if (activityIdentity) activityHistories.finish(activityIdentity, drained)
     if (evidencePaths !== undefined) {
       try {
         await settleEvidenceState(evidencePaths.runDir, {

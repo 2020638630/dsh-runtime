@@ -6,6 +6,7 @@ from dataclasses import replace
 
 from .observability.logger import record
 from .observability.progress import record_phase
+from .observability.activity import invocation_activity
 from .planner import SimplePlanner
 from .runtime.executor import Executor
 from .runtime.plugin import ExecutionContext, StopReason
@@ -79,26 +80,31 @@ class DSHController:
                     allow_workspace_write=allow_workspace_write,
                 )
                 record_phase(task.workspace_id, decision.role, decision.plugin)
-            result = await self.executor.execute(
-                decision.plugin,
-                ExecutionContext(
-                    task.task_id,
-                    task.workspace_id,
-                    task.goal,
-                    cwd=str(cwd),
-                    allow_workspace_write=allow_workspace_write,
-                ),
-                decision.params,
-                task.timeout_seconds,
-            )
+            with invocation_activity(task.workspace_id, decision.role, decision.plugin, task.iteration + 1):
+                result = await self.executor.execute(
+                    decision.plugin,
+                    ExecutionContext(
+                        task.task_id,
+                        task.workspace_id,
+                        task.goal,
+                        cwd=str(cwd),
+                        allow_workspace_write=allow_workspace_write,
+                    ),
+                    decision.params,
+                    task.timeout_seconds,
+                )
             task.iteration += 1
             completed = result.stop_reason is StopReason.COMPLETED and result.success
+            invocation = (decision.role, decision.plugin, task.iteration)
             if (
                 completed and result.cleanup_error is None
-                and task.task_kind is TaskKind.REPOSITORY_CHANGE
-                and (decision.role, decision.plugin, task.iteration) in {
-                    ("worker", "codex", 1), ("worker", "codebuddy", 1), ("reviewer", "codex", 2),
-                }
+                and (
+                    (task.task_kind is TaskKind.REPOSITORY_INSPECTION
+                     and invocation == ("inspector", "codex", 1))
+                    or (task.task_kind is TaskKind.REPOSITORY_CHANGE and invocation in {
+                        ("worker", "codex", 1), ("worker", "codebuddy", 1), ("reviewer", "codex", 2),
+                    })
+                )
             ):
                 task.model_observations.append(ModelObservation(
                     role=decision.role,

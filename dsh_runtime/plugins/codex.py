@@ -27,6 +27,7 @@ from ..codex_safe_trace import (
 )
 from ..runtime.plugin import ExecutionContext, PluginResult
 from ..observability.progress import record_codex_tool
+from ..observability.activity import STREAM_ENV, record_activity
 
 
 class _CodexProtocolError(Exception):
@@ -402,6 +403,7 @@ class _CodexSession:
         if (self.workspace_id is not None and self.thread_id is not None and isinstance(item, dict)
             and item.get("type") in ("commandExecution", "fileChange")):
             status = "called" if method == "item/started" else item.get("status")
+            record_activity("codex", "tool", status, item["type"])
             now = time.monotonic()
             if status in ("called", "completed", "failed") and now - self._last_live_tool_at >= 0.5:
                 record_codex_tool(self.workspace_id, item["type"], status)
@@ -426,6 +428,7 @@ class _CodexSession:
             self.unphased_answer = text
         elif phase != "commentary":
             raise _CodexProtocolError("invalid agent message phase")
+        record_activity("codex", "message", "observed")
 
     async def initialize(self) -> None:
         request_id = await self.send(
@@ -659,6 +662,7 @@ class CodexPlugin:
             ):
                 environment.pop(key, None)
         environment.update(self._environment_overlay)
+        environment.pop(STREAM_ENV, None)
         return environment
 
     async def execute(self, ctx: ExecutionContext, params: dict[str, Any]) -> PluginResult:

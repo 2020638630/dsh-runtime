@@ -27,10 +27,12 @@ function modelId(value: unknown): value is string | null {
 
 function modelObservations(
   task: RuntimeTaskState, runId: string, taskKind: DshRuntimeTaskKind,
-  expectedWorkerAdapter: 'codebuddy' | 'codex', expectedApiReviewer: boolean,
+  expectedWorkerAdapter: 'codebuddy' | 'codex', expectedApiInspector: boolean, expectedApiReviewer: boolean,
 ) {
   const evidence = task.model_observations
-  if (taskKind !== 'repository_change' || !Number.isInteger(task.iteration)
+  const inspection = taskKind === 'repository_inspection'
+  if (inspection && (expectedApiInspector || task.iteration !== 1)) return undefined
+  if (!Number.isInteger(task.iteration)
     || task.iteration < 1 || task.iteration > 2 || !record(evidence)
     || (evidence.version !== 1 && evidence.version !== 2) || evidence.run_id !== runId
     || evidence.task_id !== task.task_id || evidence.workspace_id !== task.workspace_id
@@ -47,9 +49,10 @@ function modelObservations(
     const role = entry.role
     if (typeof index !== 'number' || (index !== 1 && index !== 2)
       || index <= previousIndex || index > task.iteration) return undefined
-    const adapter = index === 1 ? expectedWorkerAdapter : expectedApiReviewer ? undefined : 'codex'
-    if (adapter === undefined || entry.adapter !== adapter
-      || role !== (index === 1 ? 'worker' : 'reviewer')) return undefined
+    const adapter = inspection ? 'codex'
+      : index === 1 ? expectedWorkerAdapter : expectedApiReviewer ? undefined : 'codex'
+    const expectedRole = inspection ? 'inspector' : index === 1 ? 'worker' : 'reviewer'
+    if (adapter === undefined || entry.adapter !== adapter || role !== expectedRole) return undefined
     const source = version === 1 ? 'codex_thread_start' : entry.source
     const expectedSource = adapter === 'codex' ? 'codex_thread_start'
       : entry.reported_model === null ? 'unobserved' : 'codebuddy_json_assistant'
@@ -59,6 +62,7 @@ function modelObservations(
       if (!record(current) || current.version !== 1 || current.run_id !== runId
         || current.task_id !== task.task_id || current.workspace_id !== task.workspace_id
         || current.adapter !== adapter || current.role !== role || current.invocation_index !== index
+        || (inspection && current.allow_workspace_write !== false)
         || current.stop_reason !== 'completed' || current.success !== true
         || current.cleanup_ok !== true) return undefined
     }
@@ -206,7 +210,16 @@ export async function writeTerminalEvidence(input: {
   })
   const diffPath = join(runDir, 'diff.patch')
   const models = modelObservations(task, runId, input.taskKind,
-    input.expectedWorkerAdapter ?? 'codebuddy', input.expectedApiReviewer === true)
+    input.expectedWorkerAdapter ?? 'codebuddy', apiInspection, input.expectedApiReviewer === true)
+  const taskState = audit.status === 'settled' ? JSON.stringify({
+    schema_version: 1, source: 'runtime_terminal_json',
+    run_id: runId, task_id: task.task_id, workspace_id: task.workspace_id,
+    task_kind: task.task_kind, status: task.status, iteration: task.iteration,
+    call_id: audit.callId, stdout_sha256: audit.stdoutSha256,
+    ...(models === undefined ? {} : { model_observations: models }),
+  }, null, 2) + '\n' : undefined
+  const taskStateName = 'task-state.v1.json'
+  const taskStatePath = join(runDir, taskStateName)
   const manifest = {
     schema_version: '1', task_id: task.task_id, run_id: runId,
     workspace_id: task.workspace_id, task_kind: input.taskKind, status: task.status,
@@ -260,6 +273,10 @@ export async function writeTerminalEvidence(input: {
     verification: verification(task, runId, input.taskKind,
       input.expectedApiReviewer === true ? 'api_agent' : 'codex', reviewVerified),
     ...(models === undefined ? {} : { model_observations: models }),
+    ...(taskState === undefined ? {} : { task_state: {
+      filename: taskStateName, scope: 'terminal_metadata',
+      sha256: createHash('sha256').update(taskState, 'utf8').digest('hex'),
+    } }),
     audit: {
       source: 'call_trace', status: audit.status, call_id: audit.callId,
       call_trace_path: input.callTracePath, stdout_bytes: audit.stdoutBytes,
@@ -268,12 +285,21 @@ export async function writeTerminalEvidence(input: {
   }
   await writeFile(diffPath, changes.diff, { flag: 'wx' })
   const pending = join(runDir, 'evidence-manifest.v1.pending')
-  await writeFile(pending, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' })
+  let taskStateWritten = false
+  let manifestPendingWritten = false
   try {
+    input.signal?.throwIfAborted()
+    if (taskState !== undefined) {
+      await writeFile(taskStatePath, taskState, { flag: 'wx', mode: 0o600 })
+      taskStateWritten = true
+    }
+    await writeFile(pending, `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' })
+    manifestPendingWritten = true
     input.signal?.throwIfAborted()
     renameSync(pending, join(runDir, 'evidence-manifest.v1.json'))
   } catch (error) {
-    await unlink(pending).catch(() => {})
+    if (manifestPendingWritten) await unlink(pending).catch(() => {})
+    if (taskStateWritten) await unlink(taskStatePath).catch(() => {})
     throw error
   }
 }

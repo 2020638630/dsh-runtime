@@ -17,6 +17,7 @@ from dsh_runtime.api_agent_safe_trace import (
     SAFE_EVENT_TRACE_DIR_ENV,
 )
 from dsh_runtime.observability.logger import record
+from dsh_runtime.observability.activity import record_activity
 from dsh_runtime.runtime.plugin import ExecutionContext, PluginResult
 
 
@@ -30,9 +31,11 @@ class _AuditedReadBroker:
         self.trace = trace
 
     async def execute(self, name: str, arguments: dict[str, Any]) -> str:
+        record_activity("api_agent", "tool", "called", name)
         try:
             result = await self.broker.execute(name, arguments)
         except Exception:
+            record_activity("api_agent", "tool", "failed", name)
             record(
                 "api_agent_tool_settled", task_id=self.ctx.task_id,
                 workspace_id=self.ctx.workspace_id, tool=name, outcome="failed",
@@ -45,6 +48,7 @@ class _AuditedReadBroker:
             workspace_id=self.ctx.workspace_id, tool=name, outcome="completed",
             result_chars=len(result),
         )
+        record_activity("api_agent", "tool", "completed", name)
         if self.trace is not None:
             self.trace.tool(name, "completed")
         return result

@@ -25,6 +25,7 @@ from typing import Any, BinaryIO
 from uuid import uuid4
 
 from ..runtime.plugin import ExecutionContext, PluginResult
+from ..observability.activity import record_activity
 
 
 _SETTINGS = {
@@ -493,6 +494,12 @@ class _SafeCodeBuddyEventSink:
             terminal_reason=terminal_reason,
         )
         self._write(record)
+        # Separate source observation; no native message, arguments or result text.
+        if event_type in {"tool_call", "tool_result"}:
+            status = {"running": "called", "completed": "completed", "error": "failed"}.get(tool_status if isinstance(tool_status, str) else "", "observed")
+            record_activity("codebuddy", "tool", status, tool_name)
+        elif event_type == "model_event":
+            record_activity("codebuddy", "message", "observed")
 
     def emit_native_event(self, event: Any) -> None:
         self.emit(
@@ -1857,6 +1864,7 @@ class CodeBuddyPlugin:
         environment.pop(SAFE_EVENT_TRACE_DIR_ENV, None)
         environment.pop(RUNTIME_RUN_ID_ENV, None)
         environment.pop("DSH_RUNTIME_PROGRESS_PATH", None)
+        environment.pop("DSH_RUNTIME_ACTIVITY_STREAM", None)
         environment.pop(SAFE_STREAM_JSON_ENV, None)
         environment.pop(MAX_STREAM_CHARS_ENV, None)
         return environment

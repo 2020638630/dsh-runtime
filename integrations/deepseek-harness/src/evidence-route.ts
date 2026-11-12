@@ -7,6 +7,8 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import { readTerminalEvidence, readTerminalRunState } from './runtime/read-terminal-evidence.ts'
 import { readLiveProgress } from './runtime/read-live-progress.ts'
 import { previewReviewMaterial } from './runtime/review-preview.ts'
+import { realpath } from 'node:fs/promises'
+import { activityHistories } from './runtime/activity-history.ts'
 
 /** Authenticated Host path for one parent Session's Runtime evidence. */
 export const RUNTIME_EVIDENCE_PATH = '/api/dsh-runtime.evidence'
@@ -39,6 +41,19 @@ export function registerRuntimeEvidenceRoute(ctx: Context, evidenceRoot: string)
           && event.data.version === 2
           && event.data.childId === childId)
         if (!owned) return new Response('Runtime evidence not found for this Session.', { status: 404 })
+        if (query.get('view') === 'activity') {
+          const after = query.get('after') ?? '0'
+          const stream = query.get('stream') ?? undefined
+          if (!/^(?:0|[1-9][0-9]{0,15})$/u.test(after) || !Number.isSafeInteger(Number(after))
+            || (stream !== undefined && !UUID.test(stream))
+            || [...query.keys()].some(name => !['sessionId', 'childId', 'view', 'after', 'stream'].includes(name))
+            || new Set(query.keys()).size !== [...query.keys()].length) {
+            return new Response('Invalid activity cursor.', { status: 400 })
+          }
+          return Response.json(activityHistories.read({ evidenceRoot: await realpath(evidenceRoot),
+            runId: `dsh-runtime-${childId}`, workspaceId: parentId }, Number(after), stream),
+          { headers: { 'cache-control': 'no-store' } })
+        }
         const coordinates = {
           evidenceRoot, runId: `dsh-runtime-${childId}`, workspaceId: parentId,
         }

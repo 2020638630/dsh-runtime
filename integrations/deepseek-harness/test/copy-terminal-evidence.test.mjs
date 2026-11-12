@@ -12,7 +12,7 @@ const runId = 'dsh-runtime-11111111-2222-3333-4444-555555555555'
 const workspaceId = 'session-22222222-3333-4444-5555-666666666666'
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 
-function fixture(t) {
+function fixture(t, withTrace = true) {
   const tempRoot = realpathSync(tmpdir())
   const base = mkdtempSync(join(tempRoot, 'dsh-evidence-copy-'))
   t.after(() => {
@@ -38,7 +38,7 @@ function fixture(t) {
   writeFileSync(join(run, `${runId}-runtime-call-trace.jsonl`), '{"event":"done"}\n')
   const trace = join(run, `safe-trace-${runId}`)
   mkdirSync(trace)
-  writeFileSync(join(trace, 'worker.jsonl.closed'), '{"closed":true}\n')
+  if (withTrace) writeFileSync(join(trace, 'worker.jsonl.closed'), '{"closed":true}\n')
   return { sourceEvidenceRoot, targetEvidenceRoot, run,
     input: { sourceEvidenceRoot, targetEvidenceRoot, runId, workspaceId } }
 }
@@ -77,6 +77,27 @@ test('mismatched identity and unsettled source fail before destination creation'
   writeFileSync(statePath, JSON.stringify(state))
   await assert.rejects(copyTerminalEvidence(f.input), /SOURCE_NOT_SETTLED/u)
   assert.equal(existsSync(join(f.targetEvidenceRoot, 'dsh-runtime')), false)
+})
+
+test('copy preserves bound terminal metadata from a run with no safe trace', async t => {
+  const f = fixture(t, false)
+  const name = 'task-state.v1.json'
+  const bytes = '{"status":"completed"}\n'
+  const manifestPath = join(f.run, 'evidence-manifest.v1.json')
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  manifest.task_state = { filename: name, scope: 'terminal_metadata', sha256: digest(bytes) }
+  writeFileSync(manifestPath, JSON.stringify(manifest))
+  writeFileSync(join(f.run, name), 'wrong')
+  await assert.rejects(copyTerminalEvidence(f.input), /TASK_STATE_MISMATCH/u)
+  writeFileSync(join(f.run, name), bytes)
+  manifest.execution_trajectory = { trace_file: 'missing.jsonl' }
+  writeFileSync(manifestPath, JSON.stringify(manifest))
+  await assert.rejects(copyTerminalEvidence(f.input), /INVALID_SOURCE_RUN/u)
+  delete manifest.execution_trajectory
+  writeFileSync(manifestPath, JSON.stringify(manifest))
+  const result = await copyTerminalEvidence(f.input)
+  assert.equal(result.status, 'COPIED')
+  assert.equal(readFileSync(join(f.targetEvidenceRoot, 'dsh-runtime', runId, name), 'utf8'), bytes)
 })
 
 test('invalid absolute Diff reference and overlapping roots fail closed', async t => {

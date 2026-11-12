@@ -6,7 +6,11 @@ from unittest.mock import patch
 
 import pytest
 
-from dsh_runtime.bootstrap import build_controller, build_repository_change_task
+from dsh_runtime.bootstrap import (
+    build_controller,
+    build_repository_change_task,
+    build_repository_inspection_task,
+)
 from dsh_runtime.codex_runtime_home import CodexRuntimeHome
 from dsh_runtime.entrypoint import _serialize_task
 from dsh_runtime.plugins.codebuddy import CodeBuddyPlugin
@@ -243,6 +247,35 @@ def test_codex_model_observations_keep_both_phases(tmp_path: Path, monkeypatch) 
              "requested_model": "worker-request", "reported_model": "worker-return"},
             {"role": "reviewer", "adapter": "codex", "invocation_index": 2,
              "requested_model": None, "reported_model": "review-return"},
+        ],
+    }
+
+
+def test_read_only_codex_model_observation(tmp_path: Path, monkeypatch) -> None:
+    async def fake_codex(self, ctx, params):
+        assert not ctx.allow_workspace_write
+        assert params["model"] == "inspection-request"
+        return PluginResult(True, "inspection report", reported_model="inspection-return")
+
+    controller = _controller_for(tmp_path)
+    controller.planner.roles = RoleConfig(
+        worker=RoleSelection("codebuddy"),
+        reviewer=RoleSelection("codex"),
+        inspector=RoleSelection("codex", "inspection-request"),
+    )
+    task = build_repository_inspection_task("inspect target", "workspace.m5")
+    with patch.object(CodexPlugin, "execute", new=fake_codex):
+        asyncio.run(controller.run(task))
+    monkeypatch.setenv("DSH_RUNTIME_RUN_ID", "dsh-runtime-fixture")
+    monkeypatch.setenv("DSH_RUNTIME_INVOCATION_EVIDENCE", "1")
+    serialized = _serialize_task(task)
+    assert serialized["status"] == "completed"
+    assert serialized["model_observations"] == {
+        "version": 1, "run_id": "dsh-runtime-fixture",
+        "task_id": task.task_id, "workspace_id": task.workspace_id,
+        "entries": [
+            {"role": "inspector", "adapter": "codex", "invocation_index": 1,
+             "requested_model": "inspection-request", "reported_model": "inspection-return"},
         ],
     }
 
