@@ -7,8 +7,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import { readTerminalEvidence, readTerminalRunState } from './runtime/read-terminal-evidence.ts'
 import { readLiveProgress } from './runtime/read-live-progress.ts'
 import { previewReviewMaterial } from './runtime/review-preview.ts'
-import { realpath } from 'node:fs/promises'
-import { activityHistories } from './runtime/activity-history.ts'
+import { activityHistories, resolveActivityEvidenceRoot } from './runtime/activity-history.ts'
 
 /** Authenticated Host path for one parent Session's Runtime evidence. */
 export const RUNTIME_EVIDENCE_PATH = '/api/dsh-runtime.evidence'
@@ -50,7 +49,7 @@ export function registerRuntimeEvidenceRoute(ctx: Context, evidenceRoot: string)
             || new Set(query.keys()).size !== [...query.keys()].length) {
             return new Response('Invalid activity cursor.', { status: 400 })
           }
-          return Response.json(activityHistories.read({ evidenceRoot: await realpath(evidenceRoot),
+          return Response.json(activityHistories.read({ evidenceRoot: resolveActivityEvidenceRoot(evidenceRoot),
             runId: `dsh-runtime-${childId}`, workspaceId: parentId }, Number(after), stream),
           { headers: { 'cache-control': 'no-store' } })
         }

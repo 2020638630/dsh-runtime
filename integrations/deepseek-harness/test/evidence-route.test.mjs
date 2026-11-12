@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import fsPromises from 'node:fs/promises'
+import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { test } from 'node:test'
@@ -9,7 +11,7 @@ import { setTimeout as wait } from 'node:timers/promises'
 import { registerRuntimeEvidenceRoute } from '../.build/src/evidence-route.js'
 import { captureWorkspace, describeWorkspaceObservation } from '../.build/src/runtime/workspace-evidence.js'
 import { mountSnapshotReview } from '../.build/src/snapshot-review-route.js'
-import { activityHistories } from '../.build/src/runtime/activity-history.js'
+import { activityHistories, resolveActivityEvidenceRoot } from '../.build/src/runtime/activity-history.js'
 
 const childId = '11111111-2222-3333-4444-555555555555'
 const runId = `dsh-runtime-${childId}`
@@ -30,7 +32,7 @@ test('activity reads reuse parent ownership, strict cursors and no-store without
   }
   const release = registerRuntimeEvidenceRoute(ctx, root)
   t.after(release)
-  const identity = { evidenceRoot: realpathSync(root), runId, workspaceId }
+  const identity = { evidenceRoot: resolveActivityEvidenceRoot(root), runId, workspaceId }
   const streamId = activityHistories.start(identity, 'repository_inspection')
   activityHistories.accept(identity, { v: 1, type: 'begin', runId, workspaceId, streamId })
   const event = { v: 1, type: 'event', runId, workspaceId, streamId, seq: 1,
@@ -51,6 +53,63 @@ test('activity reads reuse parent ownership, strict cursors and no-store without
   query.set('sessionId', 'unrelated-parent')
   assert.equal((await read('')).status, 404)
   assert.equal(starts, 0)
+})
+
+test('activity lookup uses the registration resolver without merging roots, runs or parents', async t => {
+  const base = mkdtempSync(join(realpathSync(tmpdir()), 'dsh-history-identity-'))
+  t.after(() => rmSync(base, { recursive: true, force: true }))
+  const root = join(base, 'evidence'), otherRoot = join(base, 'other-evidence')
+  mkdirSync(root); mkdirSync(otherRoot); mkdirSync(join(root, 'nested'))
+  const alias = root + sep + 'nested' + sep + '..'
+  assert.equal(resolveActivityEvidenceRoot(alias), resolveActivityEvidenceRoot(root))
+
+  // Model the Windows sync/async spelling discrepancy on every test platform.
+  // A regression back to async realpath must miss the recorded window, not pass
+  // merely because the Linux resolvers happen to agree.
+  const asyncRealpath = fsPromises.realpath
+  let divergentReads = 0
+  t.mock.method(fsPromises, 'realpath', async (...args) => {
+    const physical = await asyncRealpath(...args)
+    if (args[0] === alias) {
+      divergentReads++
+      return physical + '-different-resolver-spelling'
+    }
+    return physical
+  })
+  syncBuiltinESMExports()
+  t.after(() => { fsPromises.realpath = asyncRealpath; syncBuiltinESMExports() })
+  const identity = { evidenceRoot: resolveActivityEvidenceRoot(root), runId, workspaceId }
+  const streamId = activityHistories.start(identity, 'repository_inspection')
+  activityHistories.accept(identity, { v: 1, type: 'begin', runId, workspaceId, streamId })
+  activityHistories.accept(identity, { v: 1, type: 'event', runId, workspaceId, streamId, seq: 1,
+    invocationId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', invocationIndex: 1,
+    role: 'inspector', adapter: 'codex', atMs: Date.now(), kind: 'phase', status: 'dispatched' })
+  const otherChild = '22222222-3333-4444-5555-666666666666'
+  const route = evidenceRoot => {
+    let handle
+    const ctx = {
+      connection: { fetch: { register(value) { handle = value.fetch; return async () => {} } } },
+      sessionQuery: { readSession: async id => ({ events: id === 'not-owned' ? [] : [childId, otherChild]
+        .map(childId => ({ type: 'subagent/catalog', data: { version: 2, childId } })) }) },
+      logger: { warn: () => {} },
+    }
+    t.after(registerRuntimeEvidenceRoute(ctx, evidenceRoot))
+    return (sessionId = workspaceId, child = childId) => handle(new Request('http://fixture/api/dsh-runtime.evidence?'
+      + new URLSearchParams({ sessionId, childId: child, view: 'activity' })))
+  }
+  const read = route(alias)
+  const found = await (await read()).json()
+  assert.equal(found.status, 'available')
+  assert.equal(found.streamId, streamId)
+  assert.equal(found.events.length, 1)
+  assert.equal(divergentReads, 0)
+  for (const response of [await route(otherRoot)(), await read('other-owner'), await read(workspaceId, otherChild)]) {
+    const missing = await response.json()
+    assert.equal(missing.status, 'unavailable')
+    assert.equal(missing.reason, 'not_recorded_in_this_host')
+    assert.equal(Object.hasOwn(missing, 'events'), false)
+  }
+  assert.equal((await read('not-owned')).status, 404)
 })
 
 test('review preview verifies ownership, saved patch bytes, and drift within one Git commit', async t => {

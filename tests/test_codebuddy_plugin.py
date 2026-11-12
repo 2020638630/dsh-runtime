@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -469,7 +470,8 @@ def test_windows_default_command_bypasses_cmd_shim(tmp_path: Path) -> None:
         'endLocal & "%_prog%" "%dp0%\\node_modules\\@tencent-ai\\codebuddy-code\\bin\\codebuddy" %*\n',
         encoding="utf-8",
     )
-    with patch.object(codebuddy_module.os, "name", "nt"), patch.object(
+    # Select the Windows resolver without changing pathlib's host filesystem flavor.
+    with patch.object(codebuddy_module, "os", SimpleNamespace(name="nt", sep=os.sep)), patch.object(
         codebuddy_module.shutil, "which", side_effect=lambda name: str(shim)
     ):
         assert codebuddy_module._default_command() == (str(node), str(entrypoint))
@@ -478,7 +480,7 @@ def test_windows_default_command_bypasses_cmd_shim(tmp_path: Path) -> None:
 def test_windows_default_command_fails_without_direct_entrypoint(tmp_path: Path) -> None:
     shim = tmp_path / "codebuddy.cmd"
     shim.write_text('@ECHO off\nendLocal & "%_prog%" "%dp0%\\missing" %*\n', encoding="utf-8")
-    with patch.object(codebuddy_module.os, "name", "nt"), patch.object(
+    with patch.object(codebuddy_module, "os", SimpleNamespace(name="nt", sep=os.sep)), patch.object(
         codebuddy_module.shutil, "which", side_effect=lambda name: str(shim)
     ), pytest.raises(
         codebuddy_module.CodeBuddyLaunchConfigurationError,

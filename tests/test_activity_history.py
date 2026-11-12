@@ -146,7 +146,11 @@ def test_host_stream_identity_is_not_forwarded_to_native_clis(monkeypatch):
     from dsh_runtime.plugins.codex import CodexPlugin
     from dsh_runtime.plugins.codebuddy import CodeBuddyPlugin
     monkeypatch.setenv(STREAM_ENV, STREAM)
-    for plugin in [CodexPlugin(environment={STREAM_ENV: "overlay"}), CodeBuddyPlugin(environment={STREAM_ENV: "overlay"})]:
+    # This tests environment filtering, not discovery or execution of installed CLIs.
+    for plugin in [
+        CodexPlugin(command=(sys.executable,), environment={STREAM_ENV: "overlay"}),
+        CodeBuddyPlugin(command=(sys.executable,), environment={STREAM_ENV: "overlay"}),
+    ]:
         assert STREAM_ENV not in plugin._environment()
 
 

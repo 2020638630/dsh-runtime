@@ -1,6 +1,14 @@
 /** Host-lifetime observations. Never persisted, never used to settle a task. */
 import { randomUUID } from 'node:crypto'
+import { realpathSync } from 'node:fs'
 import { StringDecoder } from 'node:string_decoder'
+
+/** Use one resolver for both registration and lookup: Node's sync and async
+ * realpath implementations can return different path spellings on Windows.
+ * Keep case and root boundaries intact; this is not an ownership check. */
+export function resolveActivityEvidenceRoot(evidenceRoot: string): string {
+  return realpathSync(evidenceRoot)
+}
 
 export const ACTIVITY_PREFIX = 'DSH_RUNTIME_ACTIVITY_V1 '
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u

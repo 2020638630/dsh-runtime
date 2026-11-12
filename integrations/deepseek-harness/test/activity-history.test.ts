@@ -7,6 +7,21 @@ const id = { evidenceRoot: 'fixture-root', runId: 'dsh-runtime-11111111-2222-433
 const invocation = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
 const second = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff'
 const at = Date.now()
+
+test('activity identity preserves root case and exact run and parent boundaries', () => {
+  const store = new ActivityHistoryStore()
+  const identities = [id, { ...id, evidenceRoot: 'Fixture-root' },
+    { ...id, evidenceRoot: 'fixture-root-sibling' }, { ...id, runId: id.runId + '-other' },
+    { ...id, workspaceId: id.workspaceId + '-other' }]
+  const streams = identities.map(identity => store.start(identity, 'repository_inspection'))
+  assert.equal(new Set(streams).size, identities.length)
+  identities.forEach((identity, index) => {
+    const result = store.read(identity)
+    assert.equal(result.status, 'available')
+    assert.equal(result.streamId, streams[index])
+  })
+})
+
 function setup(options?: { events: number; bytes: number; runs: number; terminalMs: number }, now?: () => number) {
   const store = new ActivityHistoryStore(options, now)
   const stream = store.start(id, 'repository_change')

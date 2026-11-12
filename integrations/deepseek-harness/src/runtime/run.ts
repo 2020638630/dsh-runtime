@@ -33,7 +33,7 @@ import {
 } from '@deepseek-ai/dsh-subprocess'
 import { writeTerminalEvidence } from './evidence-manifest.ts'
 import { captureWorkspace, type WorkspaceSnapshot } from './workspace-evidence.ts'
-import { activityHistories, ActivityFrameDecoder } from './activity-history.ts'
+import { activityHistories, ActivityFrameDecoder, resolveActivityEvidenceRoot } from './activity-history.ts'
 
 /** Default POSIX grace between subprocess termination tiers. */
 export const DEFAULT_DISPOSE_GRACE_MS = 3_000
@@ -427,7 +427,7 @@ async function createDshRuntimeRun(
 
   const startedAt = performance.now()
   const activityIdentity = evidencePaths && {
-    evidenceRoot: realpathSync(spec.evidenceRoot!),
+    evidenceRoot: resolveActivityEvidenceRoot(spec.evidenceRoot!),
     runId: evidencePaths.runId, workspaceId: spec.workspaceId,
   }
   // Identity uses the same canonical root as the existing evidence reader.
