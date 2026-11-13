@@ -368,6 +368,7 @@ async function changeManifest(
     task?: Partial<RuntimeTaskState>
     expectedApiReviewer?: boolean
     abortDuringEvidence?: AbortController
+    settledAudit?: boolean
   } = {},
 ) {
   const runDir = join(traceDir, '..')
@@ -386,16 +387,27 @@ async function changeManifest(
     ...options.task,
   }))
   assert.ok(task)
+  const stdout = JSON.stringify(task) + '\n'
+  const callTracePath = join(runDir, `${RUN_ID}-runtime-call-trace.jsonl`)
+  if (options.settledAudit) {
+    const callId = '00000000-0000-4000-8000-000000000009'
+    writeFileSync(callTracePath, [
+      { schema_version: '1', event: 'call_started', state: 'started', call_id: callId },
+      { schema_version: '1', event: 'call_terminal', state: 'returned', call_id: callId,
+        runtime_exit_code: 0, duration_ms: 1, task_status: task.status,
+        stdout_bytes: Buffer.byteLength(stdout), stdout_sha256: createHash('sha256').update(stdout).digest('hex') },
+    ].map(entry => JSON.stringify(entry)).join('\n') + '\n')
+  }
   const abort = options.abortDuringEvidence
   if (abort !== undefined) setImmediate(() => abort.abort())
   await writeTerminalEvidence({
     runId: RUN_ID, runDir, safeTraceDir: traceDir,
-    callTracePath: join(runDir, `${RUN_ID}-runtime-call-trace.jsonl`),
+    callTracePath,
     workspace, workspaceId: CHANGE_WORKSPACE_ID, before,
     taskKind: 'repository_change',
     task,
     ...(abort === undefined ? {} : { signal: abort.signal }),
-    exitCode: 0, durationMs: 1, stdout: '{}\n', maxTurnsConfig: 12,
+    exitCode: 0, durationMs: 1, stdout, maxTurnsConfig: 12,
     expectedApiReviewer: options.expectedApiReviewer ?? true,
     expectedWorkerAdapter,
   })
@@ -485,6 +497,92 @@ function emptyReviewTraceDir(): string {
   mkdirSync(traceDir, { recursive: true })
   return traceDir
 }
+
+function failedWorker(adapter: 'codebuddy' | 'codex', stopReason = 'failed') {
+  return { ...completedReview('', 'codex'), role: 'worker', adapter, invocation_index: 1,
+    allow_workspace_write: true, stop_reason: stopReason, success: false,
+    output_bytes: null, output_sha256: null }
+}
+
+test('settled bound Worker failure proves review was not dispatched, without changing the verdict', async () => {
+  for (const adapter of ['codebuddy', 'codex'] as const) {
+    for (const status of ['failed', 'timed_out']) {
+      const manifest = await changeManifest(emptyReviewTraceDir(), 1, adapter, {
+        settledAudit: true, task: { status, invocation_evidence: failedWorker(adapter, status) },
+      })
+      assert.deepEqual(manifest.review_execution, { version: 1, source: 'runtime_invocation_evidence',
+        status: 'not_started', reason: 'worker_terminated_before_review' })
+      assert.equal(manifest.verification.verdict, 'UNAVAILABLE')
+      assert.equal(manifest.verification.invocation_binding, 'invalid')
+    }
+  }
+})
+
+test('missing, stale or misbound Worker evidence cannot prove review was not started', async () => {
+  const worker = failedWorker('codebuddy')
+  const candidates = [undefined, null, { ...worker, version: 2 }, { ...worker, run_id: 'other' },
+    { ...worker, task_id: 'other' }, { ...worker, workspace_id: 'other' },
+    { ...worker, invocation_index: 2 }, { ...worker, role: 'reviewer' },
+    { ...worker, adapter: 'codex' }, { ...worker, allow_workspace_write: false },
+    { ...worker, cleanup_ok: false }, { ...worker, success: true },
+    { ...worker, output_bytes: 1 }, { ...worker, output_sha256: '0'.repeat(64) }]
+  for (const invocation_evidence of candidates) {
+    const manifest = await changeManifest(emptyReviewTraceDir(), 1, 'codebuddy', {
+      settledAudit: true, task: { invocation_evidence },
+    })
+    assert.equal(manifest.review_execution.status, 'unknown')
+  }
+  for (const [iteration, task, settledAudit] of [
+    [0, {}, true], // Admission ended before bound invocation evidence exists.
+    [1, { invocation_evidence: worker }, false],
+    [1, { invocation_evidence: worker, last_invocation_result: 'stale output' }, true],
+    [1, { invocation_evidence: worker, status: 'completed' }, true],
+  ] as const) {
+    const manifest = await changeManifest(emptyReviewTraceDir(), iteration, 'codebuddy', { task, settledAudit })
+    assert.equal(manifest.review_execution.status, 'unknown')
+  }
+})
+
+test('review invocation is separate from startup success, output binding and model verdict', async () => {
+  for (const adapter of ['codex', 'api_agent'] as const) {
+    const output = 'checked\nDSH_VERIFICATION: PASS'
+    for (const invocation_evidence of [
+      { ...completedReview(output, adapter), stop_reason: 'failed', success: false, output_bytes: null, output_sha256: null },
+      { ...completedReview(output, adapter), output_sha256: '0'.repeat(64) },
+    ]) {
+      const manifest = await changeManifest(emptyReviewTraceDir(), 2, 'codebuddy', {
+        settledAudit: true, expectedApiReviewer: adapter === 'api_agent',
+        task: { status: 'failed', invocation_evidence },
+      })
+      assert.equal(manifest.review_execution.status, 'invoked')
+      assert.equal(manifest.verification.invocation_binding, 'invalid')
+      assert.equal(manifest.verification.verdict, 'UNAVAILABLE')
+    }
+  }
+  for (const verdict of ['PASS', 'FAIL']) {
+    const output = `checked\nDSH_VERIFICATION: ${verdict}`
+    const manifest = await changeManifest(emptyReviewTraceDir(), 2, 'codebuddy', {
+      settledAudit: true, expectedApiReviewer: false,
+      task: { status: verdict === 'PASS' ? 'completed' : 'failed', last_invocation_result: output,
+        invocation_evidence: completedReview(output, 'codex') },
+    })
+    assert.equal(manifest.review_execution.status, 'invoked')
+    assert.equal(manifest.verification.invocation_binding, 'matched')
+    assert.equal(manifest.verification.verdict, verdict)
+  }
+  const reviewer = completedReview('', 'api_agent')
+  for (const invocation_evidence of [
+    { ...reviewer, version: 2 }, { ...reviewer, run_id: 'other' }, { ...reviewer, task_id: 'other' },
+    { ...reviewer, workspace_id: 'other' }, { ...reviewer, role: 'worker' },
+    { ...reviewer, invocation_index: 1 }, { ...reviewer, adapter: 'codex' },
+    { ...reviewer, allow_workspace_write: true },
+  ]) {
+    const mismatch = await changeManifest(emptyReviewTraceDir(), 2, 'codebuddy', {
+      settledAudit: true, task: { invocation_evidence },
+    })
+    assert.equal(mismatch.review_execution.status, 'unknown')
+  }
+})
 
 test('model evidence preserves both Codex roles and rejects misbound or invalid records', async () => {
   const worker = { role: 'worker', adapter: 'codex', invocation_index: 1,

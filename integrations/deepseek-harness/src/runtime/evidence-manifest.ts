@@ -121,6 +121,40 @@ function verification(
   }
 }
 
+/** Optional execution metadata, separate from verdict/output binding. A settled
+ * Worker failure returns from Controller before the next Planner dispatch.
+ * Missing activity, model observations or phase flags are not evidence here. */
+function reviewExecution(
+  task: RuntimeTaskState, runId: string, taskKind: DshRuntimeTaskKind,
+  expectedWorker: 'codebuddy' | 'codex', expectedReviewer: 'codex' | 'api_agent',
+  auditSettled: boolean,
+) {
+  if (taskKind !== 'repository_change') return undefined
+  const unknown = { version: 1, source: 'runtime_invocation_evidence', status: 'unknown', reason: 'insufficient_bound_evidence' }
+  const evidence = task.invocation_evidence
+  if (!auditSettled || !record(evidence) || evidence.version !== 1
+    || evidence.run_id !== runId || evidence.task_id !== task.task_id
+    || evidence.workspace_id !== task.workspace_id
+    || !['completed', 'failed', 'timed_out', 'max_iterations'].includes(task.status)
+    || typeof evidence.success !== 'boolean' || typeof evidence.cleanup_ok !== 'boolean'
+    || !['completed', 'failed', 'timed_out'].includes(String(evidence.stop_reason))) return unknown
+  if (task.iteration === 2 && evidence.invocation_index === 2
+    && evidence.role === 'reviewer' && evidence.adapter === expectedReviewer
+    && evidence.allow_workspace_write === false) {
+    return { ...unknown, status: 'invoked', reason: 'reviewer_invocation_recorded' }
+  }
+  if (task.iteration === 1 && evidence.invocation_index === 1
+    && evidence.role === 'worker' && evidence.adapter === expectedWorker
+    && evidence.allow_workspace_write === true && evidence.success === false
+    && evidence.cleanup_ok === true && evidence.output_bytes === null && evidence.output_sha256 === null
+    && task.last_invocation_result === null && task.result === null
+    && ((task.status === 'failed' && evidence.stop_reason === 'failed')
+      || (task.status === 'timed_out' && evidence.stop_reason === 'timed_out'))) {
+    return { ...unknown, status: 'not_started', reason: 'worker_terminated_before_review' }
+  }
+  return unknown
+}
+
 /** Write both artifacts only after the child has exited and the post-run workspace was observed.
  * @param input - bound child result, Host paths, and pre-run workspace observation.
  */
@@ -211,6 +245,9 @@ export async function writeTerminalEvidence(input: {
   const diffPath = join(runDir, 'diff.patch')
   const models = modelObservations(task, runId, input.taskKind,
     input.expectedWorkerAdapter ?? 'codebuddy', apiInspection, input.expectedApiReviewer === true)
+  const reviewExecutionState = reviewExecution(task, runId, input.taskKind,
+    input.expectedWorkerAdapter ?? 'codebuddy', input.expectedApiReviewer === true ? 'api_agent' : 'codex',
+    audit.status === 'settled')
   const taskState = audit.status === 'settled' ? JSON.stringify({
     schema_version: 1, source: 'runtime_terminal_json',
     run_id: runId, task_id: task.task_id, workspace_id: task.workspace_id,
@@ -272,6 +309,7 @@ export async function writeTerminalEvidence(input: {
     },
     verification: verification(task, runId, input.taskKind,
       input.expectedApiReviewer === true ? 'api_agent' : 'codex', reviewVerified),
+    ...(reviewExecutionState === undefined ? {} : { review_execution: reviewExecutionState }),
     ...(models === undefined ? {} : { model_observations: models }),
     ...(taskState === undefined ? {} : { task_state: {
       filename: taskStateName, scope: 'terminal_metadata',

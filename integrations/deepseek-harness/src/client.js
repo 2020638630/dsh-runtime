@@ -648,6 +648,35 @@ window.__ModuleLoader__.load({
           h(ApiConnections, { roles: current.roles, onRevision: setCatalogRevision })))
     }
 
+    function reviewExecutionStatus(manifest) {
+      if (manifest?.task_kind === 'repository_inspection') return 'not_applicable'
+      const execution = manifest?.review_execution
+      if (manifest?.task_kind !== 'repository_change' || manifest.audit?.status !== 'settled'
+        || execution?.version !== 1 || execution.source !== 'runtime_invocation_evidence') return 'unknown'
+      if (execution.status === 'not_started' && execution.reason === 'worker_terminated_before_review'
+        && ['failed', 'timed_out'].includes(manifest.status)
+        && manifest.verification?.verdict === 'UNAVAILABLE'
+        && manifest.verification.invocation_binding !== 'matched') return 'not_started'
+      if (execution.status === 'invoked' && execution.reason === 'reviewer_invocation_recorded') return 'invoked'
+      return 'unknown'
+    }
+
+    function reviewExecutionLabel(manifest) {
+      return { not_applicable: '不适用', not_started: '未执行：Worker 阶段终止',
+        invoked: '已发起审查调用；不代表 CLI 已成功启动或审查已完成',
+        unknown: '执行情况未记录，无法仅据此判断是否发起审查' }[reviewExecutionStatus(manifest)]
+    }
+
+    function reviewBindingLabel(manifest) {
+      const execution = reviewExecutionStatus(manifest)
+      if (execution === 'not_applicable') return '不适用'
+      if (execution === 'not_started') return '未建立（没有 Reviewer 调用）'
+      const binding = manifest.verification?.invocation_binding
+      if (binding === 'invalid') return execution === 'invoked'
+        ? '证据不匹配或校验失败' : '校验未通过；无法区分未执行与绑定不匹配'
+      return labelFor({ matched: '已匹配', missing: '缺少调用证据', not_applicable: '不适用' }, binding)
+    }
+
     function failureGuidance(state, manifest) {
       if (!manifest) {
         return ['aborted', 'error', 'ended'].includes(state)
@@ -659,9 +688,15 @@ window.__ModuleLoader__.load({
         return '模型审查未通过。请先查看「审查与证据」中的审查原文，并核对「文件变更」。'
       }
       if (verdict !== 'UNAVAILABLE') return null
+      const execution = reviewExecutionStatus(manifest)
+      if (execution === 'not_started') {
+        return '原始审查未执行：Worker 阶段终止，没有形成审查判决。请先查看任务失败信息并核对「文件变更」。'
+      }
       const reason = binding === 'missing' ? '缺少审查调用记录'
         : binding === 'invalid' ? '审查调用证据未通过绑定校验' : '现有证据无法形成有效的审查判决'
-      return `${reason}。请查看「审查与证据」和「文件变更」，必要时手动核对工作区。`
+      const context = execution === 'invoked' ? '原始审查已发起，结果未确认。'
+        : '执行情况未记录，无法区分未执行与绑定不匹配。'
+      return `${context}${reason}。请查看「审查与证据」和「文件变更」，必要时手动核对工作区。`
     }
 
     function observedModels(manifest) {
@@ -734,7 +769,8 @@ window.__ModuleLoader__.load({
       if (observedModels(manifest).some(model => !model?.reported)) gaps.push('部分实际模型尚未核实')
       if (manifest.task_kind !== 'repository_inspection') {
         gaps.push('原始审查的受审快照绑定未记录')
-        if (manifest.verification.invocation_binding !== 'matched') gaps.push('原始审查调用绑定未确认')
+        if (reviewExecutionStatus(manifest) === 'not_started') gaps.push('Worker 阶段终止，原始审查未执行')
+        else if (manifest.verification.invocation_binding !== 'matched') gaps.push('原始审查调用绑定未确认')
         if (!manifest.verification.evidence_text) gaps.push('缺少原始审查原文')
         if (manifest.verification.evidence_truncated === true) gaps.push('原始审查原文仅保留部分')
       }
@@ -750,6 +786,7 @@ window.__ModuleLoader__.load({
         `任务类型：${inspection ? '仓库只读检查' : change ? '仓库修改' : '未知'}`,
         `任务约束：${inspection ? '只读' : change ? '执行后须经独立只读复核' : '未记录'}；具体目标请核对原会话。`,
         ...stats.map(([label, value]) => `${label}：${value}`)]
+      if (change) parts.push(`原始审查执行情况：${reviewExecutionLabel(manifest)}`)
       if (change || inspection) {
         for (const [index, model] of observedModels(manifest).entries()) {
           const source = model ? `${model.adapter} · ${model.reportLabel} · ${model.reported ? '已记录' : '未知'}` : '未记录'
@@ -1301,6 +1338,7 @@ window.__ModuleLoader__.load({
         ? Math.max(0, elapsedTo - start) : null
       const showActivity = !!id
       const reviewVerdict = manifest?.task_kind === 'repository_inspection' ? '不适用'
+        : reviewExecutionStatus(manifest) === 'not_started' ? '未执行（无审查判决）'
         : labelFor({ PASS: 'PASS', FAIL: 'FAIL', UNAVAILABLE: '无法确认', NOT_APPLICABLE: '不适用' },
           manifest?.verification.verdict)
       const trajectoryStatus = labelFor(evidenceStatuses, manifest?.execution_trajectory.status)
@@ -1340,9 +1378,10 @@ window.__ModuleLoader__.load({
         const review = manifest.review_trajectory
         body = [h('h3', null, '原始审查'),
           line('原始判决', reviewVerdict),
+          line('原始审查执行情况', reviewExecutionLabel(manifest)),
           line('任务约束', manifest.task_kind === 'repository_inspection' ? '只读检查；任务不要求修改后的独立复核'
             : manifest.task_kind === 'repository_change' ? '仓库修改须执行独立只读复核' : '任务类型未记录，无法确认'),
-          line('审查调用绑定', labelFor({ matched: '已匹配', missing: '缺失', invalid: '校验失败', not_applicable: '不适用' }, manifest.verification.invocation_binding)),
+          line('审查调用绑定', reviewBindingLabel(manifest)),
           line('上下文独立性', manifest.task_kind === 'repository_inspection' ? '不适用' : '此清单未单独记录；调用绑定与上下文独立性分别判断'),
           line('原始材料访问', '此清单未单独记录访问范围；请核对审查原文与任务约束'),
           manifest.task_kind !== 'repository_inspection' && line('原始受审快照绑定', '此清单未记录；运行后工作树观察不构成原始审查的目标绑定'),

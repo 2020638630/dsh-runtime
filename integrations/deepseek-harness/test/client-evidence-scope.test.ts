@@ -413,6 +413,47 @@ test('overview separates task, original review, unread supplemental review and e
     /原始审查[\s\S]*不适用/u)
 })
 
+test('review wording separates proven non-dispatch, invoked failures and old unknown records', () => {
+  const changes = { added_files: [], modified_files: [], deleted_files: [] }
+  const execution = (status: string, reason: string) => ({ version: 1, source: 'runtime_invocation_evidence', status, reason })
+  const draw = (terminal: Record<string, unknown>) => render('audit', changes, undefined, undefined, undefined, terminal)
+  const failed = { status: 'failed', verification: { verdict: 'UNAVAILABLE', invocation_binding: 'invalid' } }
+  const notStarted = { ...failed, review_execution: execution('not_started', 'worker_terminated_before_review') }
+  const before = JSON.stringify(notStarted)
+  const notStartedText = draw(notStarted)
+  assert.match(notStartedText, /原始审查未执行：Worker 阶段终止/u)
+  assert.match(notStartedText, /原始判决：未执行（无审查判决）/u)
+  assert.match(notStartedText, /审查调用绑定：未建立（没有 Reviewer 调用）/u)
+  assert.doesNotMatch(notStartedText, /审查调用证据未通过绑定校验|审查调用绑定：校验失败/u)
+  assert.equal(JSON.stringify(notStarted), before, 'Rendering must not rewrite historical evidence')
+
+  const invoked = draw({ ...failed, review_execution: execution('invoked', 'reviewer_invocation_recorded') })
+  assert.match(invoked, /原始审查已发起，结果未确认/u)
+  assert.match(invoked, /不代表 CLI 已成功启动或审查已完成/u)
+  assert.match(invoked, /审查调用绑定：证据不匹配或校验失败/u)
+  assert.match(invoked, /原始判决：无法确认/u)
+
+  for (const metadata of [undefined, execution('unknown', 'insufficient_bound_evidence'),
+    execution('not_started', 'invalid-reason'), { ...execution('not_started', 'worker_terminated_before_review'), version: 2 }]) {
+    const old = draw({ ...failed, review_execution: metadata, model_observations: { entries: [] },
+      authority_phases: { phase_2_codex_effective_write: null }, execution_trajectory: { status: 'unavailable' } })
+    assert.match(old, /执行情况未记录，无法区分未执行与绑定不匹配/u)
+    assert.match(old, /审查调用绑定：校验未通过；无法区分未执行与绑定不匹配/u)
+    assert.doesNotMatch(old, /原始审查未执行：|没有 Reviewer 调用/u)
+  }
+  for (const override of [
+    { audit: { status: 'unavailable' } }, { status: 'completed' },
+    { verification: { verdict: 'PASS', invocation_binding: 'matched' } },
+  ]) assert.doesNotMatch(draw({ ...notStarted, ...override }), /没有 Reviewer 调用/u)
+  for (const verdict of ['PASS', 'FAIL']) {
+    const text = draw({ status: verdict === 'PASS' ? 'completed' : 'failed',
+      verification: { verdict, invocation_binding: 'matched' },
+      review_execution: execution('invoked', 'reviewer_invocation_recorded') })
+    assert.ok(text.includes('原始判决：' + verdict))
+    assert.match(text, /审查调用绑定：已匹配/u)
+  }
+})
+
 test('long patches and audit details are collapsed by default', () => {
   const changes = {
     source: 'workspace_pre_post_snapshot_delta', baseline_compared: true,

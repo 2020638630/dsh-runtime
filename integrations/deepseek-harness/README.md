@@ -132,3 +132,28 @@ Completed repository-change runs with a bound PASS can preview material for a la
 On Desktop, an API reviewer configured in the Profile can receive the previewed patch after explicit confirmation. The source must belong to a live parent Agent and the inspection workload must be enabled. The Host rechecks the material at confirmation, records one durable claim and a frozen patch per source run, then admits an isolated child through the existing inspection gate. Its single API request includes the patch and fixed review instructions, with zero tools and no inherited conversation. A settled result can be reopened under the same Session. A claim with no recovered result is unknown and cannot be replayed. The worker and returned reviewer models must establish different known model families and the reported reviewer must match the selected model. The supplemental verdict applies only to the frozen patch. A freshness change or disagreement is shown alongside the preserved original evidence.
 
 Create a separate official Host Profile with `pinRoot` set to the new Home's `pins/`, and provide its other required paths independently. Verify SessionQuery and Web replay in the copied Home before considering it for daily use. Rollback is to stop that isolated Host and launch the existing daily entry with the untouched original Home. Do not run two Hosts against one Home concurrently.
+
+### Optional review execution metadata
+
+New `evidence-manifest.v1.json` records for `repository_change` may include:
+
+```json
+{
+  "review_execution": {
+    "version": 1,
+    "source": "runtime_invocation_evidence",
+    "status": "unknown",
+    "reason": "insufficient_bound_evidence"
+  }
+}
+```
+
+Version 1 permits exactly these status/reason pairs:
+
+- `not_started` / `worker_terminated_before_review`: a settled call audit and Runtime invocation evidence bind the Run, Task, Workspace, expected Worker adapter and first invocation. The Worker failed or timed out with matching terminal status, confirmed cleanup, and no bound output or previous result. Under the current Controller contract, this failure returns before Reviewer dispatch.
+- `invoked` / `reviewer_invocation_recorded`: a settled call audit and bound second-invocation record identify the expected read-only Reviewer. This means the Runtime issued the invocation; it does **not** prove that the CLI started successfully, completed its review, accessed the intended material, or returned a trustworthy verdict.
+- `unknown` / `insufficient_bound_evidence`: the required evidence is absent, inconsistent or insufficient. Empty activity history, missing model observations and phase flags are not proof that review was skipped. Admission failure without a bound invocation record also remains unknown.
+
+This field is supplementary. It does not replace or alter `verification.verdict`, `verification.invocation_binding`, review output validation, permissions, or independent-review requirements. The drawer may explain a raw `invalid` binding as “not established” when non-dispatch is proven; the stored binding remains unchanged. Repository inspections omit this field and display review execution as not applicable.
+
+Existing manifests are never backfilled or rewritten. Missing fields, unsupported versions/sources and unrecognized status/reason pairs display unknown execution, without inferring non-dispatch. The drawer also rejects non-dispatch metadata that conflicts with the terminal status, verdict or matched binding, and requires a settled audit for either positive classification. Historical PASS/FAIL and binding values retain their original meanings.
