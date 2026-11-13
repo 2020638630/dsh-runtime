@@ -468,7 +468,7 @@ test('long patches and audit details are collapsed by default', () => {
   assert.match(nodes(patch).find(node => node.type === 'p')?.children.join('') ?? '', /仅展示/u)
   const auditDetails = nodes(renderTree('audit', changes)).filter(node => node.type === 'details' && node.props?.key !== 'activity')
   assert.deepEqual(auditDetails.map(node => nodes(node).find(child => child.type === 'summary')?.children[0]),
-    ['模型审查原文', '技术证据与坐标'])
+    ['查看 Worker 公开消息预览', '模型审查原文', '技术证据与坐标'])
   assert.ok(auditDetails.every(node => node.props?.open === undefined))
 })
 
@@ -614,7 +614,7 @@ test('reopening the drawer clears the supplemental observation without querying 
   assert.match(textOf(nodes(tree).find(node => node.type === 'dl')), /追加复核[\s\S]*PASS/u)
 })
 
-function historyHarness(replies: Array<Response | Error | (() => Promise<unknown>)>) {
+function historyHarness(replies: Array<Response | Error | (() => Promise<unknown>)>, preview = false) {
   const values: unknown[] = [], refs: Array<{ current: unknown }> = []
   let index = 0, refIndex = 0, effect: (() => () => void) | undefined, timer: (() => void) | undefined
   const calls: Array<{ path: string; signal?: AbortSignal | null }> = []
@@ -628,7 +628,7 @@ function historyHarness(replies: Array<Response | Error | (() => Promise<unknown
   }, undefined, {}, undefined, {
     fetch: async (path: string, options: RequestInit) => {
       assert.equal(options.method, undefined)
-      assert.match(path, /view=activity/u)
+      assert.match(path, preview ? /view=public-preview/u : /view=activity/u)
       calls.push({ path, signal: options.signal })
       const reply = replies.shift()
       if (reply instanceof Error) throw reply
@@ -639,12 +639,12 @@ function historyHarness(replies: Array<Response | Error | (() => Promise<unknown
     clearTimeout: () => { timer = undefined },
   }).get('tool.call.toolview')!
   const root = view(startedProps)
-  const child = nodes(root).find(node => typeof node.type === 'function' && node.props?.enabled === false)!
+  const child = nodes(root).find(node => typeof node.type === 'function' && node.type.name === (preview ? 'PublicPreview' : 'ActivityHistory'))!
   assert.ok(child)
   values.length = refs.length = 0
-  const draw = (enabled = true, ended = false) => {
+  const draw = (enabled = true, ended = false, overrides: object = {}) => {
     index = refIndex = 0
-    return (child.type as View)({ ...child.props, enabled, ended })
+    return (child.type as View)({ ...child.props, enabled, ended, ...overrides })
   }
   const flush = () => new Promise<void>(resolve => setImmediate(resolve))
   const start = () => { draw(); return effect!() }
@@ -855,4 +855,98 @@ test('plugin settings atomically edit CLI roles and preserve API entries and sta
     { op: 'set', path: ['roleConfig', 'roles', 'reviewer', 'model'], value: 'provider/new-model' },
   ] })
   assert.equal(roleConfig.roles.reviewer, reviewer)
+})
+
+function previewReply(text = '<script>alert(1)</script> **literal** https://example.test', changes = {}) {
+  const runId = 'dsh-runtime-00000000-0000-4000-8000-000000000001'
+  const data = { version: 1, status: 'available', runId, workspaceId: 'session', streamId: historyStream,
+    retention: 'host_memory', limitMessages: 8, limitBytes: 16384, limitTextBytes: 1024,
+    retainedBytes: 600, lastSeq: 1, closed: false, sourceClosed: false, established: true, truncated: false, issues: [],
+    messages: [{ v: 1, type: 'message', runId, workspaceId: 'session', streamId: historyStream,
+      seq: 1, invocationId: historyStream, invocationIndex: 1, role: 'worker', adapter: 'codex',
+      itemId: 'message-1', phase: 'commentary', atMs: Date.now(), text, truncated: false }], ...changes }
+  data.retainedBytes = data.messages.reduce((bytes, message) => bytes + Buffer.byteLength(JSON.stringify(message)), 0)
+  return Response.json(data)
+}
+
+test('C1 is collapsed by default and renders commentary as literal plaintext only', async () => {
+  const h = historyHarness([previewReply()], true)
+  assert.equal(h.draw(false), null)
+  assert.equal(h.effect(), undefined)
+  assert.equal(h.calls.length, 0)
+  const stop = h.start()
+  await h.flush()
+  const tree = h.draw()
+  assert.match(textOf(tree), /不保证脱敏/u)
+  assert.equal(nodes(tree).find(n => n.type === 'pre')!.children[0], '<script>alert(1)</script> **literal** https://example.test')
+  assert.equal(nodes(tree).some(n => n.type === 'a' || n.type === 'script' || n.props?.dangerouslySetInnerHTML), false)
+  stop()
+  assert.equal(h.scheduled(), false)
+})
+
+test('C1 rejects cross-run, cross-session and oversize body responses', async () => {
+  for (const response of [previewReply('body', { runId: 'another-run' }),
+    previewReply('body', { workspaceId: 'another-session' }), previewReply('漢'.repeat(342)),
+    previewReply('body', { messages: Array(9).fill({ text: 'body' }) })]) {
+    const h = historyHarness([response], true)
+    const stop = h.start()
+    await h.flush()
+    assert.match(textOf(h.draw()), /预览读取失败/u)
+    assert.equal(nodes(h.draw()).some(n => n.type === 'pre'), false)
+    stop()
+  }
+})
+
+test('C1 hides prior identity immediately and ignores late response after close', async () => {
+  let finish!: (value: unknown) => void
+  const h = historyHarness([previewReply('first'), () => new Promise(resolve => { finish = resolve })], true)
+  const stop = h.start()
+  await h.flush()
+  assert.match(textOf(h.draw()), /first/u)
+  assert.doesNotMatch(textOf(h.draw(true, false, { sessionId: 'other' })), /first/u)
+  await h.tick()
+  stop()
+  finish(await previewReply('late').json())
+  await h.flush()
+  assert.doesNotMatch(textOf(h.draw()), /late/u)
+  assert.equal(h.scheduled(), false)
+})
+
+test('C1 distinguishes truncation, unknown empty and legacy unavailable', async () => {
+  for (const [reply, expected] of [
+    [previewReply('part', { truncated: true, issues: ['source_gap'], closed: true }), /窗口已截断[\s\S]*缺口/u],
+    [previewReply('', { messages: [], lastSeq: 0, established: false, closed: true }), /尚未确认[\s\S]*不能据此判断任务未执行/u],
+    [Response.json({ version: 1, status: 'unavailable', reason: 'not_recorded_in_this_host' }), /旧版、重启/u],
+  ] as const) {
+    const h = historyHarness([reply], true)
+    const stop = h.start()
+    await h.flush()
+    assert.match(textOf(h.draw()), expected)
+    assert.equal(h.scheduled(), false)
+    stop()
+  }
+})
+
+
+test('C1 strictly rejects unknown fields, invalid message identity, timestamps and retained-byte claims', async () => {
+  const base = await previewReply().json()
+  const cases = [
+    { ...base, unexpected: 'field' },
+    { version: 1, status: 'unavailable', reason: 'expired', text: 'unexpected' },
+    { ...base, retainedBytes: base.retainedBytes - 1 },
+    { ...base, issues: ['unknown_issue'] },
+    { ...base, lastSeq: 8, retainedBytes: 16384, messages: Array.from({ length: 8 }, (_, i) => ({
+      ...base.messages[0], seq: i + 1, itemId: `item-${i}`, text: '\u0000'.repeat(1024),
+    })) },
+    ...[{ invocationId: 'not-a-uuid' }, { itemId: '../unsafe' }, { itemId: 'a'.repeat(129) },
+      { atMs: 0 }, { atMs: 1.5 }, { unexpected: 'body' }].map(change => ({ ...base, messages: [{ ...base.messages[0], ...change }] })),
+  ]
+  for (const data of cases) {
+    const h = historyHarness([Response.json(data)], true)
+    const stop = h.start()
+    await h.flush()
+    assert.match(textOf(h.draw()), /预览读取失败/u)
+    assert.equal(nodes(h.draw()).some(n => n.type === 'pre'), false)
+    stop()
+  }
 })

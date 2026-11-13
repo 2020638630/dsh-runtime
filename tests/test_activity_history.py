@@ -203,7 +203,11 @@ def test_real_undrained_stderr_pipe_does_not_block_process_settlement(tmp_path):
         assert process.wait(timeout=3) == 0
         assert process.stdout.read().strip() == b"settled"
         observed = process.stderr.read()
-        assert b'"type":"end"' not in observed
+        # Pipe capacity and sender scheduling vary by OS: closing frame may
+        # fit after producer-side drops. Require visible loss, not missing end.
+        records = [json.loads(line[len(PREFIX):]) for line in observed.decode().splitlines()]
+        ending = next((row for row in records if row['type'] == 'end'), None)
+        assert ending is None or ending['dropped'] > 0
     finally:
         if process.poll() is None:
             process.kill()

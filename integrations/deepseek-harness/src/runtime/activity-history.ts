@@ -158,7 +158,8 @@ export class ActivityFrameDecoder {
   private discarding = false
   private ended = false
   constructor(private accept: (value: unknown) => void, private invalid: () => void,
-    private diagnostic: (text: string) => void = () => {}) {}
+    private diagnostic: (text: string) => void = () => {},
+    private prefix = ACTIVITY_PREFIX, private maxLineBytes = 2048) {}
   feed(chunk: Buffer | string) {
     if (this.ended) return
     this.consume(this.decoder.write(typeof chunk === 'string' ? Buffer.from(chunk) : chunk))
@@ -168,22 +169,22 @@ export class ActivityFrameDecoder {
       if (!part) continue
       const newline = part.endsWith('\n')
       if (this.discarding) { if (newline) this.discarding = false; continue }
-      if (this.line.length + part.length > 2048) {
-        if (this.line.startsWith(ACTIVITY_PREFIX) || (this.line + part.slice(0, ACTIVITY_PREFIX.length)).startsWith(ACTIVITY_PREFIX)) this.invalid()
+      if (Buffer.byteLength(this.line) + Buffer.byteLength(part) > this.maxLineBytes) {
+        if (this.line.startsWith(this.prefix) || (this.line + part.slice(0, this.prefix.length)).startsWith(this.prefix)) this.invalid()
         this.line = ''; this.discarding = !newline; continue
       }
       this.line += part
       if (!newline) continue
       const line = this.line; this.line = ''
-      if (line.startsWith(ACTIVITY_PREFIX)) {
-        try { this.accept(JSON.parse(line.slice(ACTIVITY_PREFIX.length))) } catch { this.invalid() }
+      if (line.startsWith(this.prefix)) {
+        try { this.accept(JSON.parse(line.slice(this.prefix.length))) } catch { this.invalid() }
       } else this.diagnostic(line)
     }
   }
   end() {
     if (this.ended) return
     this.consume(this.decoder.end())
-    if (this.line.startsWith(ACTIVITY_PREFIX)) this.invalid()
+    if (this.line.startsWith(this.prefix)) this.invalid()
     else if (this.line) this.diagnostic(this.line)
     this.line = ''; this.ended = true
   }

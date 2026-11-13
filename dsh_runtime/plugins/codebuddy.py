@@ -1865,6 +1865,7 @@ class CodeBuddyPlugin:
         environment.pop(RUNTIME_RUN_ID_ENV, None)
         environment.pop("DSH_RUNTIME_PROGRESS_PATH", None)
         environment.pop("DSH_RUNTIME_ACTIVITY_STREAM", None)
+        environment.pop("DSH_RUNTIME_PUBLIC_PREVIEW_STREAM", None)
         environment.pop(SAFE_STREAM_JSON_ENV, None)
         environment.pop(MAX_STREAM_CHARS_ENV, None)
         return environment

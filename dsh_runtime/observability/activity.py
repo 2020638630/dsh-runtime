@@ -14,6 +14,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Iterator
 from uuid import uuid4
+from .observation_pipe import write_observation_frame
 
 STREAM_ENV = "DSH_RUNTIME_ACTIVITY_STREAM"
 PREFIX = "DSH_RUNTIME_ACTIVITY_V1 "
@@ -34,6 +35,7 @@ class ActivityWriter:
         self.seq = 0
         self.dropped = 0
         self.closed = False
+        self.transport_lock = threading.Lock()
         self.lock = threading.Lock()
         self.condition = threading.Condition(self.lock)
         self.queue: deque[str | None] = deque()
@@ -79,16 +81,7 @@ class ActivityWriter:
             try:
                 # Raw fd writes avoid a daemon owning Python's buffered stderr lock
                 # during interpreter shutdown when the Host stops draining the pipe.
-                if self.fd is not None:
-                    remaining = memoryview(line.encode("ascii"))
-                    while remaining:
-                        written = os.write(self.fd, remaining)
-                        if written <= 0:
-                            raise OSError("activity pipe made no progress")
-                        remaining = remaining[written:]
-                else:
-                    self.pipe.write(line)
-                    self.pipe.flush()
+                write_observation_frame(self.pipe, self.fd, line, self.transport_lock)
             except Exception:
                 with self.lock:
                     self.dropped += 1

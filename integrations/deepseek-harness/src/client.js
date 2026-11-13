@@ -1195,6 +1195,97 @@ window.__ModuleLoader__.load({
       return h(RuntimeRunCard, { key: JSON.stringify([props.sessionId, id]), id, props })
     }
 
+    // Independent C1 window: public completed commentary, never Markdown or evidence.
+    const previewBytes = text => [...text].reduce((bytes, char) => {
+      const cp = char.codePointAt(0)
+      return bytes + (cp < 128 ? 1 : cp < 2048 ? 2 : cp < 65536 ? 3 : 4)
+    }, 0)
+    const previewUuid = value => typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value)
+    const previewExact = (value, fields) => value && typeof value === 'object' && !Array.isArray(value)
+      && Object.keys(value).sort().join() === fields.split(' ').sort().join()
+    const previewIssues = ['invalid_frame', 'drain_timeout', 'after_source_end', 'source_not_started', 'source_gap',
+      'source_dropped', 'conflict', 'source_limit', 'missing_source_end']
+    function validPreview(data, childId, sessionId) {
+      if (!data || data.version !== 1) return false
+      if (data.status === 'unavailable') return previewExact(data, 'version status reason')
+        && ['expired', 'evicted', 'not_recorded_in_this_host'].includes(data.reason)
+      if (!previewExact(data, 'version status runId workspaceId streamId retention limitMessages limitBytes limitTextBytes retainedBytes lastSeq closed established sourceClosed truncated issues messages')
+        || data.status !== 'available' || data.runId !== `dsh-runtime-${childId}` || data.workspaceId !== sessionId
+        || !previewUuid(data.streamId) || data.retention !== 'host_memory' || data.limitMessages !== 8 || data.limitBytes !== 16384
+        || data.limitTextBytes !== 1024 || !Number.isSafeInteger(data.retainedBytes) || data.retainedBytes < 0 || data.retainedBytes > 16384
+        || !Number.isSafeInteger(data.lastSeq) || data.lastSeq < 0
+        || !['closed', 'sourceClosed', 'established', 'truncated'].every(key => typeof data[key] === 'boolean')
+        || !Array.isArray(data.issues) || data.issues.length > previewIssues.length || !data.issues.every(issue => previewIssues.includes(issue))
+        || new Set(data.issues).size !== data.issues.length
+        || !Array.isArray(data.messages) || data.messages.length > 8) return false
+      let seq = 0, bytes = 0, invocation
+      const itemIds = new Set()
+      return data.messages.every(message => {
+        if (!previewExact(message, 'v type runId workspaceId streamId seq invocationId invocationIndex role adapter itemId phase atMs text truncated')
+          || message.v !== 1 || message.type !== 'message' || message.runId !== data.runId
+          || message.workspaceId !== sessionId || message.streamId !== data.streamId || message.role !== 'worker'
+          || message.adapter !== 'codex' || message.invocationIndex !== 1 || message.phase !== 'commentary'
+          || !previewUuid(message.invocationId) || (invocation !== undefined && invocation !== message.invocationId)
+          || typeof message.itemId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(message.itemId) || itemIds.has(message.itemId)
+          || !Number.isSafeInteger(message.atMs) || message.atMs < 1
+          || !Number.isSafeInteger(message.seq) || message.seq <= seq || message.seq > data.lastSeq
+          || typeof message.text !== 'string' || previewBytes(message.text) > 1024 || typeof message.truncated !== 'boolean') return false
+        seq = message.seq
+        invocation = message.invocationId
+        itemIds.add(message.itemId)
+        bytes += previewBytes(JSON.stringify(message))
+        return bytes <= 16384
+      }) && bytes === data.retainedBytes
+    }
+    function PublicPreview({ sessionId, childId, enabled, ended }) {
+      const [view, setView] = React.useState(null)
+      React.useEffect(() => {
+        if (!enabled) return
+        const life = new AbortController()
+        let timer, reads = 0, failures = 0
+        setView(null)
+        async function load() {
+          try {
+            const query = new URLSearchParams({ sessionId, childId, view: 'public-preview' })
+            const signal = AbortSignal.any([life.signal, AbortSignal.timeout(10000)])
+            const response = await fetch(`api/dsh-runtime.evidence?${query}`, { signal })
+            if (!response.ok) throw new Error('Preview unavailable')
+            const data = await response.json()
+            if (life.signal.aborted) return
+            signal.throwIfAborted()
+            if (!validPreview(data, childId, sessionId)) throw new Error('Invalid preview window')
+            setView({ data, sessionId, childId, failed: false })
+            failures = 0
+            if (data.status === 'available' && !data.closed && (!ended || ++reads < 3)) timer = setTimeout(load, ended ? 750 : 3000)
+          } catch {
+            if (life.signal.aborted) return
+            setView(previous => ({ ...previous, sessionId, childId, failed: true }))
+            if (++failures < 3) timer = setTimeout(load, 3000 * failures)
+          }
+        }
+        void load()
+        return () => { life.abort(); clearTimeout(timer) }
+      }, [sessionId, childId, enabled, ended])
+      if (!enabled) return null
+      const current = view?.sessionId === sessionId && view?.childId === childId ? view : null
+      const data = current?.data
+      return h('div', { 'aria-label': 'Worker 公开消息预览' },
+        h('p', { className: 'run-meta' }, '仅 Codex Worker 已完成的公开 commentary 消息。不是内部思考过程、完整日志或审查结论。不保证脱敏，可能包含敏感文本。'),
+        h('p', { className: 'run-meta' }, '仅当前 Host 内存保留：最近最多 8 条 / 16 KiB，每条最多 1024 UTF-8 字节。'),
+        !current && h('p', { role: 'status' }, '正在读取公开消息预览…'),
+        current?.failed && h('p', { role: 'status' }, '预览读取失败；以下内容可能不是最新状态。收起后重新展开可重试。'),
+        data?.status === 'unavailable' && h('p', { role: 'status' }, data.reason === 'expired' ? '预览已过期。'
+          : data.reason === 'evicted' ? '预览窗口已被淘汰。' : '本 Host 未记录可用预览，可能不支持此来源或来自旧版、重启前的运行。'),
+        data?.status === 'available' && h(React.Fragment, null,
+          !data.established && h('p', null, '尚未确认公开消息通道。'),
+          data.truncated && h('p', null, '窗口已截断，仅显示最近保留的消息。'),
+          data.issues.length > 0 && h('p', null, '预览可能存在缺口，不代表完整输出。'),
+          data.messages.length === 0 && h('p', null, '当前窗口暂无公开消息；不能据此判断任务未执行。'),
+          data.messages.map(message => h('div', { key: message.seq },
+            h('p', { className: 'run-meta' }, `#${message.seq} · Codex Worker · commentary`, message.truncated ? ' · 正文已截断' : ''),
+            h('pre', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'inherit' } }, message.text)))))
+    }
+
     function RuntimeRunCard({ id, props }) {
       const [state, setState] = React.useState('waiting')
       const [open, setOpen] = React.useState(false)
@@ -1204,6 +1295,7 @@ window.__ModuleLoader__.load({
       const [activityFocused, setActivityFocused] = React.useState(false)
       const [supplemental, setSupplemental] = React.useState(null)
       const [historyExpanded, setHistoryExpanded] = React.useState(false)
+      const [previewExpanded, setPreviewExpanded] = React.useState(null)
       const dialogRef = React.useRef(null)
       const triggerRef = React.useRef(null)
       const activityRef = React.useRef(null)
@@ -1488,6 +1580,11 @@ window.__ModuleLoader__.load({
           h('p', { className: 'run-meta' }, '运行中观察 · 正式结论以终态证据为准。'))
           : h('p', null, '活动观察已结束。历史仅在当前 Host 的有限窗口内保留。'),
         h(ActivityHistory, { key: id, sessionId: props.sessionId, childId: id, enabled: historyExpanded, ended: !runningCard })),
+        id && h('details', { className: 'run-detail', key: `public-preview-${props.sessionId}-${id}`,
+          onToggle: event => setPreviewExpanded(event.currentTarget.open ? `${props.sessionId}:${id}` : null),
+        }, h('summary', null, '查看 Worker 公开消息预览'),
+        h(PublicPreview, { key: `${props.sessionId}-${id}`, sessionId: props.sessionId, childId: id,
+          enabled: previewExpanded === `${props.sessionId}:${id}`, ended: !runningCard })),
         !runningCard && !ready && h('div', null,
           h('div', { className: 'run-observation' }, activityIcon('M4 2h7l3 3v11H4z M11 2v4h3 M7 9h4 M7 12h4'),
             live?.manifestAvailable === false ? '终态清单缺失' : '终态清单不可用'),

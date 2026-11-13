@@ -1,3 +1,4 @@
+import { publicPreviews, PublicPreviewDecoder } from './public-preview.ts'
 /**
  * One-shot DSH-Runtime child lifecycle over the product JSON stdio entrypoint
  * (`python -m dsh_runtime.entrypoint`). The provider owns only process
@@ -362,6 +363,9 @@ async function createDshRuntimeRun(
     throw new Error('subagent-dsh-runtime: request was aborted before the Runtime child started')
   }
 
+  if (Object.hasOwn(spec.env, 'DSH_RUNTIME_PUBLIC_PREVIEW_STREAM')) {
+    throw new Error('subagent-dsh-runtime: public preview capability is Host-owned')
+  }
   const childId = brandString<SessionId>(randomUUID())
   let evidenceEnv: Record<string, string> = {}
   let evidencePaths: { runId: string; runDir: string; safeTraceDir: string; callTracePath: string } | undefined
@@ -439,11 +443,18 @@ async function createDshRuntimeRun(
       evidenceEnv.DSH_RUNTIME_ACTIVITY_STREAM = stream
     }
   }
+  const previewIdentity = activityIdentity && spec.taskKind === 'repository_change'
+    && workerAdapter(spec.env) === 'codex'
+    && existsSync(join(spec.runtimeRoot, 'dsh_runtime', 'observability', 'public_preview.py'))
+    && existsSync(join(spec.runtimeRoot, 'dsh_runtime', 'observability', 'activity.py'))
+    ? activityIdentity : undefined
+  if (previewIdentity) evidenceEnv.DSH_RUNTIME_PUBLIC_PREVIEW_STREAM = publicPreviews.start(previewIdentity)
   let child: SubprocessHandle
   try {
     child = spec.spawn(buildSpawnSpec(spec, evidenceEnv))
   } catch (error: unknown) {
     if (activityIdentity) activityHistories.finish(activityIdentity, false)
+    if (previewIdentity) publicPreviews.finish(previewIdentity, false)
     if (evidencePaths !== undefined) {
       try {
         await settleEvidenceState(evidencePaths.runDir, {
@@ -464,14 +475,19 @@ async function createDshRuntimeRun(
     value => { if (activityIdentity) activityHistories.accept(activityIdentity, value) },
     () => { if (activityIdentity) activityHistories.issue(activityIdentity, 'invalid_frame') },
   )
+  const previewDecoder = new PublicPreviewDecoder(
+    value => { if (previewIdentity) publicPreviews.accept(previewIdentity, value) },
+    () => { if (previewIdentity) publicPreviews.issue(previewIdentity, 'invalid_frame') },
+  )
   let drained = false
   let resolveDrain!: () => void
   const drain = new Promise<void>(resolve => { resolveDrain = resolve })
-  const onStderrEnd = () => { decoder.end(); drained = true; resolveDrain() }
+  const onStderrEnd = () => { decoder.end(); previewDecoder.end(); drained = true; resolveDrain() }
   const onStderrClose = () => { resolveDrain() }
   const onStderr = (chunk: Buffer | string): void => {
     // Observation frames do not alter stdout or the entrypoint's diagnostic audit projection.
     decoder.feed(chunk)
+    previewDecoder.feed(chunk)
   }
   child.stderr?.on('data', onStderr)
   child.stderr?.once('end', onStderrEnd)
@@ -576,6 +592,8 @@ async function createDshRuntimeRun(
       void drain.then(() => { clearTimeout(timer); resolve() })
     })
     decoder.end()
+    previewDecoder.end()
+    if (previewIdentity) publicPreviews.finish(previewIdentity, drained)
     if (activityIdentity) activityHistories.finish(activityIdentity, drained)
     if (evidencePaths !== undefined) {
       try {

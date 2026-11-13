@@ -1,3 +1,4 @@
+import { publicPreviews } from '../.build/src/runtime/public-preview.js'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
@@ -382,4 +383,37 @@ test('live progress shows the active phase and only safe recent activity to the 
   const cancelled = await handler(new Request(url + workspaceId))
   assert.equal(cancelled.status, 200)
   assert.equal((await cancelled.json()).progress, undefined)
+})
+
+test('C1 public preview route enforces ownership, strict coordinates and root/run/session isolation', async t => {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'dsh-public-route-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const otherRoot = join(root, 'other'); mkdirSync(otherRoot)
+  let handler
+  const ctx = {
+    connection: { fetch: { register(route) { handler = route.fetch; return async () => {} } } },
+    sessionQuery: { readSession: async id => ({ events: id === 'not-owner' ? [] : [childId, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'].map(ownedId => ({ type: 'subagent/catalog', data: { version: 2, childId: ownedId } })) }) },
+    logger: { warn: () => {} },
+  }
+  const release = registerRuntimeEvidenceRoute(ctx, root); t.after(release)
+  const query = new URLSearchParams({ sessionId: workspaceId, childId, view: 'public-preview' })
+  const read = suffix => handler(new Request('http://fixture/api/dsh-runtime.evidence?' + query + suffix))
+  assert.equal((await (await read('')).json()).status, 'unavailable')
+  const id = { evidenceRoot: resolveActivityEvidenceRoot(root), runId, workspaceId }
+  const streamId = publicPreviews.start(id)
+  const base = { v: 1, runId, workspaceId, streamId }
+  publicPreviews.accept(id, { ...base, type: 'begin' })
+  publicPreviews.accept(id, { ...base, type: 'message', seq: 1, invocationId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', invocationIndex: 1,
+    role: 'worker', adapter: 'codex', itemId: 'public-1', phase: 'commentary', atMs: Date.now(), text: 'PUBLIC-ROUTE', truncated: false })
+  const response = await read('')
+  assert.equal(response.headers.get('cache-control'), 'no-store')
+  assert.equal((await response.json()).messages[0].text, 'PUBLIC-ROUTE')
+  for (const suffix of ['&after=0', '&filename=private', '&view=public-preview', '&sessionId=other']) assert.equal((await read(suffix)).status, 400)
+  query.set('sessionId', 'not-owner'); assert.equal((await read('')).status, 404)
+  query.set('sessionId', 'other-owner'); assert.equal((await (await read('')).json()).status, 'unavailable')
+  query.set('sessionId', workspaceId)
+  query.set('childId', 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'); assert.equal((await (await read('')).json()).status, 'unavailable')
+  query.set('childId', childId)
+  const releaseOther = registerRuntimeEvidenceRoute(ctx, otherRoot); t.after(releaseOther)
+  assert.equal((await (await read('')).json()).status, 'unavailable')
 })

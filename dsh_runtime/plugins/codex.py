@@ -28,6 +28,7 @@ from ..codex_safe_trace import (
 from ..runtime.plugin import ExecutionContext, PluginResult
 from ..observability.progress import record_codex_tool
 from ..observability.activity import STREAM_ENV, record_activity
+from ..observability.public_preview import STREAM_ENV as PREVIEW_STREAM_ENV, record_public_commentary
 
 
 class _CodexProtocolError(Exception):
@@ -428,6 +429,9 @@ class _CodexSession:
             self.unphased_answer = text
         elif phase != "commentary":
             raise _CodexProtocolError("invalid agent message phase")
+        if (phase == "commentary" and self.thread_id is not None and self.turn_id is not None
+            and params.get("threadId") == self.thread_id and params.get("turnId") == self.turn_id):
+            record_public_commentary(item.get("id"), text)
         record_activity("codex", "message", "observed")
 
     async def initialize(self) -> None:
@@ -663,6 +667,7 @@ class CodexPlugin:
                 environment.pop(key, None)
         environment.update(self._environment_overlay)
         environment.pop(STREAM_ENV, None)
+        environment.pop(PREVIEW_STREAM_ENV, None)
         return environment
 
     async def execute(self, ctx: ExecutionContext, params: dict[str, Any]) -> PluginResult:

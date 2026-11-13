@@ -43,6 +43,7 @@ from dsh_runtime.call_trace import (
 )
 from dsh_runtime.state import TaskState
 from dsh_runtime.observability.activity import activity_stream
+from dsh_runtime.observability.public_preview import public_preview_stream
 from dsh_runtime.workspace.manager import Workspace, WorkspaceManager
 
 
@@ -252,7 +253,7 @@ def main() -> int:
             raise ValueError(f"missing required field(s): {', '.join(missing)}")
 
         captured_stdout = io.StringIO()
-        with activity_stream(_request_value(request, "workspace_id")), redirect_stdout(captured_stdout):
+        with activity_stream(_request_value(request, "workspace_id")), public_preview_stream(_request_value(request, "workspace_id")), redirect_stdout(captured_stdout):
             task = asyncio.run(_run_request(request))
         if captured_stdout.getvalue():
             raise RuntimeError("unexpected wrapper or workflow output reached stdout")

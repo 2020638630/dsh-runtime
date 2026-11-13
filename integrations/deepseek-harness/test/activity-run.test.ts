@@ -1,3 +1,4 @@
+import { publicPreviews, PUBLIC_PREVIEW_PREFIX } from '../src/runtime/public-preview.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -113,4 +114,59 @@ test('real Python source frames reach a 50-row Host window without any frontend 
   assert(result.retainedBytes <= 32768)
   assert(result.events.every(event => event.role === 'inspector'))
   await run.dispose()
+})
+
+test('C1 transport negotiates only supported Codex Workers and keeps public bodies outside B history', async t => {
+  for (const [marker, taskKind, codex, enabled] of [
+    [true, 'repository_change', true, true], [false, 'repository_change', true, false],
+    [true, 'repository_inspection', true, false], [true, 'repository_change', false, false],
+  ] as const) {
+    const { root, workspace, evidence } = fixture(t)
+    if (marker) writeFileSync(join(root, 'dsh_runtime', 'observability', 'public_preview.py'), '# capability fixture\n')
+    let identity!: { runId: string; workspaceId: string; evidenceRoot: string }
+    const run = await startDshRuntimeRun(request(), { cwd: workspace, workspaceId: 'parent-session', taskKind,
+      runtimeRoot: root, python: 'fixture', evidenceRoot: evidence, disposeGraceMs: 500,
+      env: codex ? { DSH_RUNTIME_ROLE_CONFIG_JSON: JSON.stringify({ schema_version: 2, roles: { worker: { adapter: 'codex' } } }) } : {},
+      spawn: spec => {
+        const stdin = new PassThrough(), stdout = new PassThrough(), stderr = new PassThrough()
+        const env = spec.env as Record<string, string>
+        assert.equal(typeof env.DSH_RUNTIME_PUBLIC_PREVIEW_STREAM === 'string', enabled)
+        identity = { runId: env.DSH_RUNTIME_RUN_ID!, workspaceId: 'parent-session', evidenceRoot: realpathSync(evidence) }
+        stdin.once('finish', () => {
+          const common = { v: 1, runId: identity.runId, workspaceId: identity.workspaceId }
+          const b = (value: object) => stderr.write(ACTIVITY_PREFIX + JSON.stringify({ ...common, streamId: env.DSH_RUNTIME_ACTIVITY_STREAM, ...value }) + '\n')
+          b({ type: 'begin' }); b({ type: 'end', lastSeq: 0, dropped: 0 })
+          if (enabled) {
+            const p = (value: object) => stderr.write(PUBLIC_PREVIEW_PREFIX + JSON.stringify({ ...common, streamId: env.DSH_RUNTIME_PUBLIC_PREVIEW_STREAM, ...value }) + '\n')
+            p({ type: 'begin' })
+            p({ type: 'message', seq: 1, invocationId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', invocationIndex: 1,
+              role: 'worker', adapter: 'codex', itemId: 'item-1', phase: 'commentary', atMs: Date.now(), text: '<b>PUBLIC-C1</b>', truncated: false })
+            p({ type: 'end', lastSeq: 1, dropped: 0 })
+          }
+          stderr.end(); stdout.end(JSON.stringify({ ...terminal, task_kind: taskKind }) + '\n')
+        })
+        return { stdin, stdout, stderr, done: Promise.resolve({ exitCode: 0 }), terminate: () => stderr.end(), waitForExit: async () => {} } as unknown as SubprocessHandle
+      } })
+    await run.result
+    const preview = publicPreviews.read(identity)
+    assert.equal(preview.status, enabled ? 'available' : 'unavailable')
+    if (enabled) {
+      assert.equal(preview.closed, true)
+      assert.equal(preview.messages?.[0]?.text, '<b>PUBLIC-C1</b>')
+      assert.deepEqual(preview.issues, [])
+    }
+    assert.doesNotMatch(JSON.stringify(activityHistories.read(identity)), /PUBLIC-C1|commentary/u)
+    await run.dispose()
+  }
+})
+
+test('C1 capability cannot be supplied by callers, including without evidence storage', async t => {
+  const { root, workspace, evidence } = fixture(t)
+  for (const evidenceRoot of [evidence, undefined]) {
+    let spawned = false
+    await assert.rejects(startDshRuntimeRun(request(), { cwd: workspace, workspaceId: 'parent-session', taskKind: 'repository_change',
+      runtimeRoot: root, python: 'fixture', evidenceRoot, disposeGraceMs: 500, env: { DSH_RUNTIME_PUBLIC_PREVIEW_STREAM: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' },
+      spawn: () => { spawned = true; throw Error('must not launch') } }), /public preview capability is Host-owned/u)
+    assert.equal(spawned, false)
+  }
 })

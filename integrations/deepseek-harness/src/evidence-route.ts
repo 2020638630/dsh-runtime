@@ -1,3 +1,4 @@
+import { publicPreviews } from './runtime/public-preview.ts'
 /** Authenticated Web read of one parent-owned external Runtime run. */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -40,6 +41,15 @@ export function registerRuntimeEvidenceRoute(ctx: Context, evidenceRoot: string)
           && event.data.version === 2
           && event.data.childId === childId)
         if (!owned) return new Response('Runtime evidence not found for this Session.', { status: 404 })
+        if (query.get('view') === 'public-preview') {
+          if ([...query].length !== 3 || new Set(query.keys()).size !== 3
+            || [...query.keys()].some(name => !['sessionId', 'childId', 'view'].includes(name))) {
+            return new Response('Invalid public preview coordinates.', { status: 400 })
+          }
+          return Response.json(publicPreviews.read({ evidenceRoot: resolveActivityEvidenceRoot(evidenceRoot),
+            runId: `dsh-runtime-${childId}`, workspaceId: parentId }),
+          { headers: { 'cache-control': 'no-store' } })
+        }
         if (query.get('view') === 'activity') {
           const after = query.get('after') ?? '0'
           const stream = query.get('stream') ?? undefined

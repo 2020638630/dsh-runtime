@@ -53,7 +53,7 @@ jobs:
             'typecheck', 'build',
             'test:admission', 'test:worker', 'test:pin-store', 'test:provider',
             'test:launcher', 'test:host-core', 'test:tool', 'test:entry',
-            'test:api-agent-trace', 'test:client-evidence-scope',
+            'test:api-agent-trace', 'test:client-evidence-scope', 'test:observation',
             'test:host-compat-report', 'test:check-evidence-home',
             'test:terminal-evidence', 'test:copy-terminal-evidence', 'test:dependency-proxy'
           )
