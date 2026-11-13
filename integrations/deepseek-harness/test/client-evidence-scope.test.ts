@@ -884,6 +884,25 @@ test('C1 is collapsed by default and renders commentary as literal plaintext onl
   assert.equal(h.scheduled(), false)
 })
 
+test('C1 fixed warning excludes final results even without commentary bodies', async () => {
+  const warning = '仅 Codex Worker 已完成的公开 commentary 消息。不是内部思考过程、完整日志、最终结果或审查结论。不保证脱敏，可能包含敏感文本。'
+  for (const response of [previewReply('', { messages: [], lastSeq: 0 }),
+    Response.json({ version: 1, status: 'unavailable', reason: 'not_recorded_in_this_host' })]) {
+    const h = historyHarness([response], true)
+    const assertFixedWarning = () => {
+      const tree = h.draw()
+      assert(nodes(tree).some(node => node.type === 'p' && node.children.includes(warning)))
+      assert.equal(nodes(tree).some(node => node.type === 'pre'), false)
+    }
+    // Product-owned warning is present while loading and without source text.
+    assertFixedWarning()
+    const stop = h.start()
+    await h.flush()
+    assertFixedWarning()
+    stop()
+  }
+})
+
 test('C1 rejects cross-run, cross-session and oversize body responses', async () => {
   for (const response of [previewReply('body', { runId: 'another-run' }),
     previewReply('body', { workspaceId: 'another-session' }), previewReply('漢'.repeat(342)),

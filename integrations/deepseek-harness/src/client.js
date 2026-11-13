@@ -1270,7 +1270,7 @@ window.__ModuleLoader__.load({
       const current = view?.sessionId === sessionId && view?.childId === childId ? view : null
       const data = current?.data
       return h('div', { 'aria-label': 'Worker 公开消息预览' },
-        h('p', { className: 'run-meta' }, '仅 Codex Worker 已完成的公开 commentary 消息。不是内部思考过程、完整日志或审查结论。不保证脱敏，可能包含敏感文本。'),
+        h('p', { className: 'run-meta' }, '仅 Codex Worker 已完成的公开 commentary 消息。不是内部思考过程、完整日志、最终结果或审查结论。不保证脱敏，可能包含敏感文本。'),
         h('p', { className: 'run-meta' }, '仅当前 Host 内存保留：最近最多 8 条 / 16 KiB，每条最多 1024 UTF-8 字节。'),
         !current && h('p', { role: 'status' }, '正在读取公开消息预览…'),
         current?.failed && h('p', { role: 'status' }, '预览读取失败；以下内容可能不是最新状态。收起后重新展开可重试。'),
