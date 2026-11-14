@@ -157,3 +157,23 @@ Version 1 permits exactly these status/reason pairs:
 This field is supplementary. It does not replace or alter `verification.verdict`, `verification.invocation_binding`, review output validation, permissions, or independent-review requirements. The drawer may explain a raw `invalid` binding as “not established” when non-dispatch is proven; the stored binding remains unchanged. Repository inspections omit this field and display review execution as not applicable.
 
 Existing manifests are never backfilled or rewritten. Missing fields, unsupported versions/sources and unrecognized status/reason pairs display unknown execution, without inferring non-dispatch. The drawer also rejects non-dispatch metadata that conflicts with the terminal status, verdict or matched binding, and requires a settled audit for either positive classification. Historical PASS/FAIL and binding values retain their original meanings.
+
+
+### Host settlement notice facts (v1)
+
+New runs carry a Host-authored JSON text block in the normal settlement output,
+not `SubagentResult.structured` (reserved for the caller's `outputSchema`). The
+existing terminal stop reason, diagnostic, original model text and review verdict
+are not changed. No historical manifest is rewritten.
+
+The block carries the Runtime terminal status, selected terminal output role,
+Reviewer invocation state, and bounded pre/post snapshot change observations.
+Output role requires matching Run/Task/Workspace, declared role and adapter,
+invocation index/authority, successful cleaned-up invocation, settled audit,
+and exact byte/hash binding to the selected output; missing, empty or mismatched
+output remains `unknown`. Reviewer `invoked` means invocation recorded, not that
+the native CLI successfully started. No invocation is inferred from activity
+silence. Snapshot observations are not attributed to Worker or Reviewer; missing
+observations are `unknown`, and limited coverage yields unknown counts rather
+than zero. Even zero observed changes applies only to the bounded snapshot scope.
+The original terminal text is separately labelled with its bound role or unknown.

@@ -369,13 +369,16 @@ async function changeManifest(
     expectedApiReviewer?: boolean
     abortDuringEvidence?: AbortController
     settledAudit?: boolean
+    limitedSnapshot?: boolean
+    changeAfterSnapshot?: boolean
   } = {},
 ) {
   const runDir = join(traceDir, '..')
   const workspace = mkdtempSync(join(tmpdir(), 'dsh-api-review-workspace-'))
   execFileSync('git', ['init', '-q', workspace])
   writeFileSync(join(workspace, 'README.md'), 'isolated review\n')
-  const before = await captureWorkspace(workspace)
+  const before = { ...await captureWorkspace(workspace), coverageLimited: options.limitedSnapshot ?? false }
+  if (options.changeAfterSnapshot) writeFileSync(join(workspace, 'observed.txt'), 'synthetic observation\n')
   const reviewOutput = 'checked\nDSH_VERIFICATION: PASS'
   const task = parseTaskState(JSON.stringify({
     task_id: CHANGE_TASK_ID, task_kind: 'repository_change', workspace_id: CHANGE_WORKSPACE_ID,
@@ -400,7 +403,7 @@ async function changeManifest(
   }
   const abort = options.abortDuringEvidence
   if (abort !== undefined) setImmediate(() => abort.abort())
-  await writeTerminalEvidence({
+  const noticeFacts = await writeTerminalEvidence({
     runId: RUN_ID, runDir, safeTraceDir: traceDir,
     callTracePath,
     workspace, workspaceId: CHANGE_WORKSPACE_ID, before,
@@ -411,7 +414,7 @@ async function changeManifest(
     expectedApiReviewer: options.expectedApiReviewer ?? true,
     expectedWorkerAdapter,
   })
-  return JSON.parse(readFileSync(join(runDir, 'evidence-manifest.v1.json'), 'utf8'))
+  return { ...JSON.parse(readFileSync(join(runDir, 'evidence-manifest.v1.json'), 'utf8')), noticeFacts }
 }
 
 test('API reviewer trace is separate from worker trace and Codex attribution', async () => {
@@ -726,4 +729,26 @@ test('failed manifest publication removes the pending verdict', async () => {
   await assert.rejects(changeManifest(traceDir))
   assert.deepEqual(readdirSync(destination), [])
   assert.equal(existsSync(join(runDir, 'evidence-manifest.v1.pending')), false)
+})
+
+
+test('new settlement facts reuse bound review state and independent snapshot observations', async () => {
+  const output = 'checked\nDSH_VERIFICATION: PASS'
+  const { traceDir } = fixture('reviewer')
+  const manifest = await changeManifest(traceDir, 2, 'codebuddy', {
+    settledAudit: true, changeAfterSnapshot: true, task: { result: output },
+  })
+  assert.equal(manifest.noticeFacts.output_role, 'reviewer')
+  assert.equal(manifest.noticeFacts.reviewer_invocation, 'invoked')
+  assert.deepEqual(manifest.noticeFacts.workspace_observation, {
+    status: 'observed_changes', added: 1, modified: 0, deleted: 0,
+    coverage: 'bounded_snapshot', attribution: 'not_established_shared_workspace',
+  })
+  const limited = await changeManifest(fixture('reviewer').traceDir, 2, 'codebuddy', { limitedSnapshot: true })
+  assert.deepEqual(limited.noticeFacts.workspace_observation, {
+    status: 'unknown', added: null, modified: null, deleted: null,
+    coverage: 'limited', attribution: 'not_established_shared_workspace',
+  })
+  assert.equal(limited.noticeFacts.output_role, 'unknown')
+  assert.equal(limited.noticeFacts.reviewer_invocation, 'unknown')
 })

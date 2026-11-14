@@ -1,3 +1,4 @@
+import { withSettlementFacts, type SettlementFacts } from './settlement-facts.ts'
 import { publicPreviews, PublicPreviewDecoder } from './public-preview.ts'
 /**
  * One-shot DSH-Runtime child lifecycle over the product JSON stdio entrypoint
@@ -542,9 +543,10 @@ async function createDshRuntimeRun(
         if (!isTerminalRuntimeStatus(task.status)) {
           throw new Error(transportDiagnostic(`invalid runtime status "${task.status}"`))
         }
+        let settlementFacts: SettlementFacts | undefined
         if (evidencePaths !== undefined && before !== undefined) {
           try {
-            await writeTerminalEvidence({
+            settlementFacts = await writeTerminalEvidence({
               ...evidencePaths, before, workspace: spec.cwd, workspaceId: spec.workspaceId,
               taskKind: spec.taskKind,
               task, exitCode: outcome.exitCode, stdout,
@@ -565,7 +567,7 @@ async function createDshRuntimeRun(
             if (!request.signal.aborted) spec.onEvidenceError?.(toError(error))
           }
         }
-        return mapTaskState(task)
+        return withSettlementFacts(mapTaskState(task), task, settlementFacts)
       } catch (error: unknown) {
         // A transport/envelope failure is normalizable: preserve the safe
         // diagnostic so the seam can flatten it to a provider/process error.

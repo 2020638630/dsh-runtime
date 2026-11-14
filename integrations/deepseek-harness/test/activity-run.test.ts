@@ -61,6 +61,12 @@ test('the production run transport drains stderr EOF and leaves stdout settlemen
   const history = activityHistories.read(identity) as { events: unknown[]; closed: boolean; gaps: string[] }
   assert.equal(result.stopReason, 'completed')
   assert.equal(result.output[0]?.type, 'text')
+  const facts = JSON.parse((result.output[0] as { text: string }).text.split('\n')[1]!)
+  assert.equal(facts.runtime_terminal_status, 'completed')
+  assert.equal(facts.output_role, 'unknown')
+  assert.equal(facts.reviewer_invocation, 'not_applicable')
+  assert.equal(facts.workspace_observation.status, 'no_observed_changes')
+  assert.equal(result.structured, undefined)
   assert.equal(history.closed, true)
   assert.equal(history.events.length, 3)
   assert(Date.now() >= endAt && endAt > 0)
@@ -169,4 +175,49 @@ test('C1 capability cannot be supplied by callers, including without evidence st
       spawn: () => { spawned = true; throw Error('must not launch') } }), /public preview capability is Host-owned/u)
     assert.equal(spawned, false)
   }
+})
+
+test('failed manifest publication leaves actual settlement notice output and diagnostic intact with unknown facts', async t => {
+  const { root, workspace, evidence } = fixture(t)
+  const output = 'synthetic worker output, not a claim of no changes'
+  let evidenceFailures = 0
+  const launch = (spec: SubprocessSpawnSpec) => {
+    const env = spec.env as Record<string, string>
+    // Occupy the exclusive pending path so publication cannot succeed.
+    writeFileSync(join(evidence, 'dsh-runtime', env.DSH_RUNTIME_RUN_ID!, 'evidence-manifest.v1.pending'), 'occupied')
+    const stdin = new PassThrough(), stdout = new PassThrough(), stderr = new PassThrough()
+    let exited!: (value: { exitCode: number }) => void
+    const done = new Promise<{ exitCode: number }>(resolve => { exited = resolve })
+    stdin.once('finish', () => {
+      stdout.end(JSON.stringify({ ...terminal, task_kind: 'repository_change', status: 'failed',
+        result: output, last_invocation_result: output, error: 'synthetic worker failure' }) + '\n')
+      stderr.end(); exited({ exitCode: 0 })
+    })
+    return { stdin, stdout, stderr, done, terminate: () => {}, waitForExit: async () => { await done } } as unknown as SubprocessHandle
+  }
+  const run = await startDshRuntimeRun(request(), { cwd: workspace, workspaceId: 'parent-session', taskKind: 'repository_change',
+    runtimeRoot: root, python: 'fixture', env: {}, evidenceRoot: evidence, disposeGraceMs: 500, spawn: launch,
+    onEvidenceError: () => { evidenceFailures++ } })
+  const result = await run.result
+  assert.equal(evidenceFailures, 1)
+  assert.equal(result.stopReason, 'error')
+  assert.equal(result.diagnostic, 'DSH-Runtime business failure: synthetic worker failure')
+  const facts = JSON.parse((result.output[0] as { text: string }).text.split('\n')[1]!)
+  assert.equal(facts.runtime_terminal_status, 'failed')
+  assert.equal(facts.output_role, 'unknown')
+  assert.equal(facts.reviewer_invocation, 'unknown')
+  assert.equal(facts.workspace_observation.status, 'unknown')
+  assert.equal(facts.workspace_observation.added, null)
+  assert.equal(result.structured, undefined)
+  const { createSettlementMessage } = await import(new URL('./types/continuation-messages.js',
+    import.meta.resolve('@deepseek-ai/dsh-subagent')).href)
+  const notice = createSettlementMessage('synthetic-child', result, false)
+  assert.equal(notice.source.kind, 'subagent-settled')
+  const texts = notice.content.filter((block: { type: string }) => block.type === 'text')
+    .map((block: { text: string }) => block.text).join('\n')
+  assert(texts.includes(output))
+  assert(texts.includes(result.diagnostic!))
+  assert(texts.includes('source role: unknown'))
+  assert(texts.includes('"runtime_terminal_status":"failed"'))
+  await run.dispose()
 })

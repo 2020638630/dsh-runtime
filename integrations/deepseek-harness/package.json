@@ -39,7 +39,7 @@
     "prepack": "pnpm build",
     "pack:desktop-rc1": "pnpm build && node ./scripts/pack-desktop-rc1.mjs",
     "typecheck": "tsc --noEmit",
-    "test:observation": "tsc -p tsconfig.test.json && node --test .build/test/activity-history.test.js .build/test/activity-run.test.js .build/test/public-preview.test.js",
+    "test:observation": "tsc -p tsconfig.test.json && node --test .build/test/activity-history.test.js .build/test/activity-run.test.js .build/test/public-preview.test.js .build/test/settlement-facts.test.js",
     "test:admission": "tsc -p tsconfig.test.json && node .build/test/admission.test.js",
     "test:worker": "tsc -p tsconfig.test.json && node .build/test/worker.test.js",
     "test:pin-store": "tsc -p tsconfig.test.json && node .build/test/pin-store.test.js",

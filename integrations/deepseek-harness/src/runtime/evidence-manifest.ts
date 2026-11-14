@@ -1,3 +1,4 @@
+import { boundOutputRole, type SettlementFacts } from './settlement-facts.ts'
 /** Assemble one terminal manifest from independent Host and Runtime evidence. */
 
 import { createHash } from 'node:crypto'
@@ -176,7 +177,7 @@ export async function writeTerminalEvidence(input: {
   readonly expectedApiInspector?: boolean
   readonly expectedApiReviewer?: boolean
   readonly expectedWorkerAdapter?: 'codebuddy' | 'codex'
-}): Promise<void> {
+}): Promise<SettlementFacts> {
   const { task, runId, runDir } = input
   input.signal?.throwIfAborted()
   if (!UUID.test(task.task_id) || task.task_kind !== input.taskKind
@@ -335,6 +336,22 @@ export async function writeTerminalEvidence(input: {
     manifestPendingWritten = true
     input.signal?.throwIfAborted()
     renameSync(pending, join(runDir, 'evidence-manifest.v1.json'))
+    const changed = changes.added_files.length + changes.modified_files.length + changes.deleted_files.length
+    const limited = input.before.coverageLimited || after.coverageLimited
+    return {
+      output_role: boundOutputRole(task, runId, input.taskKind, input.expectedWorkerAdapter ?? 'codebuddy',
+        input.expectedApiReviewer ? 'api_agent' : 'codex', input.expectedApiInspector ? 'api_agent' : 'codex',
+        audit.status === 'settled'),
+      reviewer_invocation: input.taskKind === 'repository_inspection' ? 'not_applicable'
+        : reviewExecutionState?.status === 'invoked' ? 'invoked'
+          : reviewExecutionState?.status === 'not_started' ? 'not_started' : 'unknown',
+      workspace_observation: {
+        status: changed > 0 ? 'observed_changes' : limited ? 'unknown' : 'no_observed_changes',
+        added: limited ? null : changes.added_files.length,
+        modified: limited ? null : changes.modified_files.length, deleted: limited ? null : changes.deleted_files.length,
+        coverage: limited ? 'limited' : 'bounded_snapshot', attribution: 'not_established_shared_workspace',
+      },
+    }
   } catch (error) {
     if (manifestPendingWritten) await unlink(pending).catch(() => {})
     if (taskStateWritten) await unlink(taskStatePath).catch(() => {})
